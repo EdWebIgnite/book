@@ -15,10 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import com.kidscomics.reader.data.Book
 import com.kidscomics.reader.data.BookRepository
+import com.kidscomics.reader.data.loadInBackground
 import com.kidscomics.reader.ui.LibraryScreen
 import com.kidscomics.reader.ui.ReaderScreen
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private val AppColors = lightColorScheme(
     primary = Color(0xFFE8730C),
@@ -34,7 +33,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = AppColors) {
                 val books by produceState(emptyList<Book>()) {
-                    value = withContext(Dispatchers.IO) { BookRepository.loadAll(applicationContext) }
+                    value = loadInBackground { BookRepository.loadAll(applicationContext) }
                 }
                 var openBookId by rememberSaveable { mutableStateOf<String?>(null) }
                 val openBook = books.firstOrNull { it.id == openBookId }

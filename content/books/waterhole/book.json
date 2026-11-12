@@ -1,91 +1,351 @@
 {
   "id": "waterhole",
-  "title": "Who's at the Waterhole?",
+  "title": "Who’s at the Waterhole?",
   "author": "Sample book",
-  "cover": "cover.webp",
+  "cover": "cover.jpg",
   "focusStyle": "vignette",
   "pages": [
     {
-      "image": "page1.webp",
+      "image": "page1.jpg",
       "stops": [
         {
           "box": {
-            "x": 0.375,
-            "y": 0.4333,
-            "w": 0.3125,
-            "h": 0.4333
+            "x": 0.0688,
+            "y": 0.04,
+            "w": 0.2313,
+            "h": 0.36
           },
-          "caption": "The elephant was very thirsty."
+          "caption": "The sun was hot."
         },
         {
           "box": {
-            "x": 0.7083,
-            "y": 0.5467,
-            "w": 0.2292,
-            "h": 0.2667
+            "x": 0.0938,
+            "y": 0.625,
+            "w": 0.375,
+            "h": 0.365
+          },
+          "caption": "The grass was dry and crackly."
+        },
+        {
+          "box": {
+            "x": 0.1875,
+            "y": 0.725,
+            "w": 0.2813,
+            "h": 0.265
           },
           "to": {
-            "x": 0.75,
-            "y": 0.1067,
-            "w": 0.1875,
-            "h": 0.2667
+            "x": 0.5563,
+            "y": 0.51,
+            "w": 0.3438,
+            "h": 0.4
           },
           "panSeconds": 4,
-          "caption": "The giraffe looked up, up, up..."
-        },
-        {
-          "box": {
-            "x": 0.025,
-            "y": 0.4333,
-            "w": 0.35,
-            "h": 0.4267
-          },
-          "caption": "The zebras waited for their turn."
-        },
-        {
-          "box": {
-            "x": 0.4792,
-            "y": 0.2,
-            "w": 0.125,
-            "h": 0.1333
-          },
-          "style": "none",
-          "caption": "And a little bird watched them all."
+          "caption": "And little Tembo was very, very thirsty."
         }
       ]
     },
     {
-      "image": "page2.webp",
+      "image": "page2.jpg",
       "stops": [
         {
           "box": {
-            "x": 0.2708,
-            "y": 0.6667,
-            "w": 0.2292,
-            "h": 0.1667
+            "x": 0.1406,
+            "y": 0.525,
+            "w": 0.8438,
+            "h": 0.455
           },
-          "caption": "Something was hiding in the water."
+          "caption": "Then he saw it. The waterhole!"
         },
         {
           "box": {
-            "x": 0.6458,
-            "y": 0.7,
-            "w": 0.2292,
-            "h": 0.2067
+            "x": 0.0469,
+            "y": 0.45,
+            "w": 0.3906,
+            "h": 0.45
           },
-          "caption": "The meerkats stood very still."
-        },
-        {
-          "box": {
-            "x": 0.7708,
-            "y": 0.18,
-            "w": 0.1167,
-            "h": 0.1933
-          },
-          "style": "dim",
-          "caption": "\"Hoo!\" said the owl. \"Goodnight!\""
+          "caption": "Slurp! The water was cool and sweet."
         }
       ]
+    },
+    {
+      "image": "page3.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.5,
+            "y": 0.665,
+            "w": 0.4969,
+            "h": 0.3325
+          },
+          "caption": "Clip, clop! Two zebras came trotting up."
+        },
+        {
+          "box": {
+            "x": 0.5,
+            "y": 0.665,
+            "w": 0.4969,
+            "h": 0.3325
+          },
+          "to": {
+            "x": 0.0375,
+            "y": 0.475,
+            "w": 0.3531,
+            "h": 0.4
+          },
+          "panSeconds": 3.5,
+          "caption": "“Is there room for us?” they asked. “Plenty of room,” said Tembo."
+        }
+      ]
+    },
+    {
+      "image": "page4.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.7031,
+            "y": 0.625,
+            "w": 0.2344,
+            "h": 0.325
+          },
+          "to": {
+            "x": 0.6094,
+            "y": 0.19,
+            "w": 0.2344,
+            "h": 0.325
+          },
+          "panSeconds": 4.5,
+          "caption": "Then came Giraffe. She was tall, tall, tall."
+        },
+        {
+          "box": {
+            "x": 0.3906,
+            "y": 0.475,
+            "w": 0.3281,
+            "h": 0.275
+          },
+          "caption": "“How will you reach the water?” asked the zebras."
+        }
+      ]
+    },
+    {
+      "image": "page5.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.8125,
+            "y": 0.575,
+            "w": 0.1844,
+            "h": 0.325
+          },
+          "to": {
+            "x": 0.6406,
+            "y": 0.665,
+            "w": 0.2188,
+            "h": 0.25
+          },
+          "panSeconds": 4,
+          "caption": "She spread her long legs wide. Down, down, down went her head."
+        },
+        {
+          "box": {
+            "x": 0.0313,
+            "y": 0.44,
+            "w": 0.9656,
+            "h": 0.54
+          },
+          "caption": "Now everyone was drinking together."
+        }
+      ]
+    },
+    {
+      "image": "page6.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.4844,
+            "y": 0.575,
+            "w": 0.5125,
+            "h": 0.4
+          },
+          "caption": "The waterhole was full of big, splashing friends."
+        },
+        {
+          "box": {
+            "x": 0.3281,
+            "y": 0.35,
+            "w": 0.2656,
+            "h": 0.275
+          },
+          "caption": "Up in the thorn tree sat a little bird."
+        },
+        {
+          "box": {
+            "x": 0.3281,
+            "y": 0.35,
+            "w": 0.2656,
+            "h": 0.275
+          },
+          "to": {
+            "x": 0.5156,
+            "y": 0.6,
+            "w": 0.4531,
+            "h": 0.35
+          },
+          "panSeconds": 4,
+          "caption": "“There’s no room for someone as small as me,” she said."
+        }
+      ]
+    },
+    {
+      "image": "page7.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.0563,
+            "y": 0.33,
+            "w": 0.4063,
+            "h": 0.55
+          },
+          "caption": "Tembo filled his trunk right to the top."
+        },
+        {
+          "box": {
+            "x": 0.3063,
+            "y": 0.25,
+            "w": 0.2344,
+            "h": 0.3
+          },
+          "to": {
+            "x": 0.5875,
+            "y": 0.37,
+            "w": 0.2344,
+            "h": 0.3
+          },
+          "panSeconds": 3.5,
+          "caption": "WHOOSH! A shower, just for her."
+        },
+        {
+          "box": {
+            "x": 0,
+            "y": 0,
+            "w": 1,
+            "h": 1
+          },
+          "caption": "“There is always room at the waterhole,” said Tembo."
+        }
+      ]
+    },
+    {
+      "image": "page8.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.2656,
+            "y": 0.5,
+            "w": 0.2188,
+            "h": 0.48
+          },
+          "style": "none",
+          "caption": "The sun went down, and more friends came to drink. Who can you find?"
+        }
+      ],
+      "mode": "explore",
+      "hotspots": [
+        {
+          "box": {
+            "x": 0.3438,
+            "y": 0.62,
+            "w": 0.0422,
+            "h": 0.09
+          },
+          "caption": "The little bird found the best seat of all."
+        },
+        {
+          "box": {
+            "x": 0.4375,
+            "y": 0.81,
+            "w": 0.0469,
+            "h": 0.085
+          },
+          "caption": "Ribbit! A frog on a lily pad."
+        },
+        {
+          "box": {
+            "x": 0.5172,
+            "y": 0.735,
+            "w": 0.0594,
+            "h": 0.07
+          },
+          "caption": "Hippo! Only her eyes and ears peep out."
+        },
+        {
+          "box": {
+            "x": 0.2813,
+            "y": 0.22,
+            "w": 0.0328,
+            "h": 0.12
+          },
+          "caption": "Hoo-hoo! Owl has just woken up."
+        },
+        {
+          "box": {
+            "x": 0.0969,
+            "y": 0.675,
+            "w": 0.0641,
+            "h": 0.155
+          },
+          "caption": "The meerkat family. Always on the lookout!"
+        },
+        {
+          "box": {
+            "x": 0.1844,
+            "y": 0.895,
+            "w": 0.0375,
+            "h": 0.06
+          },
+          "caption": "A dung beetle, rolling his ball home."
+        },
+        {
+          "box": {
+            "x": 0.6016,
+            "y": 0.525,
+            "w": 0.125,
+            "h": 0.135
+          },
+          "caption": "The zebras are still sipping."
+        },
+        {
+          "box": {
+            "x": 0.6953,
+            "y": 0.86,
+            "w": 0.0594,
+            "h": 0.08
+          },
+          "caption": "Tortoise is nearly there. Slow and steady!"
+        },
+        {
+          "box": {
+            "x": 0.8047,
+            "y": 0.28,
+            "w": 0.1016,
+            "h": 0.63
+          },
+          "caption": "Giraffe can see everyone from up there."
+        },
+        {
+          "box": {
+            "x": 0.925,
+            "y": 0.795,
+            "w": 0.0437,
+            "h": 0.095
+          },
+          "caption": "A lion cub, playing hide-and-seek in the grass."
+        }
+      ],
+      "guidance": {
+        "hints": true,
+        "showMe": true
+      }
     }
   ]
 }

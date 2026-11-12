@@ -35,3 +35,8 @@ button { font: inherit; cursor: pointer; }
 .reader .end h2 { font-size: 40px; font-weight: 900; margin: 0 0 12px; }
 .reader .end button { border: 0; border-radius: 999px; padding: 12px 24px; font-size: 18px; }
 .reader .end .primary { background: var(--orange); color: #fff; }
+
+.reader .pills { display: flex; gap: 8px; }
+.reader .showme { background: #ffd23f; font-weight: 700; }
+.reader .explore-tip { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color: #fff;
+                       border-radius: 999px; padding: 8px 18px; font-size: 16px; pointer-events: none; white-space: nowrap; }

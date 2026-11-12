@@ -34,7 +34,7 @@ class ReaderTest {
     val rule = createComposeRule()
 
     private val context get() = RuntimeEnvironment.getApplication()
-    private val book get() = BookRepository.loadAll(context).first { it.id == "zolas-kite" }
+    private val book get() = BookRepository.loadAll(context).first { it.id == "captain-megawatt" }
 
     @Test
     fun stepsGoWholePageThenEachPanel() {

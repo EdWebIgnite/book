@@ -98,6 +98,7 @@
   <div id="empty">
     <p><b>Open a book</b> from the menu above, or start a <b>new book</b> and add your page images.</p>
     <p>Then drag on a page to draw a stop. Stops play in order. Drag a box to move it, drag a corner to resize.</p>
+    <p>A page can also be an <b>explore</b> page, where the child drags around freely and taps things you've marked.</p>
   </div>
   <div id="viewbar" class="hidden">
     Show screen size:
@@ -125,11 +126,15 @@
     <button class="round" id="pvClose" title="Back to editing (Esc)">←</button>
     <span class="title">Preview</span>
   </div>
+  <div class="explore-tip hidden" id="pvTip">Drag to look around. Pinch to zoom.</div>
   <div class="caption hidden" id="pvCaption"></div>
   <div class="bar bottom">
     <button class="arrow" id="pvPrev">‹</button>
     <div class="mid">
-      <button class="pill" id="pvWhole">Whole page</button>
+      <div class="pills">
+        <button class="pill" id="pvWhole">Whole page</button>
+        <button class="pill showme hidden" id="pvShowMe">✨ Show me</button>
+      </div>
       <div class="pageno" id="pvPage"></div>
     </div>
     <button class="arrow" id="pvNext">›</button>

@@ -82,9 +82,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.kidscomics.reader.data.Book
 import com.kidscomics.reader.data.BookRepository
-import kotlinx.coroutines.Dispatchers
+import com.kidscomics.reader.data.loadInBackground
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -101,7 +100,7 @@ fun ReaderScreen(book: Book, onClose: () -> Unit) {
     HideSystemBars()
 
     val layout by produceState<BookLayout?>(null, book) {
-        value = withContext(Dispatchers.IO) { BookLayout.create(context, book) }
+        value = loadInBackground { BookLayout.create(context, book) }
     }
 
     val ready = layout
@@ -149,7 +148,7 @@ private fun Reader(layout: BookLayout, onClose: () -> Unit) {
         bitmaps.keys.filter { it !in wanted }.forEach { bitmaps.remove(it) }
         for (i in wanted) {
             if (i in bitmaps) continue
-            val bmp = withContext(Dispatchers.IO) {
+            val bmp = loadInBackground {
                 BookRepository.loadImage(context, book, book.pages[i].image, MAX_PAGE_PIXELS)
             }
             if (bmp != null) bitmaps[i] = bmp

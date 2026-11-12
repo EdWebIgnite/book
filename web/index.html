@@ -33,7 +33,7 @@
   .actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; align-items: center; }
   .actions button { border: 1px solid #ccc; background: #f6f6f6; border-radius: 8px; padding: 8px 12px; }
   #copied { font-size: 13px; color: #2a7; }
-  .close { position: absolute; top: 10px; right: 10px; border: 0; background: none; font-size: 24px; }
+  .close { position: absolute; top: 12px; right: 12px; border: 1px solid #ccc; background: #f6f6f6; border-radius: 8px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
   kbd { background: #eee; border-radius: 4px; padding: 0 5px; font-size: 12px; border: 1px solid #ccc; }
   .keys { font-size: 12px; color: #555; line-height: 1.8; margin-top: 16px; }
 </style>
@@ -54,11 +54,15 @@
     <span class="title" id="title"></span>
     <button class="round" id="gear" title="Movement settings (S)">⚙</button>
   </div>
+  <div class="explore-tip hidden" id="tip">Drag to look around. Pinch to zoom.</div>
   <div class="caption hidden" id="caption"></div>
   <div class="bar bottom">
     <button class="arrow" id="prev" title="Back (←)">‹</button>
     <div class="mid">
-      <button class="pill" id="whole" title="Whole page (W)">Whole page</button>
+      <div class="pills">
+        <button class="pill" id="whole" title="Whole page (W)">Whole page</button>
+        <button class="pill showme hidden" id="showme" title="Fly to something not found yet">✨ Show me</button>
+      </div>
       <div class="pageno" id="pageno"></div>
     </div>
     <button class="arrow" id="next" title="Next (→ or Space)">›</button>
@@ -73,7 +77,7 @@
 </div>
 
 <aside id="settings" class="hidden">
-  <button class="close" id="closeSettings" title="Close (S)">×</button>
+  <button class="close" id="closeSettings" title="Close (S or Esc)">Close ✕</button>
   <h2>Movement</h2>
   <p class="sub">Changes apply straight away. When you like a setup, press Copy settings and send it to me so the app can match.</p>
   <div id="controls"></div>
@@ -86,7 +90,8 @@
   <div class="keys">
     <kbd>→</kbd> <kbd>Space</kbd> next &nbsp; <kbd>←</kbd> back &nbsp; <kbd>W</kbd> whole page<br>
     Mouse wheel moves through stops. Trackpad pinch or <kbd>Ctrl</kbd>+wheel zooms out and in.<br>
-    On a touch screen: tap right or left, swipe, pinch.
+    On a touch screen: tap right or left, swipe, pinch.<br>
+    Explore pages: drag to move, wheel or pinch to zoom, double-click to zoom in, click things to find them.
   </div>
 </aside>
 
@@ -140,6 +145,12 @@ const CONTROLS = [
   { key: "driftAmount", label: "Drift amount", type: "range", min: 0.01, max: 0.2, step: 0.01, showIf: s => s.drift !== "off" },
   { key: "driftSeconds", label: "Drift time", type: "range", min: 2, max: 15, step: 0.5, unit: " s", showIf: s => s.drift !== "off" },
 
+  { section: "Explore pages" },
+  { key: "glide", label: "Glide after a flick", type: "range", min: 0, max: 1, step: 0.05,
+    help: "How far the picture keeps sliding when you flick it. 0 stops dead." },
+  { key: "hintSeconds", label: "Hint after idle for", type: "range", min: 2, max: 20, step: 1, unit: " s",
+    help: "On pages with hints on, how long before a glow or arrow points at something not found yet." },
+
   { section: "Watch mode" },
   { key: "autoPlay", label: "Move on by itself", type: "check" },
   { key: "autoSeconds", label: "Seconds per stop", type: "range", min: 1, max: 12, step: 0.5, unit: " s", showIf: s => s.autoPlay },
@@ -148,9 +159,19 @@ const CONTROLS = [
 const settings = CR.loadSettings();
 const reader = new CR.Reader($("stage"), { settings, onChange: updateUi });
 
+let wasExploring = false, tipTimer;
 function updateUi(st) {
-  $("pageno").textContent = `Page ${st.page + 1} of ${st.pageCount}`;
+  $("pageno").textContent = `Page ${st.page + 1} of ${st.pageCount}` +
+    (st.exploring && st.hotspotCount ? ` · found ${st.found} of ${st.hotspotCount}` : "");
   $("whole").textContent = st.wholePage ? "Stops" : "Whole page";
+  $("showme").classList.toggle("hidden", !st.canShowMe);
+  // Show the "drag to look around" tip for a few seconds each time exploring starts.
+  if (st.exploring && !wasExploring) {
+    $("tip").classList.remove("hidden");
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => $("tip").classList.add("hidden"), 4500);
+  } else if (!st.exploring) $("tip").classList.add("hidden");
+  wasExploring = st.exploring;
   $("prev").disabled = !st.canGoBack;
   $("end").classList.toggle("hidden", !st.finished);
   const cap = $("caption");
@@ -272,6 +293,7 @@ $("back").onclick = closeBook;
 $("prev").onclick = () => reader.prev();
 $("next").onclick = () => reader.next();
 $("whole").onclick = () => reader.toggleOverview();
+$("showme").onclick = () => reader.showMe();
 $("again").onclick = () => reader.restart();
 $("endBack").onclick = closeBook;
 

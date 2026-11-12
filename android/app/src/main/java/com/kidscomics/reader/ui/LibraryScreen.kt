@@ -36,8 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kidscomics.reader.data.Book
 import com.kidscomics.reader.data.BookRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.kidscomics.reader.data.loadInBackground
 
 @Composable
 fun LibraryScreen(books: List<Book>, onOpen: (Book) -> Unit) {
@@ -72,7 +71,7 @@ fun LibraryScreen(books: List<Book>, onOpen: (Book) -> Unit) {
 private fun BookCard(book: Book, onClick: () -> Unit) {
     val context = LocalContext.current
     val cover by produceState<ImageBitmap?>(null, book.id) {
-        value = withContext(Dispatchers.IO) {
+        value = loadInBackground {
             BookRepository.loadImage(context, book, book.cover, maxSide = 600)?.asImageBitmap()
         }
     }

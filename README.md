@@ -1,21 +1,38 @@
 # Comic Reader for kids
 
-A reading app for children's books drawn in comic style. Instead of showing a whole page, the reader moves a camera from panel to panel, dims the rest of the page, and zooms out when you want to see the whole page.
+A reading app for children's books where the camera does the storytelling: it moves between areas of a page, pans across a picture, or hands the page to the child to explore by touch.
 
-Android first (Kotlin + Jetpack Compose). iPhone (Swift) comes later and will read the same book format.
+**Where things stand:** the movement is being worked out in the browser first (`web/`). The Android app (`android/`) is parked until that is settled, then it will be brought in line. iPhone comes after and will read the same book format.
 
 ## How reading works
 
-- A page is read as a series of **stops**. A stop is a box on the page: a comic panel, or any area of a picture (a face, an animal, a detail). The camera moves from stop to stop.
+There are two kinds of page, and a book can mix them.
+
+**Guided pages.** The page is read as a series of **stops**. A stop is a box on the page: a comic panel, or any area of a picture (a face, an animal, a detail). The camera moves from stop to stop.
+
 - By default each page opens whole first, then goes through its stops, then moves across to the next page.
 - What happens around a stop is set per book and can be changed per stop: **dim** the rest (good for comics), **soft dark edges**, or **nothing** (the camera just frames it).
 - A stop can **pan**: the camera arrives at one box, then glides to a second box (for example from a giraffe's legs up to her head).
 - A stop can have a **caption** for books where the words aren't in the artwork.
 - Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back. Pinch in, or press **Whole page**, to zoom out.
 
+**Explore pages.** The child is in control: drag to move around, pinch (or double-tap) to zoom, flick to glide. Good for big scenes such as a wide panorama.
+
+- Any stops on an explore page play first as a short **guided intro**, then the page is handed over.
+- A page can have **things to find**: spots that sparkle and show a caption when tapped. A page with none is free looking only.
+- Guidance is switched on per page: a **hint** (a glow, or an arrow at the screen edge) when the child has been idle, and a **Show me** button that flies to the next thing not found yet.
+- The next arrow moves on to the following page.
+
+## Sample books
+
+Both are original placeholder books drawn in code, there to exercise every feature:
+
+- **Who's at the Waterhole?** A picture book. Seven guided pages using focus areas, pans and captions, then a wide evening scene to explore with ten things to find.
+- **Captain Megawatt and the Runaway Robot.** A three-page comic with the words lettered into the art. Every stop is one panel, using the dim style.
+
 ## Movement playground (computer)
 
-`web/index.html` is a browser version of the reader with a settings panel (the ⚙ button, or press `S`) for trying different camera moves: speed, feel, how pages change, slow drift on a stop, focus strength, and a watch mode that moves on by itself. Settings are remembered in the browser. **Copy settings** copies them as text so the app can be set to match.
+`web/index.html` is a browser version of the reader with a settings panel (the ⚙ button, or press `S`) for trying different camera moves: speed, feel, how pages change, slow drift on a stop, focus strength, how far the picture glides after a flick on explore pages, how soon hints appear, and a watch mode that moves on by itself. Close the panel with the Close button, `S` or `Esc`. Settings are remembered in the browser. **Copy settings** copies them as text so the app can be set to match.
 
 ## Book editor (computer)
 
@@ -25,6 +42,7 @@ Android first (Kotlin + Jetpack Compose). iPhone (Swift) comes later and will re
 - **Drag on a page** to draw a stop. Click to select, drag to move, drag a white corner to resize. Hold Shift to draw a new stop on top of an existing one.
 - Stops play in the order listed on the right. Change the order with Earlier and Later.
 - For the selected stop: the focus style, **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
+- **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its caption, and switch hints and the Show me button on or off.
 - **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
 - **Preview** (or `P`) plays the book from the selected stop using the playground's movement settings.
 - **Save** writes `book.json` (and any new images) into a folder in Chrome or Edge. In other browsers it shows the `book.json` text to copy.
@@ -45,18 +63,15 @@ Opening the files straight from disk won't work, because browsers block them fro
 ## Project layout
 
 ```
-content/books/                   Books, one folder per book (shared by the web playground and the app)
-content/library.json             List of book folders, for the web playground
+content/books/                   Books, one folder per book (page images + book.json)
+content/library.json             List of book folders, for the playground and editor
 web/index.html                   Movement playground
 web/editor.html, editor.js       Book editor
 web/reader.js                    Reader engine shared by the playground and editor preview
-android/                         Android app (open this folder in Android Studio)
-  app/src/main/java/.../data/    Book format and loading
-  app/src/main/java/.../ui/      Library screen, reader, camera layout
-  app/src/test/                  Logic tests and screenshot tests
-  app/screenshots/               Screenshots recorded by the tests
-tools/make_sample_book.py        Draws the placeholder comic "Zola's Kite" (stops = panels)
-tools/make_picture_book.py       Draws the placeholder picture book "Who's at the Waterhole?" (focus areas)
+tools/make_books.js              Draws the sample books (node tools/make_books.js)
+tools/art/                       The drawings: kit.js and waterhole.js (picture book), comic.js and megawatt.js (comic)
+tools/art/fonts/                 Open-licence fonts used in the art (Baloo 2, Bangers, Comic Neue), with their licences
+android/                         Android app, parked for now
 ```
 
 ## Adding a book
@@ -68,17 +83,28 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
   "id": "my-book",
   "title": "My Book",
   "author": "Your name",
-  "cover": "cover.webp",
+  "cover": "cover.jpg",
   "focusStyle": "vignette",
   "pages": [
     {
-      "image": "page1.webp",
+      "image": "page1.jpg",
       "stops": [
         { "box": { "x": 0.38, "y": 0.43, "w": 0.31, "h": 0.43 }, "caption": "The elephant was very thirsty." },
         { "box": { "x": 0.71, "y": 0.55, "w": 0.23, "h": 0.27 },
           "to":  { "x": 0.75, "y": 0.11, "w": 0.19, "h": 0.27 }, "panSeconds": 4 },
         { "box": { "x": 0.48, "y": 0.2, "w": 0.13, "h": 0.13 }, "style": "none" }
       ]
+    },
+    {
+      "image": "page2.jpg",
+      "mode": "explore",
+      "stops": [
+        { "box": { "x": 0.27, "y": 0.5, "w": 0.22, "h": 0.48 }, "caption": "Who can you find?" }
+      ],
+      "hotspots": [
+        { "box": { "x": 0.44, "y": 0.81, "w": 0.05, "h": 0.09 }, "caption": "Ribbit! A frog on a lily pad." }
+      ],
+      "guidance": { "hints": true, "showMe": true }
     }
   ]
 }
@@ -88,10 +114,11 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
 - `focusStyle` (book) and `style` (one stop) can be `dim`, `vignette` (soft dark edges) or `none`.
 - `to` and `panSeconds` make a pan stop. `caption` is optional.
 - A page with no stops is shown whole (good for splash pages).
+- `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints and the Show me button.
 - Older files with `"panels": [ {x, y, w, h}, ... ]` still load; each panel becomes a stop.
-- WebP or PNG both work. Around 1200 to 2400 pixels on the long side is plenty.
+- JPEG, PNG or WebP all work. Around 2000 to 3200 pixels on the long side is plenty for a normal page; wide explore scenes can be bigger.
 
-**Android app status:** the app reads this format but so far only uses each stop's box with the dim style. Pans, soft edges, "none" and captions will be added to the app once the movement is settled in the playground.
+**Android app status:** parked while the movement is worked out in the browser. It opens these books but only uses each stop's box with the dim style: no pans, soft edges, captions or explore pages yet.
 
 ## Building
 

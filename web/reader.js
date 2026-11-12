@@ -7,13 +7,19 @@
  *   "focusStyle": "dim" | "vignette" | "none",       // book default, see below
  *   "pages": [
  *     { "image": "page1.webp",
- *       "stops": [
+ *       "mode": "guided" | "explore",                 // optional, guided by default
+ *       "stops": [                                    // on explore pages these play first as a guided intro
  *         { "box": { "x": 0.1, "y": 0.2, "w": 0.4, "h": 0.3 },   // fractions of the page image
  *           "to":  { ... },          // optional: glide from box to this box while resting
  *           "panSeconds": 4,         // optional: how long that glide takes
  *           "style": "vignette",     // optional: overrides the book's focusStyle for this stop
  *           "caption": "Text..." }   // optional: shown under the picture
- *       ] }
+ *       ],
+ *       "hotspots": [                                 // explore pages: things to find and tap
+ *         { "box": { ... }, "caption": "A sleepy lion!", "effect": "sparkle" | "none" }
+ *       ],
+ *       "guidance": { "hints": true, "showMe": true } // explore pages: idle hints and the Show me button
+ *     }
  *   ]
  * }
  * Older files that list "panels" (plain boxes) instead of "stops" still load.
@@ -37,6 +43,8 @@
     driftSeconds: 6,
     autoPlay: false,
     autoSeconds: 4,
+    hintSeconds: 6,
+    glide: 0.5,
   };
 
   const STORE_KEY = "comic-reader-movement";
@@ -67,12 +75,14 @@
   };
 
   const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const rect = (x, y, w, h) => ({ x, y, w, h });
   const inflate = (r, d) => rect(r.x - d, r.y - d, r.w + 2 * d, r.h + 2 * d);
   const union = (a, b) => {
     const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
     return rect(x, y, Math.max(a.x + a.w, b.x + b.w) - x, Math.max(a.y + a.h, b.y + b.h) - y);
   };
+  const contains = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
   /** Blend two rectangles. "Smooth" blends sizes on a log scale so big zooms feel even. */
   function mixRect(a, b, t, smooth) {
@@ -103,7 +113,10 @@
     book.focusStyle = book.focusStyle || "dim";
     book.pages = (book.pages || []).map(p => ({
       image: p.image,
+      mode: p.mode === "explore" ? "explore" : "guided",
       stops: (p.stops || (p.panels || []).map(b => ({ box: b }))).map(s => ({ ...s })),
+      hotspots: (p.hotspots || []).map(h => ({ ...h })),
+      guidance: { hints: true, showMe: true, ...(p.guidance || {}) },
     }));
     return book;
   }
@@ -119,16 +132,30 @@
       author: book.author || "",
       cover: book.cover || (book.pages[0] && book.pages[0].image) || "",
       focusStyle: book.focusStyle || "dim",
-      pages: book.pages.map(p => ({
-        image: p.image,
-        stops: p.stops.map(s => {
-          const o = { box: roundBox(s.box) };
-          if (s.to) { o.to = roundBox(s.to); o.panSeconds = s.panSeconds || 4; }
-          if (s.style) o.style = s.style;
-          if (s.caption) o.caption = s.caption;
-          return o;
-        }),
-      })),
+      pages: book.pages.map(p => {
+        const page = {
+          image: p.image,
+          stops: p.stops.map(s => {
+            const o = { box: roundBox(s.box) };
+            if (s.to) { o.to = roundBox(s.to); o.panSeconds = s.panSeconds || 4; }
+            if (s.style) o.style = s.style;
+            if (s.caption) o.caption = s.caption;
+            return o;
+          }),
+        };
+        if (p.mode === "explore") {
+          page.mode = "explore";
+          page.hotspots = (p.hotspots || []).map(h => {
+            const o = { box: roundBox(h.box) };
+            if (h.caption) o.caption = h.caption;
+            if (h.effect && h.effect !== "sparkle") o.effect = h.effect;
+            return o;
+          });
+          const g = p.guidance || {};
+          page.guidance = { hints: g.hints !== false, showMe: g.showMe !== false };
+        }
+        return page;
+      }),
     };
   }
 
@@ -168,6 +195,12 @@
       this.finished = false;
       this.anim = null;
       this.restSince = 0;
+      this.view = null;          // last screen mapping, for touch maths
+      this.fling = null;         // explore: glide velocity after a flick
+      this.found = new Set();    // explore: hotspots found, as "page:index"
+      this.effects = [];         // explore: sparkles playing
+      this.note = null;          // explore: caption from a tapped hotspot
+      this.lastTouch = 0;
       this.running = true;
       this.listeners = new AbortController();
       attachGestures(this);
@@ -189,27 +222,32 @@
       this.overview = false;
       this.finished = false;
       this.anim = null;
+      this.fling = null;
+      this.found = new Set();
+      this.effects = [];
+      this.note = null;
       this.shown = this.target();
-      this.restSince = performance.now();
+      this.restSince = this.lastTouch = performance.now();
       this._afterArrive();
       this.onChange(this.state);
     }
 
-    /** Index of the first step showing the given page and stop (-1 = whole page). */
+    /** Index of the first step showing the given page and stop (-1 whole page, -2 explore). */
     findStep(page, stop) {
       let i = this.steps.findIndex(s => s.page === page && s.stop === stop);
       if (i < 0) i = this.steps.findIndex(s => s.page === page);
       return Math.max(0, i);
     }
 
-    /** Show a page and stop straight away (stop -1 = whole page), then play its pan if it has one. */
+    /** Show a page and stop straight away, then play its pan if it has one. */
     jumpTo(page, stop) {
       this.stepIndex = this.findStep(page, stop);
       this.overview = false;
       this.finished = false;
       this.anim = null;
+      this.fling = null;
       this.shown = this.target();
-      this.restSince = performance.now();
+      this.restSince = this.lastTouch = performance.now();
       this._afterArrive();
       this.onChange(this.state);
     }
@@ -218,6 +256,13 @@
       const s = this.settings, out = [];
       this.book.pages.forEach((page, p) => {
         const n = page.stops.length;
+        if (page.mode === "explore") {
+          // Guided intro (if any), then the page is handed over for exploring.
+          if (n && s.wholePageFirst) out.push({ page: p, stop: -1 });
+          for (let i = 0; i < n; i++) out.push({ page: p, stop: i });
+          out.push({ page: p, stop: -2, explore: true });
+          return;
+        }
         if (n === 0) { out.push({ page: p, stop: -1 }); return; }
         if (s.wholePageFirst) out.push({ page: p, stop: -1 });
         for (let i = 0; i < n; i++) out.push({ page: p, stop: i });
@@ -232,7 +277,7 @@
       const cur = this.steps[this.stepIndex];
       this.steps = this.buildSteps();
       this.stepIndex = this.findStep(cur.page, cur.stop);
-      this.moveTo(cur.page);
+      if (!this.exploring) this.moveTo(cur.page);
     }
 
     boxRect(page, b) {
@@ -242,6 +287,23 @@
 
     get step() { return this.steps[this.stepIndex]; }
     get stop() { const st = this.step; return st && st.stop >= 0 ? this.book.pages[st.page].stops[st.stop] : null; }
+    get exploring() { const st = this.step; return !!(st && st.explore && !this.finished); }
+    get pageData() { return this.book.pages[this.step.page]; }
+
+    /** Where the camera starts when a page is handed over for exploring. */
+    exploreStart() {
+      const st = this.step, prev = this.steps[this.stepIndex - 1];
+      if (prev && prev.page === st.page && prev.stop >= 0) {
+        // Carry on from where the guided intro ended.
+        const s = this.book.pages[prev.page].stops[prev.stop];
+        return inflate(this.boxRect(st.page, s.to || s.box), this.settings.padding);
+      }
+      const pr = this.pageRects[st.page];
+      const aspect = pr.w / pr.h;
+      if (aspect > 2.5) return rect(pr.x, pr.y, pr.h * 1.4, pr.h);              // wide scene: start at the left
+      if (aspect < 0.4) return rect(pr.x, pr.y, pr.w, pr.w * 1.4);              // tall scene: start at the top
+      return inflate(pr, 0.03);
+    }
 
     /** Camera, spotlight box and effect strengths for the current step (start box, or end box of a pan). */
     target(end = false) {
@@ -252,24 +314,40 @@
         dim: style === "dim" ? s.dim * k : 0,
         vig: style === "vignette" ? s.vignette * k : 0,
       });
+      if (step.explore) return styled(this.exploreStart(), pr, "none", 0);
       const stop = this.stop;
       if (this.overview || !stop) return styled(inflate(pr, 0.03), pr, this.book.focusStyle, 0.6);
       const box = this.boxRect(step.page, end && stop.to ? stop.to : stop.box);
       return styled(inflate(box, s.padding), box, stop.style || this.book.focusStyle, 1);
     }
 
+    unfoundHotspots() {
+      if (!this.exploring) return [];
+      const p = this.step.page;
+      return this.pageData.hotspots.map((h, i) => ({ h, i })).filter(({ i }) => !this.found.has(p + ":" + i));
+    }
+
     get state() {
       const step = this.step, stop = this.stop;
+      const exploring = this.exploring;
+      const hs = exploring ? this.pageData.hotspots : [];
+      const guidance = exploring ? this.pageData.guidance : {};
+      const now = performance.now();
       return {
         stepIndex: this.stepIndex,
         stepCount: this.steps.length,
         page: step ? step.page : 0,
         pageCount: this.book ? this.book.pages.length : 0,
         overview: this.overview,
-        wholePage: this.overview || !stop,
+        wholePage: this.overview || (!stop && !exploring),
         finished: this.finished,
-        caption: !this.overview && stop && stop.caption ? stop.caption : "",
+        exploring,
+        caption: exploring ? (this.note && this.note.until > now ? this.note.text : "")
+                           : (!this.overview && stop && stop.caption ? stop.caption : ""),
         canGoBack: this.stepIndex > 0 || this.overview,
+        canShowMe: exploring && guidance.showMe !== false && this.unfoundHotspots().length > 0,
+        found: hs.filter((_, i) => this.found.has(step.page + ":" + i)).length,
+        hotspotCount: hs.length,
       };
     }
 
@@ -279,6 +357,8 @@
       const pageChanged = previousPage !== undefined && previousPage !== this.step.page;
       let ms = s.moveMs;
       if (instant || (pageChanged && s.pageTurn === "cut")) ms = 0;
+      this.fling = null;
+      this.note = null;
       this.anim = {
         kind: "move",
         from: { ...this.shown, cam: this.displayedCam(now) },
@@ -288,8 +368,22 @@
         smooth: s.zoomPath === "smooth",
         arc: pageChanged && s.pageTurn === "zoomOut",
       };
+      this.lastTouch = now;
       if (ms === 0) this._finish();
       this.onChange(this.state);
+    }
+
+    /** Explore: animate the camera to a box, then optionally run something. */
+    flyTo(cam, then) {
+      const now = performance.now();
+      this.fling = null;
+      this.anim = {
+        kind: "fly",
+        from: { ...this.shown, cam: this.visibleCam() },
+        to: { ...this.shown, cam: this.clampCam(this.matchAspect(cam)) },
+        start: now, ms: Math.max(450, this.settings.moveMs),
+        easing: "easeInOutCubic", smooth: true, arc: false, then,
+      };
     }
 
     _finish() {
@@ -298,6 +392,7 @@
       this.anim = null;
       this.restSince = performance.now();
       if (done.kind === "move") this._afterArrive();
+      if (done.then) done.then();
     }
 
     /** A stop with an end box glides there once the camera has arrived. */
@@ -332,16 +427,27 @@
     prev() { this.go(-1); }
 
     toggleOverview() {
+      if (this.exploring) {
+        // Zoom right out to the whole page, or back in to where exploring started.
+        const whole = this.maxCam();
+        const zoomedOut = this.visibleCam().w >= whole.w * 0.98;
+        this.flyTo(zoomedOut ? this.exploreStart() : whole);
+        return;
+      }
       if (!this.overview && !this.stop) { this.next(); return; }
       this.overview = !this.overview;
       this.moveTo(this.step.page);
     }
 
-    setOverview(on) { if (this.overview !== on) this.toggleOverview(); }
+    setOverview(on) {
+      if (this.exploring) { if (on) this.flyTo(this.maxCam()); return; }
+      if (this.overview !== on) this.toggleOverview();
+    }
 
     restart() {
       this.finished = false;
       this.overview = false;
+      this.found = new Set();
       const before = this.step.page;
       this.stepIndex = 0;
       this.moveTo(before);
@@ -357,6 +463,26 @@
       this.go(1);
     }
 
+    /** Explore: fly to the next thing not found yet and make it react. */
+    showMe() {
+      const next = this.unfoundHotspots()[0];
+      if (!next) return;
+      const box = this.boxRect(this.step.page, next.h.box);
+      this.lastTouch = performance.now();
+      this.flyTo(inflate(box, Math.max(box.h, box.w) * 0.6), () => this.react(next.i));
+    }
+
+    /** A hotspot was found: sparkle and show its caption. */
+    react(i) {
+      const p = this.step.page, h = this.pageData.hotspots[i];
+      this.found.add(p + ":" + i);
+      const now = performance.now();
+      if (h.effect !== "none") this.effects.push({ box: this.boxRect(p, h.box), start: now });
+      this.note = h.caption ? { text: h.caption, until: now + 5000 } : null;
+      this.onChange(this.state);
+      if (this.note) setTimeout(() => this.onChange(this.state), 5050);
+    }
+
     /** Keyboard shortcuts. Returns true when the key was used. */
     handleKey(e) {
       if (!this.book) return false;
@@ -370,6 +496,94 @@
       return true;
     }
 
+    // ------------------------------------------------ explore camera
+
+    viewAspect() {
+      const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
+      return W / Math.max(1, H - this.insets.top - this.insets.bottom);
+    }
+
+    matchAspect(cam) { return fitToAspect(cam, this.viewAspect()); }
+
+    /** The area actually on screen right now, in world units, with the screen's shape. */
+    visibleCam() { return this.matchAspect(this.displayedCam(performance.now())); }
+
+    /** Fully zoomed out: the whole page. */
+    maxCam() { return this.matchAspect(inflate(this.pageRects[this.step.page], 0.03)); }
+
+    /** Keep the explore camera on the page and within sensible zoom limits. */
+    clampCam(cam) {
+      const pr = this.pageRects[this.step.page];
+      const max = this.maxCam();
+      const minH = 0.12; // closest zoom shows 12% of the page height
+      let c = { ...cam };
+      if (c.w > max.w) c = scaleAround(c, max.w / c.w);
+      if (c.h < minH) c = scaleAround(c, minH / c.h);
+      const m = 0.03;
+      const fit = (pos, size, lo, len) => size >= len + 2 * m ? lo + len / 2 - size / 2 : clamp(pos, lo - m, lo + len + m - size);
+      c.x = fit(c.x, c.w, pr.x, pr.w);
+      c.y = fit(c.y, c.h, pr.y, pr.h);
+      return c;
+    }
+
+    /** Explore: user takes the camera (stops any animation or glide). */
+    takeCamera() {
+      const cam = this.visibleCam();
+      if (this.anim && this.anim.kind === "move") this._finish();
+      this.anim = null;
+      this.fling = null;
+      this.shown = { ...this.shown, cam, dim: 0, vig: 0 };
+      this.lastTouch = performance.now();
+      return cam;
+    }
+
+    setCam(cam) {
+      this.shown = { ...this.shown, cam: this.clampCam(cam) };
+      this.lastTouch = performance.now();
+    }
+
+    screenScale(cam) { return this.canvas.clientWidth / cam.w; }
+
+    /** Screen point (relative to the canvas) to world point, for a camera that matches the screen shape. */
+    toWorld(cam, sx, sy) {
+      const sc = this.screenScale(cam);
+      return { x: cam.x + sx / sc, y: cam.y + (sy - this.insets.top) / sc };
+    }
+
+    /** Zoom by factor f keeping the world point under (sx, sy) fixed. */
+    zoomAt(cam, f, sx, sy) {
+      const a = this.toWorld(cam, sx, sy);
+      const w = cam.w / f, h = cam.h / f;
+      const sc = this.canvas.clientWidth / w;
+      return rect(a.x - sx / sc, a.y - (sy - this.insets.top) / sc, w, h);
+    }
+
+    tapAt(sx, sy) {
+      if (!this.exploring) return;
+      const cam = this.visibleCam();
+      const pt = this.toWorld(cam, sx, sy);
+      const p = this.step.page;
+      const hs = this.pageData.hotspots;
+      // Smallest hotspot under the finger wins.
+      let best = -1, area = Infinity;
+      hs.forEach((h, i) => {
+        const r = this.boxRect(p, h.box);
+        const pad = 0.015; // a little forgiveness for small fingers
+        if (contains(inflate(r, pad), pt.x, pt.y) && r.w * r.h < area) { best = i; area = r.w * r.h; }
+      });
+      this.lastTouch = performance.now();
+      if (best >= 0) this.react(best);
+    }
+
+    doubleTapAt(sx, sy) {
+      if (!this.exploring) return;
+      const cam = this.takeCamera();
+      const zoomedIn = cam.h < 0.45;
+      this.flyTo(zoomedIn ? this.maxCam() : this.zoomAt(cam, 2.2, sx, sy));
+    }
+
+    // ------------------------------------------------ frame loop and drawing
+
     displayedCam(now) {
       if (this.anim || !this.shown) return this.shown ? this.shown.cam : rect(0, 0, 1, 1);
       const s = this.settings, stop = this.stop;
@@ -381,6 +595,8 @@
 
     _frame(now) {
       if (!this.running) return;
+      const dt = Math.min(50, now - (this._last || now));
+      this._last = now;
       const a = this.anim;
       if (a) {
         const raw = a.ms === 0 ? 1 : Math.min(1, (now - a.start) / a.ms);
@@ -400,7 +616,19 @@
           vig: lerp(a.from.vig, a.to.vig, raw),
         };
         if (raw >= 1) { this._finish(); this.onChange(this.state); }
-      } else if (this.book && this.settings.autoPlay && !this.finished && this.canvas.clientWidth > 0
+      } else if (this.fling) {
+        // Glide after a flick, slowing down.
+        const f = this.fling;
+        const cam = this.shown.cam;
+        const moved = this.clampCam(rect(cam.x + f.vx * dt, cam.y + f.vy * dt, cam.w, cam.h));
+        if (Math.abs(moved.x - (cam.x + f.vx * dt)) > 1e-6) f.vx = 0;
+        if (Math.abs(moved.y - (cam.y + f.vy * dt)) > 1e-6) f.vy = 0;
+        this.shown = { ...this.shown, cam: moved };
+        const decay = Math.pow(0.9 + 0.08 * this.settings.glide, dt / 16);
+        f.vx *= decay;
+        f.vy *= decay;
+        if (Math.hypot(f.vx, f.vy) < 1e-5) this.fling = null;
+      } else if (this.book && this.settings.autoPlay && !this.finished && !this.exploring && this.canvas.clientWidth > 0
                  && now - this.restSince > this.settings.autoSeconds * 1000) {
         this.next();
       }
@@ -429,6 +657,7 @@
       const ox = W / 2 - (cam.x + cam.w / 2) * sc;
       const oy = top + viewH / 2 - (cam.y + cam.h / 2) * sc;
       const toScreen = r => rect(r.x * sc + ox, r.y * sc + oy, r.w * sc, r.h * sc);
+      this.view = { sc, ox, oy, W, H };
 
       ctx.imageSmoothingQuality = "high";
       this.pageRects.forEach((pr, i) => {
@@ -461,20 +690,122 @@
         ctx.fillStyle = `rgba(0,0,0,${this.shown.dim})`;
         ctx.fill("evenodd");
       }
+
+      this.drawEffects(now, toScreen);
+      this.drawHint(now, toScreen, W, H, top, bottom);
+    }
+
+    /** Sparkle burst on found hotspots. */
+    drawEffects(now, toScreen) {
+      const ctx = this.ctx;
+      this.effects = this.effects.filter(e => now - e.start < 1100);
+      for (const e of this.effects) {
+        const t = (now - e.start) / 1100;
+        const r = toScreen(e.box);
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        const base = Math.max(r.w, r.h) / 2;
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.strokeStyle = "#ffd23f";
+        ctx.lineWidth = 6 * (1 - t) + 1;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, r.w / 2 + base * 0.5 * t + 6, r.h / 2 + base * 0.5 * t + 6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let k = 0; k < 10; k++) {
+          const a = (k / 10) * Math.PI * 2 + t;
+          const d = base * (0.9 + 0.9 * EASINGS.easeOutCubic(t));
+          star(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d, 9 * (1 - t) + 3, k % 2 ? "#fff6c2" : "#ffb703");
+        }
+        ctx.restore();
+      }
+    }
+
+    /** When the child has been idle, point at something not found yet. */
+    drawHint(now, toScreen, W, H, top, bottom) {
+      if (!this.exploring || this.anim || this.fling) return;
+      if (this.pageData.guidance.hints === false) return;
+      if (now - this.lastTouch < this.settings.hintSeconds * 1000) return;
+      const next = this.unfoundHotspots()[0];
+      if (!next) return;
+      const ctx = this.ctx;
+      const r = toScreen(this.boxRect(this.step.page, next.h.box));
+      const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      const onScreen = cx > 0 && cx < W && cy > top && cy < H - bottom;
+      ctx.save();
+      if (onScreen) {
+        ctx.strokeStyle = `rgba(255,210,63,${0.5 + 0.5 * pulse})`;
+        ctx.lineWidth = 4 + 4 * pulse;
+        ctx.shadowColor = "#ffd23f";
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, r.w / 2 + 10 + 6 * pulse, r.h / 2 + 10 + 6 * pulse, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        // Arrow at the screen edge, pointing the way.
+        const mx = W / 2, my = top + (H - top - bottom) / 2;
+        const ang = Math.atan2(cy - my, cx - mx);
+        const m = 46;
+        const ex = clamp(mx + Math.cos(ang) * W, m, W - m);
+        const ey = clamp(my + Math.sin(ang) * H, top + m, H - bottom - m);
+        ctx.translate(ex, ey);
+        ctx.rotate(ang);
+        ctx.fillStyle = `rgba(255,210,63,${0.75 + 0.25 * pulse})`;
+        ctx.shadowColor = "rgba(0,0,0,.4)";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, 0, 28 + 3 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#3a2a00";
+        ctx.beginPath();
+        ctx.moveTo(16, 0);
+        ctx.lineTo(-8, -13);
+        ctx.lineTo(-8, 13);
+        ctx.fill();
+      }
+      ctx.restore();
     }
   }
 
-  /** Tap left/right, swipe, two-finger pinch, mouse wheel and trackpad pinch. */
+  function star(ctx, x, y, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const d = i % 2 ? r * 0.4 : r;
+      ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+    }
+    ctx.fill();
+  }
+
+  /**
+   * Guided pages: tap left/right, swipe, two-finger pinch, mouse wheel.
+   * Explore pages: drag to move, pinch or wheel to zoom, flick to glide, double-tap to zoom, tap to find things.
+   */
   function attachGestures(reader) {
     const canvas = reader.canvas;
     const opt = { signal: reader.listeners.signal };
     const pointers = new Map();
     let gesture = null;
     let wheelAcc = 0, wheelLock = 0;
+    let lastTap = null;
+    const local = e => { const b = canvas.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
 
     canvas.addEventListener("wheel", e => {
       e.preventDefault();
       const now = performance.now();
+      if (reader.exploring) {
+        const p = local(e);
+        const cam = reader.takeCamera();
+        if (e.ctrlKey || (e.deltaMode !== 0 || Math.abs(e.deltaX) < 1)) {
+          // Pinch on a trackpad, or a mouse wheel: zoom at the pointer.
+          reader.setCam(reader.zoomAt(cam, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), p.x, p.y));
+        } else {
+          const sc = reader.screenScale(cam);
+          reader.setCam(rect(cam.x + e.deltaX / sc, cam.y + e.deltaY / sc, cam.w, cam.h));
+        }
+        return;
+      }
       if (now < wheelLock) return;
       if (e.ctrlKey) {
         if (e.deltaY > 4) { reader.setOverview(true); wheelLock = now + 400; }
@@ -487,41 +818,94 @@
 
     canvas.addEventListener("pointerdown", e => {
       canvas.setPointerCapture(e.pointerId);
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.size === 1) gesture = { x: e.clientX, y: e.clientY, multi: false, startDist: 0, lastDist: 0 };
+      const p = local(e);
+      pointers.set(e.pointerId, p);
+      if (pointers.size === 1) {
+        gesture = { start: p, multi: false, startDist: 0, lastDist: 0, explore: reader.exploring, samples: [] };
+        if (gesture.explore) gesture.cam = reader.takeCamera();
+      }
       if (pointers.size === 2 && gesture) {
         const [a, b] = [...pointers.values()];
         gesture.multi = true;
         gesture.startDist = gesture.lastDist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (gesture.explore) {
+          gesture.cam = reader.takeCamera();
+          gesture.mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        }
       }
     }, opt);
 
     canvas.addEventListener("pointermove", e => {
-      if (!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.size === 2 && gesture) {
+      if (!pointers.has(e.pointerId) || !gesture) return;
+      const p = local(e);
+      pointers.set(e.pointerId, p);
+      if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         gesture.lastDist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (gesture.explore) {
+          // Zoom around the fingers' midpoint and follow it as it moves.
+          const f = gesture.lastDist / (gesture.startDist || 1);
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const zoomed = reader.zoomAt(gesture.cam, f, gesture.mid.x, gesture.mid.y);
+          const sc = reader.screenScale(zoomed);
+          reader.setCam(rect(zoomed.x - (mid.x - gesture.mid.x) / sc, zoomed.y - (mid.y - gesture.mid.y) / sc, zoomed.w, zoomed.h));
+        }
+        return;
+      }
+      if (gesture.explore && !gesture.multi) {
+        const sc = reader.screenScale(gesture.cam);
+        const dx = p.x - gesture.start.x, dy = p.y - gesture.start.y;
+        reader.setCam(rect(gesture.cam.x - dx / sc, gesture.cam.y - dy / sc, gesture.cam.w, gesture.cam.h));
+        const now = performance.now();
+        gesture.samples.push({ x: p.x, y: p.y, t: now });
+        while (gesture.samples.length && now - gesture.samples[0].t > 90) gesture.samples.shift();
       }
     }, opt);
 
     canvas.addEventListener("pointerup", e => {
       if (!pointers.has(e.pointerId)) return;
-      const p = pointers.get(e.pointerId);
+      const p = local(e);
       pointers.delete(e.pointerId);
       if (pointers.size > 0 || !gesture) return;
       const g = gesture;
       gesture = null;
+      const dx = p.x - g.start.x, dy = p.y - g.start.y;
+      const isTap = !g.multi && Math.hypot(dx, dy) < 10;
+
+      if (g.explore) {
+        if (g.multi) { reader.setCam(reader.shown.cam); return; }
+        if (isTap) {
+          const now = performance.now();
+          if (lastTap && now - lastTap.t < 320 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30) {
+            lastTap = null;
+            reader.doubleTapAt(p.x, p.y);
+          } else {
+            lastTap = { x: p.x, y: p.y, t: now };
+            reader.tapAt(p.x, p.y);
+          }
+          return;
+        }
+        // Flick: keep gliding in the direction of the last bit of the drag.
+        const s = g.samples;
+        if (s.length >= 2) {
+          const a = s[0], b = s[s.length - 1];
+          const dt = Math.max(1, b.t - a.t);
+          const sc = reader.screenScale(reader.shown.cam);
+          const vx = -(b.x - a.x) / dt / sc, vy = -(b.y - a.y) / dt / sc;
+          if (Math.hypot(vx, vy) * sc > 0.25) reader.fling = { vx, vy };
+        }
+        return;
+      }
+
       if (g.multi) {
         const zoom = g.lastDist / (g.startDist || 1);
         if (zoom < 0.85) reader.setOverview(true);
         else if (zoom > 1.15) reader.setOverview(false);
         return;
       }
-      const dx = p.x - g.x, dy = p.y - g.y;
       const box = canvas.getBoundingClientRect();
       if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy)) reader.go(dx < 0 ? 1 : -1);
-      else if (Math.hypot(dx, dy) < 10) reader.go(g.x - box.left < box.width * 0.3 ? -1 : 1);
+      else if (isTap) reader.go(g.start.x < box.width * 0.3 ? -1 : 1);
     }, opt);
 
     canvas.addEventListener("pointercancel", e => { pointers.delete(e.pointerId); gesture = null; }, opt);

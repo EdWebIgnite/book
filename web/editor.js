@@ -12,6 +12,8 @@
   let book = null;
   let pageIndex = 0;
   let selected = -1;         // stop index on the current page, -1 for none
+  let selHot = -1;           // hotspot index on the current page, -1 for none (never both)
+  let drawKind = "stop";     // what dragging on the page creates: "stop" or "hot"
   let dirHandle = null;      // folder from "Open folder" or the first "Save", when the browser allows it
   let dirty = false;
   let settings = CR.loadSettings();
@@ -19,6 +21,10 @@
 
   const page = () => (book && book.pages[pageIndex]) || null;
   const stopColor = i => COLORS[i % COLORS.length];
+  const HOT = "#ffd23f";
+  const newPage = (image, extra = {}) => ({ image, mode: "guided", stops: [], hotspots: [], guidance: { hints: true, showMe: true }, ...extra });
+  const isExplore = () => !!page() && page().mode === "explore";
+  function select(kind, i) { selected = kind === "stop" ? i : -1; selHot = kind === "hot" ? i : -1; }
   const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
   const slugify = s => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -52,8 +58,13 @@
   function snapshot() {
     return {
       meta: { title: book.title, id: book.id, author: book.author, focusStyle: book.focusStyle, cover: book.cover },
-      pages: book.pages.map(p => ({ ...p, stops: p.stops.map(s => JSON.parse(JSON.stringify(s))) })),
-      pageIndex, selected,
+      pages: book.pages.map(p => ({
+        ...p,
+        stops: JSON.parse(JSON.stringify(p.stops)),
+        hotspots: JSON.parse(JSON.stringify(p.hotspots || [])),
+        guidance: { ...(p.guidance || {}) },
+      })),
+      pageIndex, selected, selHot,
     };
   }
 
@@ -70,6 +81,7 @@
     book.pages = s.pages;
     pageIndex = clamp(s.pageIndex, 0, Math.max(0, book.pages.length - 1));
     selected = s.selected;
+    selHot = s.selHot;
     setDirty();
     renderAll();
   }
@@ -87,7 +99,8 @@
   function setBook(b) {
     book = b;
     pageIndex = 0;
-    selected = -1;
+    select(null);
+    drawKind = "stop";
     undoStack.length = 0;
     setDirty(false, b.pages.length ? "Opened" : "New book");
     renderAll();
@@ -127,10 +140,10 @@
       }
       used.add(name);
       const img = await CR.loadImage(URL.createObjectURL(file));
-      book.pages.push({ image: name, stops: [], _img: img, _file: file });
+      book.pages.push(newPage(name, { _img: img, _file: file }));
     }
     pageIndex = book.pages.length - files.length;
-    selected = -1;
+    select(null);
     setDirty();
     renderAll();
     say(`Added ${files.length} page${files.length > 1 ? "s" : ""}. Drag on a page to add stops.`);
@@ -347,6 +360,29 @@
       }
     });
 
+    // Hotspots: things to find on explore pages.
+    if (p.mode === "explore") {
+      p.hotspots.forEach((h, i) => {
+        const r = toScreen(h.box), sel = i === selHot;
+        if (sel) { ctx.fillStyle = HOT + "33"; ctx.fillRect(r.x, r.y, r.w, r.h); }
+        ctx.strokeStyle = HOT;
+        ctx.lineWidth = sel ? 4 : 2.5;
+        ctx.setLineDash([3, 4]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.setLineDash([]);
+        label(r.x + 4, r.y + 4, "★" + (i + 1), "#b8860b");
+        if (sel) {
+          for (const [hx, hy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]) {
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(hx - 6, hy - 6, 12, 12);
+            ctx.strokeStyle = "#b8860b";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(hx - 6, hy - 6, 12, 12);
+          }
+        }
+      });
+    }
+
     // Screen-size guide around the selected stop.
     const s = selected >= 0 ? p.stops[selected] : null;
     if (s) {
@@ -368,7 +404,7 @@
     if (drag && drag.mode === "new" && drag.cur) {
       const r = toScreen(normRect(drag.start, drag.cur));
       ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = "#fff";
+      ctx.strokeStyle = drawKind === "hot" ? HOT : "#fff";
       ctx.lineWidth = 2;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
       ctx.setLineDash([]);
@@ -387,17 +423,32 @@
   function hitTest(px, py) {
     const p = page();
     if (!p || !view) return null;
+    const cornerHit = (r) => {
+      const corners = [["nw", r.x, r.y], ["ne", r.x + r.w, r.y], ["sw", r.x, r.y + r.h], ["se", r.x + r.w, r.y + r.h]];
+      for (const [h, hx, hy] of corners) if (Math.abs(px - hx) <= HANDLE && Math.abs(py - hy) <= HANDLE) return h;
+      return null;
+    };
     if (selected >= 0 && p.stops[selected]) {
       const s = p.stops[selected];
       for (const part of s.to ? ["to", "box"] : ["box"]) {
-        const r = toScreen(s[part]);
-        const corners = [["nw", r.x, r.y], ["ne", r.x + r.w, r.y], ["sw", r.x, r.y + r.h], ["se", r.x + r.w, r.y + r.h]];
-        for (const [h, hx, hy] of corners) {
-          if (Math.abs(px - hx) <= HANDLE && Math.abs(py - hy) <= HANDLE) return { stop: selected, part, handle: h };
-        }
+        const h = cornerHit(toScreen(s[part]));
+        if (h) return { kind: "stop", stop: selected, part, handle: h };
       }
     }
+    if (selHot >= 0 && p.hotspots[selHot]) {
+      const h = cornerHit(toScreen(p.hotspots[selHot].box));
+      if (h) return { kind: "hot", stop: selHot, part: "box", handle: h };
+    }
     let best = null;
+    if (p.mode === "explore") {
+      p.hotspots.forEach((h, i) => {
+        const r = toScreen(h.box);
+        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+          const area = r.w * r.h;
+          if (!best || area < best.area) best = { kind: "hot", stop: i, part: "box", handle: null, area };
+        }
+      });
+    }
     p.stops.forEach((s, i) => {
       for (const part of ["box", "to"]) {
         const b = s[part];
@@ -405,12 +456,15 @@
         const r = toScreen(b);
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
           const area = r.w * r.h;
-          if (!best || area < best.area) best = { stop: i, part, handle: null, area };
+          if (!best || area < best.area) best = { kind: "stop", stop: i, part, handle: null, area };
         }
       }
     });
     return best;
   }
+
+  /** The stop or hotspot a hit or drag refers to. */
+  const dragItem = d => d.kind === "hot" ? page().hotspots[d.stop] : page().stops[d.stop];
 
   function localPoint(e) {
     const r = canvas.getBoundingClientRect();
@@ -424,9 +478,9 @@
     const pt = toPage(px, py);
     const hit = e.shiftKey ? null : hitTest(px, py);
     if (hit) {
-      selected = hit.stop;
+      select(hit.kind, hit.stop);
       pushUndo();
-      drag = { mode: hit.handle ? "resize" : "move", ...hit, start: pt, orig: { ...page().stops[hit.stop][hit.part] }, moved: false };
+      drag = { mode: hit.handle ? "resize" : "move", ...hit, start: pt, orig: { ...dragItem(hit)[hit.part] }, moved: false };
       renderSide();
     } else {
       drag = { mode: "new", start: pt, cur: null };
@@ -448,7 +502,7 @@
     if (drag.mode === "new") { drag.cur = pt; draw(); return; }
     const dx = pt.x - drag.start.x, dy = pt.y - drag.start.y;
     if (Math.abs(dx) + Math.abs(dy) > 0.002) drag.moved = true;
-    const o = drag.orig, s = page().stops[drag.stop];
+    const o = drag.orig, s = dragItem(drag);
     if (drag.mode === "move") {
       s[drag.part] = { x: clamp(o.x + dx, 0, 1 - o.w), y: clamp(o.y + dy, 0, 1 - o.h), w: o.w, h: o.h };
     } else {
@@ -469,12 +523,17 @@
       const r = d.cur ? normRect(d.start, d.cur) : null;
       if (r && r.w > MIN && r.h > MIN) {
         change(() => {
-          const at = selected >= 0 ? selected + 1 : page().stops.length;
-          page().stops.splice(at, 0, { box: r });
-          selected = at;
+          if (drawKind === "hot" && isExplore()) {
+            page().hotspots.push({ box: r });
+            select("hot", page().hotspots.length - 1);
+          } else {
+            const at = selected >= 0 ? selected + 1 : page().stops.length;
+            page().stops.splice(at, 0, { box: r });
+            select("stop", at);
+          }
         });
       } else {
-        selected = -1;
+        select(null);
         renderAll();
       }
       return;
@@ -516,7 +575,9 @@
       const meta = document.createElement("div");
       meta.className = "meta";
       const name = document.createElement("span");
-      name.textContent = `Page ${i + 1} · ${p.stops.length} stop${p.stops.length === 1 ? "" : "s"}`;
+      name.textContent = `Page ${i + 1} · ` + (p.mode === "explore"
+        ? `explore, ${p.hotspots.length} to find`
+        : `${p.stops.length} stop${p.stops.length === 1 ? "" : "s"}`);
       meta.append(name);
       const btn = (text, title, fn) => {
         const b = document.createElement("button");
@@ -531,10 +592,10 @@
       btn("✕", "Remove page", () => change(() => {
         book.pages.splice(i, 1);
         pageIndex = clamp(pageIndex, 0, Math.max(0, book.pages.length - 1));
-        selected = -1;
+        select(null);
       }));
       item.append(meta);
-      item.onclick = () => { pageIndex = i; selected = -1; renderAll(); };
+      item.onclick = () => { pageIndex = i; select(null); drawKind = "stop"; renderAll(); };
       root.append(item);
     });
   }
@@ -554,12 +615,43 @@
     const root = $("stopList");
     root.innerHTML = "";
     const p = page();
-    $("stopsTitle").textContent = p ? `Stops on page ${pageIndex + 1}` : "Stops";
+    $("stopsTitle").textContent = p ? `Page ${pageIndex + 1}` : "Page";
     if (!p) return;
+    const el = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+
+    // Page type and guidance
+    root.append(el('<label class="field">Page type</label>'));
+    const type = document.createElement("select");
+    type.add(new Option("Guided: the camera moves stop to stop", "guided"));
+    type.add(new Option("Explore: the child drags around freely", "explore"));
+    type.value = p.mode || "guided";
+    type.onchange = () => change(() => { p.mode = type.value; select(null); drawKind = "stop"; });
+    root.append(type);
+    if (p.mode === "explore") {
+      root.append(el('<p class="help">Any stops below play first as a guided intro. Then the page is handed to the child to drag, pinch and discover.</p>'));
+      for (const [key, text] of [["hints", "Hint at things not found when the child is idle"], ["showMe", "Show a \"Show me\" button"]]) {
+        const row = el(`<label class="check"><input type="checkbox"> ${text}</label>`);
+        const box = row.querySelector("input");
+        box.checked = p.guidance[key] !== false;
+        box.onchange = () => change(() => { p.guidance[key] = box.checked; });
+        root.append(row);
+      }
+      root.append(el('<label class="field">Dragging on the page draws</label>'));
+      const kind = document.createElement("select");
+      kind.add(new Option("Intro stops (guided camera)", "stop"));
+      kind.add(new Option("Things to find (tap to react)", "hot"));
+      kind.value = drawKind;
+      kind.onchange = () => { drawKind = kind.value; kind.blur(); renderAll(); };
+      root.append(kind);
+    }
+
+    root.append(el(`<h2>${p.mode === "explore" ? "Intro stops" : "Stops"}</h2>`));
     if (!p.stops.length) {
       const h = document.createElement("p");
       h.className = "help";
-      h.textContent = "No stops yet. Drag on the page to draw one. Stops play in the order listed here.";
+      h.textContent = p.mode === "explore"
+        ? "No intro. The page starts in explore mode straight away."
+        : "No stops yet. Drag on the page to draw one. Stops play in the order listed here.";
       root.append(h);
     }
     p.stops.forEach((s, i) => {
@@ -573,7 +665,7 @@
       txt.className = "txt";
       txt.textContent = stopSummary(s);
       row.append(num, txt);
-      row.onclick = () => { selected = i; renderAll(); };
+      row.onclick = () => { select("stop", i); renderAll(); };
       root.append(row);
     });
     const add = document.createElement("div");
@@ -585,10 +677,26 @@
     whole.onclick = () => change(() => {
       const at = selected >= 0 ? selected + 1 : p.stops.length;
       p.stops.splice(at, 0, { box: { x: 0, y: 0, w: 1, h: 1 } });
-      selected = at;
+      select("stop", at);
     });
     add.append(whole);
     root.append(add);
+
+    if (p.mode === "explore") {
+      root.append(el("<h2>Things to find</h2>"));
+      if (!p.hotspots.length) {
+        root.append(el('<p class="help">None yet, so this page is free looking only. To add some, set "Dragging on the page draws" to Things to find and drag a box around each one.</p>'));
+      }
+      p.hotspots.forEach((h, i) => {
+        const row = el(`<div class="stop-row${i === selHot ? " active" : ""}"><span class="num" style="background:#b8860b">★</span><span class="txt"></span></div>`);
+        row.querySelector(".txt").textContent = (i + 1) + ". " + (h.caption ? "“" + h.caption + "”" : "No caption") + (h.effect === "none" ? " · no sparkle" : "");
+        row.onclick = () => { select("hot", i); renderAll(); };
+        root.append(row);
+      });
+      const pv = el('<div class="inline"><button class="btn small">▶ Preview exploring</button></div>');
+      pv.firstChild.onclick = () => openPreview(-2);
+      root.append(pv);
+    }
   }
 
   function renderInspector() {
@@ -600,6 +708,7 @@
       root.innerHTML = '<p class="help">Add page images to start.</p>';
       return;
     }
+    if (selHot >= 0 && p.hotspots[selHot]) { renderHotspotInspector(root, p, p.hotspots[selHot]); return; }
     const s = selected >= 0 ? p.stops[selected] : null;
     if (!s) {
       root.innerHTML = `<h2>How to</h2><p class="help">
@@ -618,7 +727,7 @@
     const act = (text, fn, title) => { const b = el(`<button class="btn small">${text}</button>`); if (title) b.title = title; b.onclick = fn; actions.append(b); };
     act("Earlier", () => selected > 0 && change(() => { swap(p.stops, selected, selected - 1); selected--; }));
     act("Later", () => selected < p.stops.length - 1 && change(() => { swap(p.stops, selected, selected + 1); selected++; }));
-    act("Delete", () => change(() => { p.stops.splice(selected, 1); selected = -1; }));
+    act("Delete", () => change(() => { p.stops.splice(selected, 1); select(null); }));
     act("▶ Preview", () => openPreview(selected), "Play the move into this stop");
     root.append(actions);
 
@@ -674,6 +783,29 @@
     root.append(sizeRow);
   }
 
+  function renderHotspotInspector(root, p, h) {
+    const el = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+    root.append(el(`<h2 style="color:#b8860b">Thing to find ${selHot + 1}</h2>`));
+    const actions = el('<div class="inline"><button class="btn small">Delete</button></div>');
+    actions.firstChild.onclick = () => change(() => { p.hotspots.splice(selHot, 1); select(null); });
+    root.append(actions);
+    root.append(el('<label class="field">What it says when found</label>'));
+    const cap = document.createElement("textarea");
+    cap.rows = 3;
+    cap.value = h.caption || "";
+    cap.onfocus = () => pushUndo();
+    cap.oninput = () => { if (cap.value) h.caption = cap.value; else delete h.caption; setDirty(); renderStopList(); };
+    root.append(cap);
+    root.append(el('<label class="field">When found</label>'));
+    const fx = document.createElement("select");
+    fx.add(new Option("Sparkle", "sparkle"));
+    fx.add(new Option("No effect, just the words", "none"));
+    fx.value = h.effect === "none" ? "none" : "sparkle";
+    fx.onchange = () => change(() => { if (fx.value === "none") h.effect = "none"; else delete h.effect; });
+    root.append(fx);
+    root.append(el('<p class="help">Hints and Show me visit these in the order listed.</p>'));
+  }
+
   function renderSide() {
     renderStopList();
     renderInspector();
@@ -710,8 +842,10 @@
     $("pvWhole").textContent = st.wholePage ? "Stops" : "Whole page";
     $("pvPrev").disabled = !st.canGoBack;
     $("pvEnd").classList.toggle("hidden", !st.finished);
-    $("pvCaption").textContent = st.caption;
+    if (st.caption) $("pvCaption").textContent = st.caption;
     $("pvCaption").classList.toggle("hidden", !st.caption);
+    $("pvShowMe").classList.toggle("hidden", !st.canShowMe);
+    $("pvTip").classList.toggle("hidden", !st.exploring);
   }
 
   /** Opens the reader on the book as it is now. With a stop, plays the move into that stop. */
@@ -723,6 +857,7 @@
     preview.settings = settings;
     $("preview").classList.remove("hidden");
     preview.setBook(CR.normalizeBook(CR.serializeBook(book)), book.pages.map(p => p._img));
+    if (stop === -2) { preview.jumpTo(pageIndex, -2); return; }
     if (stop === undefined || stop < 0) { preview.jumpTo(pageIndex, -1); return; }
     preview.jumpTo(pageIndex, stop);
     if (preview.stepIndex > 0) {
@@ -744,6 +879,7 @@
   $("pvNext").onclick = () => preview.next();
   $("pvWhole").onclick = () => preview.toggleOverview();
   $("pvAgain").onclick = () => preview.restart();
+  $("pvShowMe").onclick = () => preview.showMe();
 
   // ---------------------------------------------------------------- header, keys, drag and drop
 
@@ -780,13 +916,17 @@
     if (mod && (e.key === "z" || e.key === "Z")) { e.preventDefault(); undo(); return; }
     if (!book) return;
     const p = page();
-    const s = p && selected >= 0 ? p.stops[selected] : null;
+    const hot = p && selHot >= 0 ? p.hotspots[selHot] : null;
+    const s = hot || (p && selected >= 0 ? p.stops[selected] : null);
 
-    if (e.key === "Escape") { $("jsonBox").classList.add("hidden"); selected = -1; renderAll(); }
-    else if ((e.key === "Delete" || e.key === "Backspace") && s) { e.preventDefault(); change(() => { p.stops.splice(selected, 1); selected = -1; }); }
-    else if (e.key === "p" || e.key === "P") openPreview(selected >= 0 ? selected : undefined);
-    else if (e.key === "PageDown" && pageIndex < book.pages.length - 1) { pageIndex++; selected = -1; renderAll(); }
-    else if (e.key === "PageUp" && pageIndex > 0) { pageIndex--; selected = -1; renderAll(); }
+    if (e.key === "Escape") { $("jsonBox").classList.add("hidden"); select(null); renderAll(); }
+    else if ((e.key === "Delete" || e.key === "Backspace") && s) {
+      e.preventDefault();
+      change(() => { if (hot) p.hotspots.splice(selHot, 1); else p.stops.splice(selected, 1); select(null); });
+    }
+    else if (e.key === "p" || e.key === "P") openPreview(hot ? -2 : selected >= 0 ? selected : undefined);
+    else if (e.key === "PageDown" && pageIndex < book.pages.length - 1) { pageIndex++; select(null); drawKind = "stop"; renderAll(); }
+    else if (e.key === "PageUp" && pageIndex > 0) { pageIndex--; select(null); drawKind = "stop"; renderAll(); }
     else if (s && e.key.startsWith("Arrow")) {
       e.preventDefault();
       const step = e.shiftKey ? 0.01 : 0.002;
@@ -819,5 +959,5 @@
 
   renderAll();
   // For automated tests.
-  window.__editor = { get book() { return book; }, get selected() { return selected; }, get pageIndex() { return pageIndex; } };
+  window.__editor = { get book() { return book; }, get selected() { return selected; }, get selHot() { return selHot; }, get pageIndex() { return pageIndex; } };
 })();

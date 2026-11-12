@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** A panel box, in fractions (0..1) of the page image's width and height. */
@@ -21,6 +23,13 @@ data class Book(
     /** Folder under assets/, e.g. "books/zolas-kite". */
     val dir: String,
 )
+
+/**
+ * Runs slow file work off the main thread and always comes back on the main thread,
+ * whatever dispatcher the caller is on, so screen state is only ever changed from there.
+ */
+suspend fun <T> loadInBackground(block: () -> T): T =
+    withContext(Dispatchers.Main.immediate) { withContext(Dispatchers.IO) { block() } }
 
 /** Reads books bundled in assets/books/<folder>/book.json. */
 object BookRepository {
