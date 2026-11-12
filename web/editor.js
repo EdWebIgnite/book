@@ -629,10 +629,10 @@
     root.append(type);
     if (p.mode === "explore") {
       root.append(el('<p class="help">Any stops below play first as a guided intro. Then the page is handed to the child to drag, pinch and discover.</p>'));
-      for (const [key, text] of [["hints", "Hint at things not found when the child is idle"], ["showMe", "Show a \"Show me\" button"]]) {
+      for (const [key, text] of [["hints", "Hint at things not found when the child is idle"], ["showMe", "Show a \"Show me\" button"], ["map", "Show a small map in the corner (for big scenes)"]]) {
         const row = el(`<label class="check"><input type="checkbox"> ${text}</label>`);
         const box = row.querySelector("input");
-        box.checked = p.guidance[key] !== false;
+        box.checked = key === "map" ? !!p.guidance.map : p.guidance[key] !== false;
         box.onchange = () => change(() => { p.guidance[key] = box.checked; });
         root.append(row);
       }
@@ -689,7 +689,8 @@
       }
       p.hotspots.forEach((h, i) => {
         const row = el(`<div class="stop-row${i === selHot ? " active" : ""}"><span class="num" style="background:#b8860b">★</span><span class="txt"></span></div>`);
-        row.querySelector(".txt").textContent = (i + 1) + ". " + (h.caption ? "“" + h.caption + "”" : "No caption") + (h.effect === "none" ? " · no sparkle" : "");
+        row.querySelector(".txt").textContent = (i + 1) + ". " + (h.story ? "Story " + h.story + " · " : "") + (h.name ? h.name + " · " : "")
+          + (h.caption ? "“" + h.caption + "”" : "No caption") + (h.effect === "none" ? " · no sparkle" : "");
         row.onclick = () => { select("hot", i); renderAll(); };
         root.append(row);
       });
@@ -789,13 +790,28 @@
     const actions = el('<div class="inline"><button class="btn small">Delete</button></div>');
     actions.firstChild.onclick = () => change(() => { p.hotspots.splice(selHot, 1); select(null); });
     root.append(actions);
+    root.append(el('<label class="field">Name (e.g. Old Turtle)</label>'));
+    const name = document.createElement("input");
+    name.type = "text";
+    name.value = h.name || "";
+    name.onfocus = () => pushUndo();
+    name.oninput = () => { if (name.value) h.name = name.value; else delete h.name; setDirty(); renderStopList(); };
+    root.append(name);
     root.append(el('<label class="field">What it says when found</label>'));
     const cap = document.createElement("textarea");
-    cap.rows = 3;
+    cap.rows = 4;
     cap.value = h.caption || "";
     cap.onfocus = () => pushUndo();
     cap.oninput = () => { if (cap.value) h.caption = cap.value; else delete h.caption; setDirty(); renderStopList(); };
     root.append(cap);
+    root.append(el('<label class="field">Story step (leave empty for an extra thing to find)</label>'));
+    const story = document.createElement("input");
+    story.type = "number";
+    story.min = "1";
+    story.value = h.story || "";
+    story.onchange = () => change(() => { const n = parseInt(story.value, 10); if (n > 0) h.story = n; else delete h.story; });
+    root.append(story);
+    root.append(el('<p class="help">Story steps open in order: 1, then 2, and so on. The next one always shows a beacon, and tapping a later one too early says "First find" and the name of the next one.</p>'));
     root.append(el('<label class="field">When found</label>'));
     const fx = document.createElement("select");
     fx.add(new Option("Sparkle", "sparkle"));
@@ -803,7 +819,7 @@
     fx.value = h.effect === "none" ? "none" : "sparkle";
     fx.onchange = () => change(() => { if (fx.value === "none") h.effect = "none"; else delete h.effect; });
     root.append(fx);
-    root.append(el('<p class="help">Hints and Show me visit these in the order listed.</p>'));
+    root.append(el('<p class="help">Hints and Show me lead to the next story step first, then to the extras in the order listed.</p>'));
   }
 
   function renderSide() {
@@ -845,7 +861,7 @@
     if (st.caption) $("pvCaption").textContent = st.caption;
     $("pvCaption").classList.toggle("hidden", !st.caption);
     $("pvShowMe").classList.toggle("hidden", !st.canShowMe);
-    $("pvTip").classList.toggle("hidden", !st.exploring);
+    $("pvTip").classList.toggle("hidden", !st.exploring || !!st.caption);
   }
 
   /** Opens the reader on the book as it is now. With a stop, plays the move into that stop. */
@@ -856,7 +872,7 @@
     if (!preview) preview = new CR.Reader($("previewCanvas"), { settings, onChange: updatePreviewUi });
     preview.settings = settings;
     $("preview").classList.remove("hidden");
-    preview.setBook(CR.normalizeBook(CR.serializeBook(book)), book.pages.map(p => p._img));
+    preview.setBook(CR.normalizeBook(CR.serializeBook(book)), book.pages.map(p => p._img), 0, { baseUrl: book._dir || "" });
     if (stop === -2) { preview.jumpTo(pageIndex, -2); return; }
     if (stop === undefined || stop < 0) { preview.jumpTo(pageIndex, -1); return; }
     preview.jumpTo(pageIndex, stop);

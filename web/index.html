@@ -161,8 +161,10 @@ const reader = new CR.Reader($("stage"), { settings, onChange: updateUi });
 
 let wasExploring = false, tipTimer;
 function updateUi(st) {
-  $("pageno").textContent = `Page ${st.page + 1} of ${st.pageCount}` +
-    (st.exploring && st.hotspotCount ? ` · found ${st.found} of ${st.hotspotCount}` : "");
+  let progress = "";
+  if (st.exploring && st.storyTotal) progress += ` · story ${st.storyFound} of ${st.storyTotal}`;
+  if (st.exploring && st.extraTotal) progress += ` · found ${st.extraFound} of ${st.extraTotal}`;
+  $("pageno").textContent = `Page ${st.page + 1} of ${st.pageCount}` + progress;
   $("whole").textContent = st.wholePage ? "Stops" : "Whole page";
   $("showme").classList.toggle("hidden", !st.canShowMe);
   // Show the "drag to look around" tip for a few seconds each time exploring starts.
@@ -170,7 +172,7 @@ function updateUi(st) {
     $("tip").classList.remove("hidden");
     clearTimeout(tipTimer);
     tipTimer = setTimeout(() => $("tip").classList.add("hidden"), 4500);
-  } else if (!st.exploring) $("tip").classList.add("hidden");
+  } else if (!st.exploring || st.caption) $("tip").classList.add("hidden");   // a caption takes the tip's place
   wasExploring = st.exploring;
   $("prev").disabled = !st.canGoBack;
   $("end").classList.toggle("hidden", !st.finished);
@@ -180,11 +182,11 @@ function updateUi(st) {
 }
 
 async function openBook(id) {
-  const { book, images } = await Content.loadBook(id);
+  const { book, images, dir } = await Content.loadBook(id);
   $("title").textContent = book.title;
   $("library").classList.add("hidden");
   $("reader").classList.remove("hidden");
-  reader.setBook(book, images);
+  reader.setBook(book, images, 0, { baseUrl: dir });
 }
 
 function closeBook() {

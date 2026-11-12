@@ -17,19 +17,34 @@ const FONT_CSS = `
   svg { display: block; }
   text { font-family: "Baloo", sans-serif; }`;
 
-/** jobs: [{ svg, width, height, file }]. JPEG for .jpg files, PNG otherwise. */
+/**
+ * jobs: [{ svg, width, height, file, view }]. width and height are the size of the image written.
+ * view, if given, is [x, y, w, h]: the part of the drawing to show, for cutting a big scene into tiles
+ * or making a small overview of it. JPEG for .jpg files, PNG otherwise.
+ */
 async function renderAll(jobs) {
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  let current = null;
   for (const job of jobs) {
+    const view = job.view || [0, 0, job.width, job.height];
     await page.setViewportSize({ width: job.width, height: job.height });
-    await page.setContent(`<style>${FONT_CSS}</style><svg xmlns="http://www.w3.org/2000/svg" width="${job.width}" height="${job.height}"
-      viewBox="0 0 ${job.width} ${job.height}">${job.svg}</svg>`);
-    await page.evaluate(() => document.fonts.ready);
+    if (job.svg !== current) {
+      // Load the drawing once; later jobs on the same drawing only move the window onto it.
+      await page.setContent(`<style>${FONT_CSS}</style><svg id="art" xmlns="http://www.w3.org/2000/svg">${job.svg}</svg>`);
+      await page.evaluate(() => document.fonts.ready);
+      current = job.svg;
+    }
+    await page.evaluate(([w, h, v]) => {
+      const el = document.getElementById("art");
+      el.setAttribute("width", w);
+      el.setAttribute("height", h);
+      el.setAttribute("viewBox", v.join(" "));
+    }, [job.width, job.height, view]);
     fs.mkdirSync(path.dirname(job.file), { recursive: true });
     const jpeg = /\.jpe?g$/.test(job.file);
-    await page.screenshot({ path: job.file, type: jpeg ? "jpeg" : "png", ...(jpeg ? { quality: 88 } : {}) });
-    console.log("wrote", path.relative(process.cwd(), job.file));
+    await page.screenshot({ path: job.file, type: jpeg ? "jpeg" : "png", ...(jpeg ? { quality: job.quality || 88 } : {}) });
+    if (!job.quiet) console.log("wrote", path.relative(process.cwd(), job.file));
   }
   await browser.close();
 }

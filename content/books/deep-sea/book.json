@@ -1,0 +1,315 @@
+{
+  "id": "deep-sea",
+  "title": "The Light in the Deep",
+  "author": "Sample book",
+  "cover": "cover.jpg",
+  "focusStyle": "none",
+  "pages": [
+    {
+      "image": "page1.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.354,
+            "y": 0.0195,
+            "w": 0.3662,
+            "h": 0.2572
+          },
+          "style": "none",
+          "caption": "Far out at sea, the sun sparkles on the water. But what is down below?"
+        },
+        {
+          "box": {
+            "x": 0.2625,
+            "y": 0.236,
+            "w": 0.1709,
+            "h": 0.1628
+          },
+          "style": "none",
+          "caption": "Splash! Down we go, to the coral reef. Somebody is waving."
+        }
+      ],
+      "tiles": {
+        "width": 8192,
+        "height": 6144,
+        "size": 1024,
+        "levels": 2,
+        "path": "page1_tiles/{z}/{x}_{y}.jpg"
+      },
+      "mode": "explore",
+      "hotspots": [
+        {
+          "box": {
+            "x": 0.3143,
+            "y": 0.2783,
+            "w": 0.0525,
+            "h": 0.0781
+          },
+          "caption": "“Psst! I’m Finn. Something is glowing far down in the dark. Will you go and see what it is? Ask Old Turtle the way.”",
+          "story": 1,
+          "name": "Finn the clownfish"
+        },
+        {
+          "box": {
+            "x": 0.7764,
+            "y": 0.2083,
+            "w": 0.0708,
+            "h": 0.0618
+          },
+          "caption": "Old Turtle blinks slowly. “A glow in the deep? Swim down through the kelp forest and ask the seahorses.”",
+          "story": 2,
+          "name": "Old Turtle"
+        },
+        {
+          "box": {
+            "x": 0.6885,
+            "y": 0.5241,
+            "w": 0.0732,
+            "h": 0.0911
+          },
+          "caption": "“We saw it!” squeak the seahorses. “The glow is down past the sunken ship. Octopus lives there.”",
+          "story": 3,
+          "name": "the seahorses"
+        },
+        {
+          "box": {
+            "x": 0.2466,
+            "y": 0.6641,
+            "w": 0.0781,
+            "h": 0.0944
+          },
+          "caption": "Octopus points with four arms at once. “Down there, where it gets dark! Listen for the whale’s song.”",
+          "story": 4,
+          "name": "Octopus"
+        },
+        {
+          "box": {
+            "x": 0.5969,
+            "y": 0.7699,
+            "w": 0.21,
+            "h": 0.1172
+          },
+          "caption": "The whale sings, low and slow. “Keep going, little diver. You are nearly at the bottom.”",
+          "story": 5,
+          "name": "the whale"
+        },
+        {
+          "box": {
+            "x": 0.8154,
+            "y": 0.8252,
+            "w": 0.1001,
+            "h": 0.1042
+          },
+          "caption": "You found it! It is Angler’s lantern. “I keep it shining,” she says, “so that nobody down here ever feels lost.”",
+          "story": 6,
+          "name": "the glowing light"
+        },
+        {
+          "box": {
+            "x": 0.0757,
+            "y": 0.0163,
+            "w": 0.0757,
+            "h": 0.0977
+          },
+          "caption": "A tiny island with one palm tree. Even the sea has a beach.",
+          "name": "the island"
+        },
+        {
+          "box": {
+            "x": 0.4993,
+            "y": 0.0407,
+            "w": 0.0513,
+            "h": 0.0684
+          },
+          "caption": "A little sailboat, way up on top of the water.",
+          "name": "the sailboat"
+        },
+        {
+          "box": {
+            "x": 0.6567,
+            "y": 0.0562,
+            "w": 0.0659,
+            "h": 0.0537
+          },
+          "caption": "Whee! A dolphin jumps for joy.",
+          "name": "the dolphin"
+        },
+        {
+          "box": {
+            "x": 0.3162,
+            "y": 0.1758,
+            "w": 0.1001,
+            "h": 0.0553
+          },
+          "caption": "A whole school of fish, all turning together.",
+          "name": "the school of fish"
+        },
+        {
+          "box": {
+            "x": 0.6079,
+            "y": 0.2002,
+            "w": 0.0293,
+            "h": 0.0391
+          },
+          "caption": "Puff! The pufferfish is as round as a ball.",
+          "name": "the pufferfish"
+        },
+        {
+          "box": {
+            "x": 0.5017,
+            "y": 0.2783,
+            "w": 0.0635,
+            "h": 0.0977
+          },
+          "caption": "Jellyfish drift along like little umbrellas.",
+          "name": "the jellyfish"
+        },
+        {
+          "box": {
+            "x": 0.376,
+            "y": 0.3215,
+            "w": 0.0305,
+            "h": 0.0309
+          },
+          "caption": "Click, clack. Crab waves his claws hello.",
+          "name": "the crab"
+        },
+        {
+          "box": {
+            "x": 0.3082,
+            "y": 0.3257,
+            "w": 0.0208,
+            "h": 0.0277
+          },
+          "caption": "A starfish, taking it easy on the sand.",
+          "name": "the starfish"
+        },
+        {
+          "box": {
+            "x": 0.8655,
+            "y": 0.3776,
+            "w": 0.0513,
+            "h": 0.0586
+          },
+          "caption": "A giant clam, keeping its pearl safe.",
+          "name": "the giant clam"
+        },
+        {
+          "box": {
+            "x": 0.0946,
+            "y": 0.4069,
+            "w": 0.2136,
+            "h": 0.1139
+          },
+          "caption": "A secret cave, sparkling with crystals!",
+          "name": "the crystal cave"
+        },
+        {
+          "box": {
+            "x": 0.4883,
+            "y": 0.4281,
+            "w": 0.1221,
+            "h": 0.0977
+          },
+          "caption": "A manta ray glides by like a kite.",
+          "name": "the manta ray"
+        },
+        {
+          "box": {
+            "x": 0.4517,
+            "y": 0.5273,
+            "w": 0.105,
+            "h": 0.0716
+          },
+          "caption": "A shark! Don’t worry, this one only smiles.",
+          "name": "the shark"
+        },
+        {
+          "box": {
+            "x": 0.8752,
+            "y": 0.5859,
+            "w": 0.0391,
+            "h": 0.0521
+          },
+          "caption": "Treasure! A chest full of shiny gold coins.",
+          "name": "the treasure chest"
+        },
+        {
+          "box": {
+            "x": 0.3979,
+            "y": 0.6217,
+            "w": 0.0391,
+            "h": 0.0749
+          },
+          "caption": "Some jellyfish make their own light.",
+          "name": "the glowing jellyfish"
+        },
+        {
+          "box": {
+            "x": 0.5469,
+            "y": 0.6632,
+            "w": 0.0415,
+            "h": 0.0391
+          },
+          "caption": "Peekaboo! An eel hides in the rocks.",
+          "name": "the eel"
+        },
+        {
+          "box": {
+            "x": 0.4846,
+            "y": 0.6982,
+            "w": 0.0684,
+            "h": 0.0521
+          },
+          "caption": "A little submarine has come exploring too.",
+          "name": "the submarine"
+        },
+        {
+          "box": {
+            "x": 0.3833,
+            "y": 0.7227,
+            "w": 0.0366,
+            "h": 0.0553
+          },
+          "caption": "A lost anchor from the old ship.",
+          "name": "the anchor"
+        },
+        {
+          "box": {
+            "x": 0.1056,
+            "y": 0.7479,
+            "w": 0.0293,
+            "h": 0.0309
+          },
+          "caption": "A message in a bottle. Who sent it, do you think?",
+          "name": "the bottle"
+        },
+        {
+          "box": {
+            "x": 0.116,
+            "y": 0.8268,
+            "w": 0.1831,
+            "h": 0.0684
+          },
+          "caption": "A fossil! This sea creature swam here millions of years ago.",
+          "name": "the big fossil"
+        },
+        {
+          "box": {
+            "x": 0.4883,
+            "y": 0.8382,
+            "w": 0.083,
+            "h": 0.1074
+          },
+          "caption": "Warm water bubbles up here from deep inside the Earth. Tube worms love it.",
+          "name": "the warm vents"
+        }
+      ],
+      "guidance": {
+        "hints": true,
+        "showMe": true,
+        "map": true
+      }
+    }
+  ]
+}

@@ -16,9 +16,16 @@
  *           "caption": "Text..." }   // optional: shown under the picture
  *       ],
  *       "hotspots": [                                 // explore pages: things to find and tap
- *         { "box": { ... }, "caption": "A sleepy lion!", "effect": "sparkle" | "none" }
+ *         { "box": { ... }, "caption": "A sleepy lion!", "effect": "sparkle" | "none",
+ *           "story": 2,              // optional: this is step 2 of the story hidden in the scene.
+ *                                    // Story steps unlock in order and the next one shows a beacon.
+ *           "name": "Old Turtle" }   // optional: used in "First find Old Turtle" when tapped too early
  *       ],
- *       "guidance": { "hints": true, "showMe": true } // explore pages: idle hints and the Show me button
+ *       "guidance": { "hints": true, "showMe": true, "map": false },  // idle hints, Show me button, corner map
+ *       "tiles": { "width": 8192, "height": 6144, "size": 1024, "levels": 2,
+ *                  "path": "page1_tiles/{z}/{x}_{y}.jpg" }   // optional, for very big scenes: "image" is then
+ *                                    // a small overview, and sharp tiles load only where the child is looking.
+ *                                    // Level 0 is full size, each level after is half the one before.
  *     }
  *   ]
  * }
@@ -116,7 +123,8 @@
       mode: p.mode === "explore" ? "explore" : "guided",
       stops: (p.stops || (p.panels || []).map(b => ({ box: b }))).map(s => ({ ...s })),
       hotspots: (p.hotspots || []).map(h => ({ ...h })),
-      guidance: { hints: true, showMe: true, ...(p.guidance || {}) },
+      guidance: { hints: true, showMe: true, map: false, ...(p.guidance || {}) },
+      tiles: p.tiles ? { ...p.tiles } : null,
     }));
     return book;
   }
@@ -143,16 +151,19 @@
             return o;
           }),
         };
+        if (p.tiles) page.tiles = { ...p.tiles };
         if (p.mode === "explore") {
           page.mode = "explore";
           page.hotspots = (p.hotspots || []).map(h => {
             const o = { box: roundBox(h.box) };
+            if (h.name) o.name = h.name;
+            if (h.story) o.story = h.story;
             if (h.caption) o.caption = h.caption;
             if (h.effect && h.effect !== "sparkle") o.effect = h.effect;
             return o;
           });
           const g = p.guidance || {};
-          page.guidance = { hints: g.hints !== false, showMe: g.showMe !== false };
+          page.guidance = { hints: g.hints !== false, showMe: g.showMe !== false, map: !!g.map };
         }
         return page;
       }),
@@ -200,6 +211,11 @@
       this.found = new Set();    // explore: hotspots found, as "page:index"
       this.effects = [];         // explore: sparkles playing
       this.note = null;          // explore: caption from a tapped hotspot
+      this.party = 0;            // explore: when the story was finished, for the celebration
+      this.tiles = new Map();    // big scenes: loaded tile images
+      this.tileLoads = 0;
+      this.baseUrl = "";         // folder the book's files are in, for loading tiles
+      this.mapRect = null;       // where the corner map is on screen
       this.lastTouch = 0;
       this.running = true;
       this.listeners = new AbortController();
@@ -213,9 +229,14 @@
       this.listeners.abort();
     }
 
-    setBook(book, images, startStep = 0) {
+    /** opts.baseUrl: the book's folder, needed for pages that load in tiles. */
+    setBook(book, images, startStep = 0, opts = {}) {
       this.book = book;
       this.images = images;
+      this.baseUrl = opts.baseUrl || "";
+      this.tiles = new Map();
+      this.tileLoads = 0;
+      this.party = 0;
       this.pageRects = layoutPages(images);
       this.steps = this.buildSteps();
       this.stepIndex = Math.max(0, Math.min(startStep, this.steps.length - 1));
@@ -321,10 +342,27 @@
       return styled(inflate(box, s.padding), box, stop.style || this.book.focusStyle, 1);
     }
 
+    isFound(i) { return this.found.has(this.step.page + ":" + i); }
+
+    /** Hotspot indexes that make up the page's story, in story order. */
+    storyOrder() {
+      return this.pageData.hotspots.map((h, i) => ({ h, i })).filter(x => x.h.story)
+        .sort((a, b) => a.h.story - b.h.story).map(x => x.i);
+    }
+
+    /** The story step the child is looking for now, or -1. */
+    nextStory() {
+      if (!this.exploring) return -1;
+      const next = this.storyOrder().find(i => !this.isFound(i));
+      return next === undefined ? -1 : next;
+    }
+
+    /** What hints and Show me lead to: the next story step first, then anything else not found yet. */
     unfoundHotspots() {
       if (!this.exploring) return [];
-      const p = this.step.page;
-      return this.pageData.hotspots.map((h, i) => ({ h, i })).filter(({ i }) => !this.found.has(p + ":" + i));
+      const hs = this.pageData.hotspots, next = this.nextStory();
+      const extras = hs.map((h, i) => ({ h, i })).filter(({ h, i }) => !h.story && !this.isFound(i));
+      return next >= 0 ? [{ h: hs[next], i: next }, ...extras] : extras;
     }
 
     get state() {
@@ -348,12 +386,17 @@
         canShowMe: exploring && guidance.showMe !== false && this.unfoundHotspots().length > 0,
         found: hs.filter((_, i) => this.found.has(step.page + ":" + i)).length,
         hotspotCount: hs.length,
+        storyTotal: hs.filter(h => h.story).length,
+        storyFound: hs.filter((h, i) => h.story && this.found.has(step.page + ":" + i)).length,
+        extraTotal: hs.filter(h => !h.story).length,
+        extraFound: hs.filter((h, i) => !h.story && this.found.has(step.page + ":" + i)).length,
       };
     }
 
     /** Move from wherever the camera is now (drift included) to the current step. */
     moveTo(previousPage, instant = false) {
       const s = this.settings, now = performance.now();
+      this.party = 0;
       const pageChanged = previousPage !== undefined && previousPage !== this.step.page;
       let ms = s.moveMs;
       if (instant || (pageChanged && s.pageTurn === "cut")) ms = 0;
@@ -472,15 +515,30 @@
       this.flyTo(inflate(box, Math.max(box.h, box.w) * 0.6), () => this.react(next.i));
     }
 
-    /** A hotspot was found: sparkle and show its caption. */
+    /** Show a caption for a while (longer for longer text), then clear it. */
+    say(text, extra = 0) {
+      const ms = Math.max(4500, 2500 + text.length * 65) + extra;
+      const note = this.note = { text, until: performance.now() + ms };
+      this.onChange(this.state);
+      setTimeout(() => { if (this.note === note) { this.note = null; this.onChange(this.state); } }, ms + 50);
+    }
+
+    /** A hotspot was tapped: sparkle and show its caption. Story steps only open in order. */
     react(i) {
       const p = this.step.page, h = this.pageData.hotspots[i];
-      this.found.add(p + ":" + i);
       const now = performance.now();
+      if (h.story && !this.isFound(i) && i !== this.nextStory()) {
+        const first = this.pageData.hotspots[this.nextStory()];
+        this.effects.push({ box: this.boxRect(p, h.box), start: now, locked: true });
+        this.say("Not yet! First find " + (first.name || "the next part of the story") + ".");
+        return;
+      }
+      const wasNew = !this.isFound(i);
+      this.found.add(p + ":" + i);
       if (h.effect !== "none") this.effects.push({ box: this.boxRect(p, h.box), start: now });
-      this.note = h.caption ? { text: h.caption, until: now + 5000 } : null;
-      this.onChange(this.state);
-      if (this.note) setTimeout(() => this.onChange(this.state), 5050);
+      const storyDone = wasNew && h.story && this.nextStory() < 0;
+      if (storyDone) this.party = now;
+      if (h.caption) this.say(h.caption, storyDone ? 3000 : 0); else { this.note = null; this.onChange(this.state); }
     }
 
     /** Keyboard shortcuts. Returns true when the key was used. */
@@ -666,6 +724,7 @@
         ctx.fillStyle = "#fff";
         ctx.fillRect(r.x, r.y, r.w, r.h);
         ctx.drawImage(this.images[i], r.x, r.y, r.w, r.h);
+        if (this.book.pages[i].tiles && this.baseUrl) this.drawTiles(i, pr, sc, dpr, toScreen, W, H, now);
       });
 
       const f = toScreen(this.shown.focus);
@@ -693,6 +752,130 @@
 
       this.drawEffects(now, toScreen);
       this.drawHint(now, toScreen, W, H, top, bottom);
+      this.drawMap(now, W, top);
+      this.drawParty(now, W, H);
+    }
+
+    // ------------------------------------------------ big scenes: tiles
+
+    /** A tile image if it has loaded. Starts loading it otherwise (a few at a time). */
+    tile(page, z, x, y, now) {
+      const key = page + "/" + z + "/" + x + "/" + y;
+      let t = this.tiles.get(key);
+      if (!t) {
+        if (this.tileLoads >= 6) return null;
+        const info = this.book.pages[page].tiles;
+        t = { img: new Image(), ready: false, used: now };
+        this.tileLoads++;
+        t.img.onload = () => { t.ready = true; this.tileLoads--; };
+        t.img.onerror = () => { this.tileLoads--; };
+        t.img.src = this.baseUrl + info.path.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+        this.tiles.set(key, t);
+        if (this.tiles.size > 160) {
+          // Forget the tiles looked at longest ago.
+          const old = [...this.tiles.entries()].filter(e => e[1].ready).sort((a, b) => a[1].used - b[1].used);
+          for (const [k] of old.slice(0, 40)) this.tiles.delete(k);
+        }
+      }
+      t.used = now;
+      return t.ready ? t.img : null;
+    }
+
+    /** Draws sharp tiles over the overview image, only for the part of the page on screen. */
+    drawTiles(i, pr, sc, dpr, toScreen, W, H, now) {
+      const info = this.book.pages[i].tiles, ctx = this.ctx;
+      const perSource = (sc * dpr * pr.h) / info.height;          // screen pixels per full-size pixel
+      const z = perSource >= 1 ? 0 : Math.floor(Math.log2(1 / perSource));
+      if (z >= info.levels) return;                                 // zoomed out: the overview is enough
+      const f = Math.pow(2, z);
+      const lw = Math.ceil(info.width / f), lh = Math.ceil(info.height / f);
+      const tw = (info.size * f / info.width) * pr.w, th = (info.size * f / info.height) * pr.h;  // tile size in world units
+      const v = this.view;
+      const x0 = Math.max(0, Math.floor(((0 - v.ox) / sc - pr.x) / tw)), x1 = Math.min(Math.ceil(lw / info.size) - 1, Math.floor(((W - v.ox) / sc - pr.x) / tw));
+      const y0 = Math.max(0, Math.floor(((0 - v.oy) / sc - pr.y) / th)), y1 = Math.min(Math.ceil(lh / info.size) - 1, Math.floor(((H - v.oy) / sc - pr.y) / th));
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const pw = Math.min(info.size, lw - tx * info.size), ph = Math.min(info.size, lh - ty * info.size);
+          const r = toScreen(rect(pr.x + tx * tw, pr.y + ty * th, tw * pw / info.size, th * ph / info.size));
+          const img = this.tile(i, z, tx, ty, now);
+          if (img) { ctx.drawImage(img, r.x - 0.4, r.y - 0.4, r.w + 0.8, r.h + 0.8); continue; }
+          if (z + 1 < info.levels) {
+            // Not here yet: use the matching quarter of the next level down if we have it.
+            const parent = this.tile(i, z + 1, tx >> 1, ty >> 1, now);
+            if (parent) {
+              const half = info.size / 2;
+              ctx.drawImage(parent, (tx & 1) * half, (ty & 1) * half, pw / 2, ph / 2, r.x - 0.4, r.y - 0.4, r.w + 0.8, r.h + 0.8);
+            }
+          }
+        }
+      }
+    }
+
+    // ------------------------------------------------ explore: corner map and celebration
+
+    /** Small map of the whole page with a frame showing where the child is looking. */
+    drawMap(now, W, top) {
+      this.mapRect = null;
+      if (!this.exploring || !this.pageData.guidance.map) return;
+      const ctx = this.ctx, page = this.step.page, pr = this.pageRects[page];
+      const mw = Math.min(210, W * 0.3), mh = mw * pr.h / pr.w;
+      const mx = W - mw - 12, my = top + 6;
+      this.mapRect = { x: mx, y: my, w: mw, h: mh };
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,.45)";
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
+      ctx.shadowBlur = 0;
+      ctx.drawImage(this.images[page], mx, my, mw, mh);
+      const cam = this.visibleCam();
+      const k = mw / pr.w;
+      const vx = clamp(mx + (cam.x - pr.x) * k, mx, mx + mw), vy = clamp(my + (cam.y - pr.y) * k, my, my + mh);
+      const vx1 = clamp(mx + (cam.x + cam.w - pr.x) * k, mx, mx + mw), vy1 = clamp(my + (cam.y + cam.h - pr.y) * k, my, my + mh);
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.beginPath();
+      ctx.rect(mx, my, mw, mh);
+      ctx.rect(vx, vy, vx1 - vx, vy1 - vy);
+      ctx.fill("evenodd");
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(vx, vy, vx1 - vx, vy1 - vy);
+      // The next story step blinks on the map.
+      const next = this.nextStory();
+      if (next >= 0) {
+        const b = this.boxRect(page, this.pageData.hotspots[next].box);
+        const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+        ctx.fillStyle = `rgba(255,236,120,${0.6 + 0.4 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(mx + (b.x + b.w / 2 - pr.x) * k, my + (b.y + b.h / 2 - pr.y) * k, 4 + 2 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    /** Centre the view on a point of the corner map. */
+    mapGoTo(sx, sy) {
+      const m = this.mapRect, pr = this.pageRects[this.step.page];
+      const cam = this.takeCamera();
+      const wx = pr.x + ((sx - m.x) / m.w) * pr.w, wy = pr.y + ((sy - m.y) / m.h) * pr.h;
+      this.setCam(rect(wx - cam.w / 2, wy - cam.h / 2, cam.w, cam.h));
+    }
+
+    /** Stars raining down when the story is finished. */
+    drawParty(now, W, H) {
+      if (!this.party || now - this.party > 4200) return;
+      const t = (now - this.party) / 4200, ctx = this.ctx;
+      const colors = ["#ffd23f", "#ff6b6b", "#74c0fc", "#8ce99a", "#fff6c2", "#b197fc"];
+      ctx.save();
+      ctx.globalAlpha = t > 0.8 ? (1 - t) / 0.2 : 1;
+      for (let k = 0; k < 70; k++) {
+        const a = Math.sin(k * 91.7) * 43758.5, b = Math.sin(k * 17.3) * 12543.1;
+        const fx = a - Math.floor(a), fy = b - Math.floor(b);
+        const x = fx * W + Math.sin(t * 6 + k) * 24;
+        const y = -40 + (t * (1.2 + fy * 0.9)) * (H + 80) - fy * H * 0.5;
+        star(ctx, x, y, 8 + fy * 12, colors[k % colors.length]);
+      }
+      ctx.restore();
     }
 
     /** Sparkle burst on found hotspots. */
@@ -704,6 +887,19 @@
         const r = toScreen(e.box);
         const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
         const base = Math.max(r.w, r.h) / 2;
+        if (e.locked) {
+          // "Not yet": a grey ring that shakes its head.
+          ctx.save();
+          ctx.globalAlpha = 1 - t;
+          ctx.strokeStyle = "#e9eef5";
+          ctx.lineWidth = 6;
+          ctx.setLineDash([14, 10]);
+          ctx.beginPath();
+          ctx.ellipse(cx + Math.sin(t * 28) * 10 * (1 - t), cy, r.w / 2 + 10, r.h / 2 + 10, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
         ctx.save();
         ctx.globalAlpha = 1 - t;
         ctx.strokeStyle = "#ffd23f";
@@ -722,14 +918,36 @@
 
     /** When the child has been idle, point at something not found yet. */
     drawHint(now, toScreen, W, H, top, bottom) {
-      if (!this.exploring || this.anim || this.fling) return;
+      if (!this.exploring) return;
+      const ctx = this.ctx;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+      // The next story step always carries a soft beacon, so the thread of the story is never lost.
+      const story = this.nextStory();
+      if (story >= 0) {
+        const b = toScreen(this.boxRect(this.step.page, this.pageData.hotspots[story].box));
+        const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+        if (bx > -b.w && bx < W + b.w && by > -b.h && by < H + b.h) {
+          const grow = (now / 1400) % 1;
+          ctx.save();
+          ctx.strokeStyle = `rgba(255,255,255,${0.75 * (1 - grow)})`;
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.ellipse(bx, by, b.w / 2 + 6 + grow * 40, b.h / 2 + 6 + grow * 40, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(255,236,120,${0.55 + 0.35 * pulse})`;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(bx, by, b.w / 2 + 6, b.h / 2 + 6, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (this.anim || this.fling) return;
       if (this.pageData.guidance.hints === false) return;
       if (now - this.lastTouch < this.settings.hintSeconds * 1000) return;
       const next = this.unfoundHotspots()[0];
       if (!next) return;
-      const ctx = this.ctx;
       const r = toScreen(this.boxRect(this.step.page, next.h.box));
-      const pulse = 0.5 + 0.5 * Math.sin(now / 260);
       const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
       const onScreen = cx > 0 && cx < W && cy > top && cy < H - bottom;
       ctx.save();
@@ -822,9 +1040,16 @@
       pointers.set(e.pointerId, p);
       if (pointers.size === 1) {
         gesture = { start: p, multi: false, startDist: 0, lastDist: 0, explore: reader.exploring, samples: [] };
+        const m = reader.mapRect;
+        if (gesture.explore && m && contains(m, p.x, p.y)) {
+          // Touching the corner map moves the view there.
+          gesture.map = true;
+          reader.mapGoTo(p.x, p.y);
+          return;
+        }
         if (gesture.explore) gesture.cam = reader.takeCamera();
       }
-      if (pointers.size === 2 && gesture) {
+      if (pointers.size === 2 && gesture && !gesture.map) {
         const [a, b] = [...pointers.values()];
         gesture.multi = true;
         gesture.startDist = gesture.lastDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -839,6 +1064,7 @@
       if (!pointers.has(e.pointerId) || !gesture) return;
       const p = local(e);
       pointers.set(e.pointerId, p);
+      if (gesture.map) { if (reader.mapRect) reader.mapGoTo(p.x, p.y); return; }
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         gesture.lastDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -869,6 +1095,7 @@
       if (pointers.size > 0 || !gesture) return;
       const g = gesture;
       gesture = null;
+      if (g.map) return;
       const dx = p.x - g.start.x, dy = p.y - g.start.y;
       const isTap = !g.multi && Math.hypot(dx, dy) < 10;
 

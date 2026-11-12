@@ -23,12 +23,19 @@ There are two kinds of page, and a book can mix them.
 - Guidance is switched on per page: a **hint** (a glow, or an arrow at the screen edge) when the child has been idle, and a **Show me** button that flies to the next thing not found yet.
 - The next arrow moves on to the following page.
 
+**Big scenes.** An explore page can be a huge picture, many screens across and down. The picture is cut into tiles so only the part being looked at loads sharp, which keeps it quick on a phone.
+
+- A scene can carry a **story**: some of the things to find are numbered story steps. They open in order, the next one always shows a soft beacon, and tapping a later one too early says "Not yet! First find..." and names the one to look for. When the last step is found, stars rain down.
+- Everything else in the scene is an extra to find, in any order.
+- A **corner map** shows the whole scene and where the child is. Touching the map moves the view there.
+
 ## Sample books
 
 Both are original placeholder books drawn in code, there to exercise every feature:
 
 - **Who's at the Waterhole?** A picture book. Seven guided pages using focus areas, pans and captions, then a wide evening scene to explore with ten things to find.
 - **Captain Megawatt and the Runaway Robot.** A three-page comic with the words lettered into the art. Every stop is one panel, using the dim style.
+- **The Light in the Deep.** One big underwater scene (8192 x 6144), from the sunny surface down to the dark sea floor. A six-step story leads from Finn the clownfish to the light at the bottom, with twenty extras to find along the way.
 
 ## Movement playground (computer)
 
@@ -42,7 +49,7 @@ Both are original placeholder books drawn in code, there to exercise every featu
 - **Drag on a page** to draw a stop. Click to select, drag to move, drag a white corner to resize. Hold Shift to draw a new stop on top of an existing one.
 - Stops play in the order listed on the right. Change the order with Earlier and Later.
 - For the selected stop: the focus style, **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
-- **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its caption, and switch hints and the Show me button on or off.
+- **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its name, caption and (if it's part of the story) its story step number, and switch hints, the Show me button and the corner map on or off.
 - **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
 - **Preview** (or `P`) plays the book from the selected stop using the playground's movement settings.
 - **Save** writes `book.json` (and any new images) into a folder in Chrome or Edge. In other browsers it shows the `book.json` text to copy.
@@ -69,7 +76,8 @@ web/index.html                   Movement playground
 web/editor.html, editor.js       Book editor
 web/reader.js                    Reader engine shared by the playground and editor preview
 tools/make_books.js              Draws the sample books (node tools/make_books.js)
-tools/art/                       The drawings: kit.js and waterhole.js (picture book), comic.js and megawatt.js (comic)
+tools/art/                       The drawings: kit.js and waterhole.js (picture book), comic.js and megawatt.js (comic),
+                                 sea.js and deep.js (the big underwater scene)
 tools/art/fonts/                 Open-licence fonts used in the art (Baloo 2, Bangers, Comic Neue), with their licences
 android/                         Android app, parked for now
 ```
@@ -114,7 +122,9 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
 - `focusStyle` (book) and `style` (one stop) can be `dim`, `vignette` (soft dark edges) or `none`.
 - `to` and `panSeconds` make a pan stop. `caption` is optional.
 - A page with no stops is shown whole (good for splash pages).
-- `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints and the Show me button.
+- `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints, the Show me button and the corner map (`"map": true`).
+- A hotspot with `"story": 1` (then 2, 3 and so on) is a story step; give story steps a `"name"` so the "First find..." message can name them.
+- A big scene adds `"tiles": { "width": 8192, "height": 6144, "size": 1024, "levels": 2, "path": "page1_tiles/{z}/{x}_{y}.jpg" }` to the page. `image` is then a small overview of the whole scene, level 0 holds the full-size tiles and each level after is half the size. `tools/make_books.js` shows how the sample's tiles are cut. The editor keeps these settings but can't cut tiles itself yet.
 - Older files with `"panels": [ {x, y, w, h}, ... ]` still load; each panel becomes a stop.
 - JPEG, PNG or WebP all work. Around 2000 to 3200 pixels on the long side is plenty for a normal page; wide explore scenes can be bigger.
 

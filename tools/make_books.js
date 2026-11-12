@@ -13,7 +13,10 @@ const path = require("path");
 const { renderAll } = require("./art/render");
 
 const CONTENT = path.join(__dirname, "..", "content");
-const BOOKS = { waterhole: "./art/waterhole", "captain-megawatt": "./art/megawatt" };
+const BOOKS = { waterhole: "./art/waterhole", "captain-megawatt": "./art/megawatt", "deep-sea": "./art/deep" };
+const TILE = 1024;        // tile size for big scenes
+const TILE_LEVELS = 2;    // full size, and half size; the overview image covers anything smaller
+const OVERVIEW = 2048;    // width of a big scene's overview image
 
 function overlay(page, w, h) {
   const px = b => `x="${b.x * w}" y="${b.y * h}" width="${b.w * w}" height="${b.h * h}"`;
@@ -41,11 +44,34 @@ async function main() {
       const p = make();
       const width = p.width || book.size.width, height = p.height || book.size.height;
       const image = `page${i + 1}.jpg`;
-      jobs.push({ svg: p.svg, width, height, file: path.join(dir, image) });
-      if (process.env.CHECK_DIR) {
-        jobs.push({ svg: p.svg + overlay(p, width, height), width, height, file: path.join(process.env.CHECK_DIR, `${id}-${image}`) });
-      }
       const out = { image, stops: p.stops || [] };
+      if (p.tiled) {
+        // A big scene: a small overview image, plus tiles at full and half size.
+        const full = [0, 0, width, height];
+        jobs.push({ svg: p.svg, width: OVERVIEW, height: Math.round(OVERVIEW * height / width), view: full, file: path.join(dir, image) });
+        let count = 0;
+        for (let z = 0; z < TILE_LEVELS; z++) {
+          const f = 2 ** z, lw = Math.ceil(width / f), lh = Math.ceil(height / f);
+          for (let ty = 0; ty * TILE < lh; ty++) {
+            for (let tx = 0; tx * TILE < lw; tx++) {
+              const w = Math.min(TILE, lw - tx * TILE), h = Math.min(TILE, lh - ty * TILE);
+              jobs.push({ svg: p.svg, width: w, height: h, view: [tx * TILE * f, ty * TILE * f, w * f, h * f], quality: 84, quiet: true,
+                          file: path.join(dir, `page${i + 1}_tiles`, String(z), `${tx}_${ty}.jpg`) });
+              count++;
+            }
+          }
+        }
+        console.log(`${id} page ${i + 1}: ${count} tiles`);
+        out.tiles = { width, height, size: TILE, levels: TILE_LEVELS, path: `page${i + 1}_tiles/{z}/{x}_{y}.jpg` };
+        if (process.env.CHECK_DIR) {
+          jobs.push({ svg: p.svg + overlay(p, width, height), width: 4096, height: Math.round(4096 * height / width), view: full, file: path.join(process.env.CHECK_DIR, `${id}-${image}`) });
+        }
+      } else {
+        jobs.push({ svg: p.svg, width, height, file: path.join(dir, image) });
+        if (process.env.CHECK_DIR) {
+          jobs.push({ svg: p.svg + overlay(p, width, height), width, height, file: path.join(process.env.CHECK_DIR, `${id}-${image}`) });
+        }
+      }
       if (p.mode === "explore") Object.assign(out, { mode: "explore", hotspots: p.hotspots || [], guidance: p.guidance || {} });
       return out;
     });
