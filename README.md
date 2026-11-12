@@ -6,41 +6,62 @@ Android first (Kotlin + Jetpack Compose). iPhone (Swift) comes later and will re
 
 ## How reading works
 
-- Each page opens as a whole page, then the camera zooms to panel 1, panel 2 and so on.
-- After the last panel it pans across to the next page.
-- Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back.
-- Pinch in, or press **Whole page**, to zoom out. Pinch out, or press **Panels**, to go back in.
+- A page is read as a series of **stops**. A stop is a box on the page: a comic panel, or any area of a picture (a face, an animal, a detail). The camera moves from stop to stop.
+- By default each page opens whole first, then goes through its stops, then moves across to the next page.
+- What happens around a stop is set per book and can be changed per stop: **dim** the rest (good for comics), **soft dark edges**, or **nothing** (the camera just frames it).
+- A stop can **pan**: the camera arrives at one box, then glides to a second box (for example from a giraffe's legs up to her head).
+- A stop can have a **caption** for books where the words aren't in the artwork.
+- Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back. Pinch in, or press **Whole page**, to zoom out.
 
 ## Movement playground (computer)
 
-`web/index.html` is a browser version of the reader with a settings panel (the ⚙ button, or press `S`) for trying different camera moves: speed, feel, how pages change, slow drift on a panel, and a watch mode that moves on by itself. Settings are remembered in the browser. **Copy settings** copies them as text so the app can be set to match.
+`web/index.html` is a browser version of the reader with a settings panel (the ⚙ button, or press `S`) for trying different camera moves: speed, feel, how pages change, slow drift on a stop, focus strength, and a watch mode that moves on by itself. Settings are remembered in the browser. **Copy settings** copies them as text so the app can be set to match.
 
-To run it from the repo, start a small web server in the repo folder and open the page:
+## Book editor (computer)
+
+`web/editor.html` is where books are put together:
+
+- **Open a book** from the library, **Open folder** (a folder of page images, with or without a `book.json`), or **New book** and add page images (button, or drag the files onto the page area).
+- **Drag on a page** to draw a stop. Click to select, drag to move, drag a white corner to resize. Hold Shift to draw a new stop on top of an existing one.
+- Stops play in the order listed on the right. Change the order with Earlier and Later.
+- For the selected stop: the focus style, **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
+- **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
+- **Preview** (or `P`) plays the book from the selected stop using the playground's movement settings.
+- **Save** writes `book.json` (and any new images) into a folder in Chrome or Edge. In other browsers it shows the `book.json` text to copy.
+- Undo with Ctrl+Z. Delete removes a stop, arrow keys nudge it.
+
+## Running the playground and editor
+
+Start a small web server in the repo folder and open the pages:
 
 ```
 python3 -m http.server 8000
-# then open http://localhost:8000/web/
+# then open http://localhost:8000/web/          (playground)
+#      and http://localhost:8000/web/editor.html (editor)
 ```
 
-Opening the file straight from disk won't work, because browsers block it from reading the book files.
+Opening the files straight from disk won't work, because browsers block them from reading the book files.
 
 ## Project layout
 
 ```
 content/books/                   Books, one folder per book (shared by the web playground and the app)
 content/library.json             List of book folders, for the web playground
-web/index.html                   Movement playground for the computer
+web/index.html                   Movement playground
+web/editor.html, editor.js       Book editor
+web/reader.js                    Reader engine shared by the playground and editor preview
 android/                         Android app (open this folder in Android Studio)
   app/src/main/java/.../data/    Book format and loading
   app/src/main/java/.../ui/      Library screen, reader, camera layout
   app/src/test/                  Logic tests and screenshot tests
   app/screenshots/               Screenshots recorded by the tests
-tools/make_sample_book.py        Draws the placeholder book "Zola's Kite"
+tools/make_sample_book.py        Draws the placeholder comic "Zola's Kite" (stops = panels)
+tools/make_picture_book.py       Draws the placeholder picture book "Who's at the Waterhole?" (focus areas)
 ```
 
 ## Adding a book
 
-Make a folder in `content/books/` with the page images and a `book.json`, and add the folder name to `content/library.json`:
+The easiest way is the editor. By hand: make a folder in `content/books/` with the page images and a `book.json`, and add the folder name to `content/library.json`.
 
 ```json
 {
@@ -48,24 +69,29 @@ Make a folder in `content/books/` with the page images and a `book.json`, and ad
   "title": "My Book",
   "author": "Your name",
   "cover": "cover.webp",
+  "focusStyle": "vignette",
   "pages": [
     {
       "image": "page1.webp",
-      "panels": [
-        { "x": 0.04, "y": 0.03, "w": 0.92, "h": 0.36 },
-        { "x": 0.04, "y": 0.41, "w": 0.45, "h": 0.27 }
+      "stops": [
+        { "box": { "x": 0.38, "y": 0.43, "w": 0.31, "h": 0.43 }, "caption": "The elephant was very thirsty." },
+        { "box": { "x": 0.71, "y": 0.55, "w": 0.23, "h": 0.27 },
+          "to":  { "x": 0.75, "y": 0.11, "w": 0.19, "h": 0.27 }, "panSeconds": 4 },
+        { "box": { "x": 0.48, "y": 0.2, "w": 0.13, "h": 0.13 }, "style": "none" }
       ]
     }
   ]
 }
 ```
 
-- Panel boxes are fractions of the page image: `x` and `y` are the top-left corner, `w` and `h` the size. `0.5` means halfway across or down.
-- List panels in reading order. The camera follows that order.
-- A page with no `panels` is shown whole (good for splash pages).
-- WebP or PNG both work. Around 1200 to 2000 pixels wide per page is plenty.
+- Boxes are fractions of the page image: `x` and `y` are the top-left corner, `w` and `h` the size. `0.5` means halfway across or down.
+- `focusStyle` (book) and `style` (one stop) can be `dim`, `vignette` (soft dark edges) or `none`.
+- `to` and `panSeconds` make a pan stop. `caption` is optional.
+- A page with no stops is shown whole (good for splash pages).
+- Older files with `"panels": [ {x, y, w, h}, ... ]` still load; each panel becomes a stop.
+- WebP or PNG both work. Around 1200 to 2400 pixels on the long side is plenty.
 
-Working out panel boxes by hand is slow, so a simple tool to draw boxes on a page and export `book.json` is a sensible next step.
+**Android app status:** the app reads this format but so far only uses each stop's box with the dim style. Pans, soft edges, "none" and captions will be added to the app once the movement is settled in the playground.
 
 ## Building
 

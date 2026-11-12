@@ -1,0 +1,91 @@
+{
+  "id": "waterhole",
+  "title": "Who's at the Waterhole?",
+  "author": "Sample book",
+  "cover": "cover.webp",
+  "focusStyle": "vignette",
+  "pages": [
+    {
+      "image": "page1.webp",
+      "stops": [
+        {
+          "box": {
+            "x": 0.375,
+            "y": 0.4333,
+            "w": 0.3125,
+            "h": 0.4333
+          },
+          "caption": "The elephant was very thirsty."
+        },
+        {
+          "box": {
+            "x": 0.7083,
+            "y": 0.5467,
+            "w": 0.2292,
+            "h": 0.2667
+          },
+          "to": {
+            "x": 0.75,
+            "y": 0.1067,
+            "w": 0.1875,
+            "h": 0.2667
+          },
+          "panSeconds": 4,
+          "caption": "The giraffe looked up, up, up..."
+        },
+        {
+          "box": {
+            "x": 0.025,
+            "y": 0.4333,
+            "w": 0.35,
+            "h": 0.4267
+          },
+          "caption": "The zebras waited for their turn."
+        },
+        {
+          "box": {
+            "x": 0.4792,
+            "y": 0.2,
+            "w": 0.125,
+            "h": 0.1333
+          },
+          "style": "none",
+          "caption": "And a little bird watched them all."
+        }
+      ]
+    },
+    {
+      "image": "page2.webp",
+      "stops": [
+        {
+          "box": {
+            "x": 0.2708,
+            "y": 0.6667,
+            "w": 0.2292,
+            "h": 0.1667
+          },
+          "caption": "Something was hiding in the water."
+        },
+        {
+          "box": {
+            "x": 0.6458,
+            "y": 0.7,
+            "w": 0.2292,
+            "h": 0.2067
+          },
+          "caption": "The meerkats stood very still."
+        },
+        {
+          "box": {
+            "x": 0.7708,
+            "y": 0.18,
+            "w": 0.1167,
+            "h": 0.1933
+          },
+          "style": "dim",
+          "caption": "\"Hoo!\" said the owl. \"Goodnight!\""
+        }
+      ]
+    }
+  ]
+}

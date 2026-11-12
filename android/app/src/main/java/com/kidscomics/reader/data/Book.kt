@@ -45,9 +45,17 @@ object BookRepository {
         val pagesJson = o.getJSONArray("pages")
         val pages = (0 until pagesJson.length()).map { i ->
             val p = pagesJson.getJSONObject(i)
-            val panelsJson = p.optJSONArray("panels")
-            val panels = if (panelsJson == null) emptyList() else (0 until panelsJson.length()).map { j ->
-                val b = panelsJson.getJSONObject(j)
+            // Current format: "stops", each with a "box". Older files: "panels", plain boxes.
+            // The app only uses each stop's box for now; pans, styles and captions are web-only until
+            // the movement is settled in the playground.
+            val stops = p.optJSONArray("stops")
+            val legacy = p.optJSONArray("panels")
+            val boxes = when {
+                stops != null -> (0 until stops.length()).map { stops.getJSONObject(it).getJSONObject("box") }
+                legacy != null -> (0 until legacy.length()).map { legacy.getJSONObject(it) }
+                else -> emptyList()
+            }
+            val panels = boxes.map { b ->
                 Panel(
                     x = b.getDouble("x").toFloat(),
                     y = b.getDouble("y").toFloat(),

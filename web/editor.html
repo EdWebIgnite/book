@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comic Reader Editor</title>
+<link rel="stylesheet" href="reader.css">
+<style>
+  body { display: grid; grid-template-rows: auto 1fr; grid-template-columns: 230px 1fr 300px; height: 100vh; background: #f4f1ec; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #fff;
+           border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; color: var(--orange); }
+  header .spacer { flex: 1; }
+  header .status { font-size: 13px; color: #666; }
+  .btn { border: 1px solid #ccc; background: #f7f7f7; border-radius: 8px; padding: 7px 12px; font-size: 14px; }
+  .btn:hover { background: #eee; }
+  .btn.primary { background: var(--orange); color: #fff; border-color: var(--orange); }
+  .btn.small { padding: 3px 8px; font-size: 12px; }
+  select, input[type=text], textarea { font: inherit; font-size: 14px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 6px; width: 100%; }
+  label.field { display: block; font-size: 12px; font-weight: 600; color: #555; margin: 8px 0 3px; }
+
+  #left { overflow: auto; padding: 10px; border-right: 1px solid #ddd; background: #faf8f5; }
+  #left h2, #right h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--orange); margin: 14px 0 6px; }
+  .page-item { position: relative; border: 2px solid transparent; border-radius: 8px; margin-bottom: 8px; background: #fff; cursor: pointer; padding: 4px; }
+  .page-item.active { border-color: var(--orange); }
+  .page-item img { width: 100%; display: block; border-radius: 4px; }
+  .page-item .meta { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 4px; }
+  .page-item .meta span { flex: 1; }
+  .page-item .meta button { border: 0; background: #eee; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+  .cover-tag { position: absolute; top: 8px; left: 8px; background: var(--orange); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+
+  #center { position: relative; overflow: hidden; background: #2b2a33; }
+  #editCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ddd; text-align: center; gap: 12px; padding: 20px; }
+  #empty p { max-width: 460px; line-height: 1.5; margin: 0; }
+  #viewbar { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 8px; align-items: center; color: #ddd; font-size: 13px; }
+  #viewbar select { width: auto; background: #3a3944; color: #fff; border-color: #555; }
+  .drop-hint { position: absolute; inset: 10px; border: 3px dashed var(--orange); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22px; background: rgba(232,115,12,.15); pointer-events: none; }
+
+  #right { overflow: auto; padding: 10px 12px; border-left: 1px solid #ddd; background: #fff; }
+  .stop-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid transparent; }
+  .stop-row:hover { background: #f6f2ec; }
+  .stop-row.active { border-color: var(--orange); background: #fff4e8; }
+  .stop-row .num { width: 22px; height: 22px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none; }
+  .stop-row .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #444; }
+  .help { font-size: 12px; color: #777; line-height: 1.5; }
+  .inline { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 10px 0 4px; }
+  .check input { width: auto; }
+  output { font-size: 12px; color: #555; }
+  #msg { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px;
+         border-radius: 10px; font-size: 14px; max-width: 90vw; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+  #jsonBox { position: fixed; inset: 10% 15%; background: #fff; z-index: 40; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  #jsonBox textarea { flex: 1; font-family: ui-monospace, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Book editor</h1>
+  <select id="openSelect" style="width:auto" title="Open a book">
+    <option value="">Open a book...</option>
+  </select>
+  <button class="btn" id="openFolder" title="Open a folder of page images (and book.json if it has one)">Open folder</button>
+  <button class="btn" id="newBook">New book</button>
+  <span class="spacer"></span>
+  <span class="status" id="status"></span>
+  <button class="btn" id="undo" title="Undo (Ctrl+Z)">Undo</button>
+  <button class="btn" id="previewBtn" title="Preview (P)">▶ Preview</button>
+  <button class="btn" id="showJson">Show book.json</button>
+  <button class="btn primary" id="save" title="Save (Ctrl+S)">Save</button>
+  <a class="btn" href="index.html" style="text-decoration:none;color:inherit">Playground</a>
+</header>
+
+<aside id="left">
+  <h2>Book</h2>
+  <label class="field" for="fTitle">Title</label>
+  <input type="text" id="fTitle">
+  <label class="field" for="fId">Folder name (id)</label>
+  <input type="text" id="fId" placeholder="made from the title">
+  <label class="field" for="fAuthor">Author</label>
+  <input type="text" id="fAuthor">
+  <label class="field" for="fStyle">Focus style for this book</label>
+  <select id="fStyle">
+    <option value="dim">Dim the rest (comics)</option>
+    <option value="vignette">Soft dark edges</option>
+    <option value="none">Nothing, just frame it</option>
+  </select>
+  <h2>Pages</h2>
+  <div id="pages"></div>
+  <button class="btn" id="addPages" style="width:100%">+ Add page images</button>
+  <input type="file" id="fileInput" accept="image/*" multiple hidden>
+  <p class="help">You can also drag image files onto the page area.</p>
+</aside>
+
+<main id="center">
+  <canvas id="editCanvas"></canvas>
+  <div id="empty">
+    <p><b>Open a book</b> from the menu above, or start a <b>new book</b> and add your page images.</p>
+    <p>Then drag on a page to draw a stop. Stops play in order. Drag a box to move it, drag a corner to resize.</p>
+  </div>
+  <div id="viewbar" class="hidden">
+    Show screen size:
+    <select id="device">
+      <option value="">Off</option>
+      <option value="0.5636" selected>Phone, upright</option>
+      <option value="3.546">Phone, sideways</option>
+      <option value="0.7977">Tablet, upright</option>
+      <option value="1.7665">Tablet, sideways</option>
+      <option value="1.925">Computer</option>
+    </select>
+  </div>
+  <div class="drop-hint hidden" id="dropHint">Drop page images to add them</div>
+</main>
+
+<aside id="right">
+  <h2 id="stopsTitle">Stops</h2>
+  <div id="stopList"></div>
+  <div id="inspector"></div>
+</aside>
+
+<div id="preview" class="reader hidden">
+  <canvas id="previewCanvas"></canvas>
+  <div class="bar top">
+    <button class="round" id="pvClose" title="Back to editing (Esc)">←</button>
+    <span class="title">Preview</span>
+  </div>
+  <div class="caption hidden" id="pvCaption"></div>
+  <div class="bar bottom">
+    <button class="arrow" id="pvPrev">‹</button>
+    <div class="mid">
+      <button class="pill" id="pvWhole">Whole page</button>
+      <div class="pageno" id="pvPage"></div>
+    </div>
+    <button class="arrow" id="pvNext">›</button>
+  </div>
+  <div class="end hidden" id="pvEnd">
+    <div class="box">
+      <h2>The End</h2>
+      <button class="primary" id="pvAgain">Play again</button>
+      <button id="pvBack">Back to editing</button>
+    </div>
+  </div>
+</div>
+
+<div id="jsonBox" class="hidden">
+  <b>book.json</b>
+  <textarea id="jsonText" readonly></textarea>
+  <div class="inline">
+    <button class="btn primary" id="copyJson">Copy</button>
+    <button class="btn" id="closeJson">Close</button>
+  </div>
+  <p class="help">Put this file in <code>content/books/<span id="jsonId"></span>/</code> next to the page images, and add the folder name to <code>content/library.json</code>.</p>
+</div>
+
+<div id="msg" class="hidden"></div>
+
+<script src="reader.js"></script>
+<script src="content.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>

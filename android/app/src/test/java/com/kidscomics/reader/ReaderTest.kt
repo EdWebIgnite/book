@@ -56,6 +56,20 @@ class ReaderTest {
     }
 
     @Test
+    fun readsStopsAndOldPanelsFormat() {
+        val stops = BookRepository.parse(
+            """{"id":"a","title":"A","pages":[{"image":"p.webp","stops":[{"box":{"x":0.1,"y":0.2,"w":0.3,"h":0.4},"caption":"Hi"}]}]}""",
+            "books/a",
+        )
+        val panels = BookRepository.parse(
+            """{"id":"b","title":"B","pages":[{"image":"p.webp","panels":[{"x":0.1,"y":0.2,"w":0.3,"h":0.4}]}]}""",
+            "books/b",
+        )
+        assertEquals(stops.pages[0].panels, panels.pages[0].panels)
+        assertEquals(0.3f, stops.pages[0].panels[0].w)
+    }
+
+    @Test
     fun screenshots() {
         rule.setContent { LibraryScreen(BookRepository.loadAll(context), onOpen = {}) }
         settle()

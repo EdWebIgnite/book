@@ -333,15 +333,16 @@ def main():
         img.save(OUT / name, quality=85)
         pages.append({
             "image": name,
-            "panels": [
-                {"x": round(x0 / W, 4), "y": round(y0 / H, 4),
-                 "w": round((x1 - x0) / W, 4), "h": round((y1 - y0) / H, 4)}
+            # Comic book: each stop is exactly one panel.
+            "stops": [
+                {"box": {"x": round(x0 / W, 4), "y": round(y0 / H, 4),
+                         "w": round((x1 - x0) / W, 4), "h": round((y1 - y0) / H, 4)}}
                 for x0, y0, x1, y1 in boxes
             ],
         })
 
     book = {"id": "zolas-kite", "title": "Zola's Kite", "author": "Sample book",
-            "cover": "cover.webp", "pages": pages}
+            "cover": "cover.webp", "focusStyle": "dim", "pages": pages}
     (OUT / "book.json").write_text(json.dumps(book, indent=2))
     # The web playground can't list folders, so it reads this list of books.
     ids = sorted(p.name for p in (CONTENT / "books").iterdir() if (p / "book.json").exists())
