@@ -11,11 +11,26 @@ Android first (Kotlin + Jetpack Compose). iPhone (Swift) comes later and will re
 - Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back.
 - Pinch in, or press **Whole page**, to zoom out. Pinch out, or press **Panels**, to go back in.
 
+## Movement playground (computer)
+
+`web/index.html` is a browser version of the reader with a settings panel (the ⚙ button, or press `S`) for trying different camera moves: speed, feel, how pages change, slow drift on a panel, and a watch mode that moves on by itself. Settings are remembered in the browser. **Copy settings** copies them as text so the app can be set to match.
+
+To run it from the repo, start a small web server in the repo folder and open the page:
+
+```
+python3 -m http.server 8000
+# then open http://localhost:8000/web/
+```
+
+Opening the file straight from disk won't work, because browsers block it from reading the book files.
+
 ## Project layout
 
 ```
+content/books/                   Books, one folder per book (shared by the web playground and the app)
+content/library.json             List of book folders, for the web playground
+web/index.html                   Movement playground for the computer
 android/                         Android app (open this folder in Android Studio)
-  app/src/main/assets/books/     Bundled books, one folder per book
   app/src/main/java/.../data/    Book format and loading
   app/src/main/java/.../ui/      Library screen, reader, camera layout
   app/src/test/                  Logic tests and screenshot tests
@@ -25,7 +40,7 @@ tools/make_sample_book.py        Draws the placeholder book "Zola's Kite"
 
 ## Adding a book
 
-Make a folder in `android/app/src/main/assets/books/` with the page images and a `book.json`:
+Make a folder in `content/books/` with the page images and a `book.json`, and add the folder name to `content/library.json`:
 
 ```json
 {

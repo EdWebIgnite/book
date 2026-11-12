@@ -34,6 +34,9 @@ android {
         compose = true
     }
 
+    // Books live in /content so the web playground and the app share one copy.
+    sourceSets["main"].assets.srcDir("../../content")
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }

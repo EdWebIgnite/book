@@ -11,7 +11,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-OUT = Path(__file__).resolve().parent.parent / "android/app/src/main/assets/books/zolas-kite"
+CONTENT = Path(__file__).resolve().parent.parent / "content"
+OUT = CONTENT / "books/zolas-kite"
 W, H = 1200, 1800
 MARGIN, GUTTER = 50, 30
 BORDER = 8
@@ -342,6 +343,9 @@ def main():
     book = {"id": "zolas-kite", "title": "Zola's Kite", "author": "Sample book",
             "cover": "cover.webp", "pages": pages}
     (OUT / "book.json").write_text(json.dumps(book, indent=2))
+    # The web playground can't list folders, so it reads this list of books.
+    ids = sorted(p.name for p in (CONTENT / "books").iterdir() if (p / "book.json").exists())
+    (CONTENT / "library.json").write_text(json.dumps({"books": ids}, indent=2))
     print(f"Wrote {len(pages)} pages to {OUT}")
 
 

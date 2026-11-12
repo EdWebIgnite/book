@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comic Reader Playground</title>
+<style>
+  :root {
+    --orange: #e8730c;
+    --cream: #fff7ec;
+    --backdrop: #1c1b22;
+    --ink: #222;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--cream); color: var(--ink); overflow: hidden; }
+  button { font: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  /* Library */
+  #library { height: 100%; overflow: auto; padding: 24px; }
+  #library h1 { color: var(--orange); font-size: 40px; font-weight: 900; margin: 0 0 4px; }
+  #library .hint { margin: 0 0 20px; color: #6b5b4b; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px; max-width: 1100px; }
+  .card { background: #fff; border: 0; border-radius: 16px; padding: 0; overflow: hidden; text-align: left;
+          box-shadow: 0 3px 10px rgba(0,0,0,.12); transition: transform .15s; }
+  .card:hover { transform: translateY(-3px); }
+  .card img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; display: block; background: #eee; }
+  .card span { display: block; padding: 10px 12px; font-weight: 700; font-size: 17px; }
+
+  /* Reader */
+  #reader { position: fixed; inset: 0; background: var(--backdrop); user-select: none; -webkit-user-select: none; }
+  #stage { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  .bar { position: absolute; left: 0; right: 0; display: flex; align-items: center; padding: 8px 12px; pointer-events: none; }
+  .bar > * { pointer-events: auto; }
+  .top { top: 0; gap: 12px; }
+  .top #title { color: #fff; font-weight: 700; font-size: 20px; flex: 1; }
+  .bottom { bottom: 0; justify-content: space-between; padding-bottom: 12px; }
+  .round { width: 48px; height: 48px; border-radius: 50%; border: 0; background: #ece4f6; font-size: 22px; }
+  .arrow { width: 64px; height: 64px; border-radius: 50%; border: 0; background: rgba(255,255,255,.15); color: #fff; font-size: 40px; line-height: 1; }
+  .arrow:disabled { opacity: .3; cursor: default; }
+  .mid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .pill { border: 0; border-radius: 999px; padding: 10px 22px; background: #ece4f6; font-size: 16px; }
+  #pageno { color: rgba(255,255,255,.8); font-size: 13px; }
+
+  #end { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+  #end .box { background: #fff; border-radius: 24px; padding: 32px 40px; text-align: center; display: flex; flex-direction: column; gap: 12px; }
+  #end h2 { font-size: 40px; font-weight: 900; margin: 0 0 12px; }
+  #end button { border: 0; border-radius: 999px; padding: 12px 24px; font-size: 18px; }
+  #end .primary { background: var(--orange); color: #fff; }
+
+  /* Settings */
+  #settings { position: fixed; top: 0; right: 0; bottom: 0; width: min(360px, 92vw); background: #fff; z-index: 10;
+              box-shadow: -4px 0 20px rgba(0,0,0,.3); overflow: auto; padding: 16px 18px 24px; }
+  #settings h2 { margin: 0 0 4px; font-size: 22px; }
+  #settings .sub { margin: 0 0 14px; color: #666; font-size: 13px; }
+  #settings h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--orange); }
+  .row { margin: 10px 0; }
+  .row label { display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; }
+  .row label output { font-weight: 400; color: #555; }
+  .row input[type=range], .row select { width: 100%; margin-top: 4px; }
+  .row .help { font-size: 12px; color: #777; margin-top: 2px; }
+  .row.check label { justify-content: flex-start; gap: 8px; align-items: center; }
+  .actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .actions button { border: 1px solid #ccc; background: #f6f6f6; border-radius: 8px; padding: 8px 12px; }
+  #copied { font-size: 13px; color: #2a7; }
+  .close { position: absolute; top: 10px; right: 10px; border: 0; background: none; font-size: 24px; }
+  kbd { background: #eee; border-radius: 4px; padding: 0 5px; font-size: 12px; border: 1px solid #ccc; }
+  .keys { font-size: 12px; color: #555; line-height: 1.8; margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<div id="library">
+  <h1>My Books</h1>
+  <p class="hint">Movement playground. Pick a book, then press the ⚙ button (or <kbd>S</kbd>) to change how the camera moves.</p>
+  <div id="grid"></div>
+</div>
+
+<div id="reader" class="hidden">
+  <canvas id="stage"></canvas>
+  <div class="bar top">
+    <button class="round" id="back" title="Back to books (Esc)">←</button>
+    <span id="title"></span>
+    <button class="round" id="gear" title="Movement settings (S)">⚙</button>
+  </div>
+  <div class="bar bottom">
+    <button class="arrow" id="prev" title="Back (←)">‹</button>
+    <div class="mid">
+      <button class="pill" id="whole" title="Whole page (W)">Whole page</button>
+      <div id="pageno"></div>
+    </div>
+    <button class="arrow" id="next" title="Next (→ or Space)">›</button>
+  </div>
+  <div id="end" class="hidden">
+    <div class="box">
+      <h2>The End</h2>
+      <button class="primary" id="again">Read again</button>
+      <button id="endBack">Back to books</button>
+    </div>
+  </div>
+</div>
+
+<aside id="settings" class="hidden">
+  <button class="close" id="closeSettings" title="Close (S)">×</button>
+  <h2>Movement</h2>
+  <p class="sub">Changes apply straight away. When you like a setup, press Copy settings and send it to me so the app can match.</p>
+  <div id="controls"></div>
+  <div class="actions">
+    <button id="replay">Replay this move</button>
+    <button id="reset">Reset</button>
+    <button id="copy">Copy settings</button>
+    <span id="copied"></span>
+  </div>
+  <div class="keys">
+    <kbd>→</kbd> <kbd>Space</kbd> next &nbsp; <kbd>←</kbd> back &nbsp; <kbd>W</kbd> whole page<br>
+    Mouse wheel moves through panels. Trackpad pinch or <kbd>Ctrl</kbd>+wheel zooms out and in.<br>
+    On a touch screen: tap right or left, swipe, pinch.
+  </div>
+</aside>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+const DEFAULTS = {
+  moveMs: 650,
+  easing: "easeInOutCubic",
+  zoomPath: "smooth",
+  pageTurn: "fly",
+  arcAmount: 0.6,
+  panelPadding: 0.025,
+  dim: 0.72,
+  wholePageFirst: true,
+  wholePageLast: false,
+  drift: "off",
+  driftAmount: 0.06,
+  driftSeconds: 6,
+  autoPlay: false,
+  autoSeconds: 4,
+};
+
+// What the settings panel shows. Each entry becomes one control.
+const CONTROLS = [
+  { section: "Camera move" },
+  { key: "moveMs", label: "Move speed", type: "range", min: 150, max: 2500, step: 50, unit: " ms",
+    help: "How long each move takes. Lower is snappier." },
+  { key: "easing", label: "Feel", type: "select", options: {
+      easeInOutCubic: "Smooth start and stop",
+      easeOutCubic: "Quick start, gentle stop",
+      easeInOutSine: "Soft and floaty",
+      easeOutBack: "Small overshoot (bouncy)",
+      spring: "Spring (wobbly)",
+      linear: "Robot (constant speed)" } },
+  { key: "zoomPath", label: "Zoom math", type: "select", options: {
+      smooth: "Even zoom speed",
+      straight: "Straight line between boxes" },
+    help: "Even zoom speed looks more natural on big zooms." },
+
+  { section: "Between pages" },
+  { key: "pageTurn", label: "Page change", type: "select", options: {
+      fly: "Fly straight across",
+      zoomOut: "Zoom out, across, then in",
+      cut: "Jump cut" } },
+  { key: "arcAmount", label: "How far to zoom out", type: "range", min: 0, max: 1.5, step: 0.05,
+    showIf: s => s.pageTurn === "zoomOut" },
+
+  { section: "Reading order" },
+  { key: "wholePageFirst", label: "Show whole page before its panels", type: "check" },
+  { key: "wholePageLast", label: "Show whole page again after its panels", type: "check" },
+
+  { section: "Panel focus" },
+  { key: "panelPadding", label: "Space around panel", type: "range", min: 0, max: 0.12, step: 0.005 },
+  { key: "dim", label: "Dim the rest of the page", type: "range", min: 0, max: 1, step: 0.02 },
+
+  { section: "Movement while resting on a panel" },
+  { key: "drift", label: "Drift", type: "select", options: {
+      off: "Off (still)",
+      zoomIn: "Slow push in",
+      pan: "Slow pan sideways" },
+    help: "Keeps still art feeling alive while a child looks at a panel." },
+  { key: "driftAmount", label: "Drift amount", type: "range", min: 0.01, max: 0.2, step: 0.01, showIf: s => s.drift !== "off" },
+  { key: "driftSeconds", label: "Drift time", type: "range", min: 2, max: 15, step: 0.5, unit: " s", showIf: s => s.drift !== "off" },
+
+  { section: "Watch mode" },
+  { key: "autoPlay", label: "Move on by itself", type: "check" },
+  { key: "autoSeconds", label: "Seconds per panel", type: "range", min: 1, max: 12, step: 0.5, unit: " s", showIf: s => s.autoPlay },
+];
+
+const STORE_KEY = "comic-reader-movement";
+let settings = { ...DEFAULTS };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); } catch (_) {}
+function saveSettings() { try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (_) {} }
+
+// ---------------------------------------------------------------------------
+// Maths
+// ---------------------------------------------------------------------------
+
+const EASINGS = {
+  linear: t => t,
+  easeInOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  easeOutCubic: t => 1 - Math.pow(1 - t, 3),
+  easeInOutSine: t => -(Math.cos(Math.PI * t) - 1) / 2,
+  easeOutBack: t => { const c1 = 1.4, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+  spring: t => t >= 1 ? 1 : 1 - Math.exp(-6 * t) * Math.cos(11 * t),
+};
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const rect = (x, y, w, h) => ({ x, y, w, h });
+const inflate = (r, d) => rect(r.x - d, r.y - d, r.w + 2 * d, r.h + 2 * d);
+const union = (a, b) => {
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return rect(x, y, Math.max(a.x + a.w, b.x + b.w) - x, Math.max(a.y + a.h, b.y + b.h) - y);
+};
+
+/** Blend two rectangles. "Even zoom" blends sizes on a log scale so big zooms don't rush at one end. */
+function mixRect(a, b, t, smooth) {
+  if (!smooth) return rect(lerp(a.x, b.x, t), lerp(a.y, b.y, t), lerp(a.w, b.w, t), lerp(a.h, b.h, t));
+  const cx = lerp(a.x + a.w / 2, b.x + b.w / 2, t);
+  const cy = lerp(a.y + a.h / 2, b.y + b.h / 2, t);
+  const w = Math.exp(lerp(Math.log(a.w), Math.log(b.w), t));
+  const h = Math.exp(lerp(Math.log(a.h), Math.log(b.h), t));
+  return rect(cx - w / 2, cy - h / 2, w, h);
+}
+
+function scaleAround(r, f, dx = 0) {
+  const cx = r.x + r.w / 2 + dx, cy = r.y + r.h / 2;
+  return rect(cx - r.w * f / 2, cy - r.h * f / 2, r.w * f, r.h * f);
+}
+
+// ---------------------------------------------------------------------------
+// Loading books
+// ---------------------------------------------------------------------------
+
+// Works both from the repo (web/index.html next to ../content) and when hosted with content/ alongside.
+const CONTENT_BASES = ["content/", "../content/"];
+let contentBase = null;
+
+async function fetchJson(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(res.status + " " + path);
+  return res.json();
+}
+
+async function findContent() {
+  for (const base of CONTENT_BASES) {
+    try { const lib = await fetchJson(base + "library.json"); contentBase = base; return lib; } catch (_) {}
+  }
+  throw new Error("Couldn't find content/library.json");
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Image failed: " + src));
+    img.src = src;
+  });
+}
+
+async function loadBook(id) {
+  const dir = contentBase + "books/" + id + "/";
+  const book = await fetchJson(dir + "book.json");
+  book.dir = dir;
+  book.images = await Promise.all(book.pages.map(p => loadImage(dir + p.image)));
+  // Lay pages out side by side: each page is 1.0 tall and as wide as its aspect ratio.
+  const GAP = 0.12;
+  let x = 0;
+  book.pageRects = book.images.map(img => {
+    const r = rect(x, 0, img.naturalWidth / img.naturalHeight, 1);
+    x += r.w + GAP;
+    return r;
+  });
+  return book;
+}
+
+// ---------------------------------------------------------------------------
+// Reader state
+// ---------------------------------------------------------------------------
+
+const $ = id => document.getElementById(id);
+const canvas = $("stage");
+const ctx = canvas.getContext("2d");
+
+let book = null;
+let steps = [];
+let stepIndex = 0;
+let overview = false;
+let finished = false;
+
+// The camera, the bright focus box and the dim level are all animated together.
+let shown = { cam: rect(0, 0, 1, 1), focus: rect(0, 0, 1, 1), dim: 0 };
+let anim = null;        // current move, or null when resting
+let restSince = 0;      // when the last move finished, for drift and watch mode
+
+function buildSteps() {
+  const out = [];
+  book.pages.forEach((page, p) => {
+    const n = (page.panels || []).length;
+    if (n === 0) { out.push({ page: p, panel: -1 }); return; }
+    if (settings.wholePageFirst) out.push({ page: p, panel: -1 });
+    for (let i = 0; i < n; i++) out.push({ page: p, panel: i });
+    if (settings.wholePageLast) out.push({ page: p, panel: -1, end: true });
+  });
+  return out;
+}
+
+function panelRect(p, i) {
+  const pr = book.pageRects[p], b = book.pages[p].panels[i];
+  return rect(pr.x + b.x * pr.w, pr.y + b.y * pr.h, b.w * pr.w, b.h * pr.h);
+}
+
+function targetFor(step, isOverview) {
+  const page = book.pageRects[step.page];
+  if (isOverview || step.panel < 0) {
+    // Lighter dim on whole pages: enough to set the page apart from its neighbours on wide screens.
+    return { cam: inflate(page, 0.03), focus: page, dim: settings.dim * 0.6 };
+  }
+  const focus = panelRect(step.page, step.panel);
+  return { cam: inflate(focus, settings.panelPadding), focus, dim: settings.dim };
+}
+
+function currentTarget() { return targetFor(steps[stepIndex], overview); }
+
+/** Start a move from wherever the camera is now (including any drift) to the current step. */
+function moveTo(previousPage, instant = false) {
+  const to = currentTarget();
+  const from = { cam: displayedCam(performance.now()), focus: shown.focus, dim: shown.dim };
+  const pageChanged = previousPage !== undefined && previousPage !== steps[stepIndex].page;
+  let ms = settings.moveMs;
+  if (instant || (pageChanged && settings.pageTurn === "cut")) ms = 0;
+  anim = { from, to, start: performance.now(), ms, arc: pageChanged && settings.pageTurn === "zoomOut" };
+  if (ms === 0) finishMove();
+  updateUi();
+}
+
+function finishMove() {
+  shown = { ...anim.to };
+  anim = null;
+  restSince = performance.now();
+}
+
+function go(delta) {
+  if (finished) return;
+  const before = steps[stepIndex].page;
+  const wasOverview = overview;
+  overview = false;
+  const next = stepIndex + delta;
+  if (next >= steps.length) { finished = true; updateUi(); return; }
+  if (next < 0) { if (wasOverview) moveTo(before); return; }
+  stepIndex = next;
+  moveTo(before);
+}
+
+function toggleOverview() {
+  const step = steps[stepIndex];
+  if (step.panel < 0 && !overview) { go(1); return; }
+  overview = !overview;
+  moveTo(step.page);
+}
+
+function setOverview(on) { if (overview !== on) toggleOverview(); }
+
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+
+/** The camera including any resting drift. */
+function displayedCam(now) {
+  if (anim) return shown.cam;
+  const step = steps[stepIndex];
+  if (settings.drift === "off" || overview || !step || step.panel < 0) return shown.cam;
+  const p = EASINGS.easeInOutSine(Math.min(1, (now - restSince) / (settings.driftSeconds * 1000)));
+  const a = settings.driftAmount;
+  if (settings.drift === "zoomIn") return scaleAround(shown.cam, 1 - a * p);
+  return scaleAround(shown.cam, 1, shown.cam.w * a * p);
+}
+
+function tick(now) {
+  if (anim) {
+    const raw = anim.ms === 0 ? 1 : Math.min(1, (now - anim.start) / anim.ms);
+    const e = (EASINGS[settings.easing] || EASINGS.easeInOutCubic)(raw);
+    const smooth = settings.zoomPath === "smooth";
+    let cam = mixRect(anim.from.cam, anim.to.cam, e, smooth);
+    if (anim.arc) {
+      // Swell the camera mid-move so both pages fit, then settle in.
+      const u = inflate(union(anim.from.cam, anim.to.cam), 0.05);
+      const mid = mixRect(anim.from.cam, anim.to.cam, 0.5, smooth);
+      const need = Math.max(u.w / mid.w, u.h / mid.h) - 1;
+      const swell = 1 + Math.max(0, need) * settings.arcAmount * Math.sin(Math.PI * Math.min(1, Math.max(0, e)));
+      cam = scaleAround(cam, swell);
+    }
+    shown = {
+      cam,
+      focus: mixRect(anim.from.focus, anim.to.focus, Math.min(1, e), false),
+      dim: lerp(anim.from.dim, anim.to.dim, raw),
+    };
+    if (raw >= 1) finishMove();
+  } else if (settings.autoPlay && !finished && !$("reader").classList.contains("hidden")
+             && now - restSince > settings.autoSeconds * 1000) {
+    go(1);
+  }
+  draw(now);
+  requestAnimationFrame(tick);
+}
+
+function draw(now) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#1c1b22";
+  ctx.fillRect(0, 0, W, H);
+  if (!book) return;
+
+  // Leave room for the controls, same as the app.
+  const top = 64, bottom = 88;
+  const viewH = Math.max(1, H - top - bottom);
+  const cam = displayedCam(now);
+  const s = Math.min(W / cam.w, viewH / cam.h);
+  const ox = W / 2 - (cam.x + cam.w / 2) * s;
+  const oy = top + viewH / 2 - (cam.y + cam.h / 2) * s;
+  const toScreen = r => rect(r.x * s + ox, r.y * s + oy, r.w * s, r.h * s);
+
+  ctx.imageSmoothingQuality = "high";
+  book.pageRects.forEach((pr, i) => {
+    const r = toScreen(pr);
+    if (r.x + r.w < 0 || r.x > W) return;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.drawImage(book.images[i], r.x, r.y, r.w, r.h);
+  });
+
+  if (shown.dim > 0.01) {
+    const h = toScreen(shown.focus);
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    if (ctx.roundRect) ctx.roundRect(h.x, h.y, h.w, h.h, 6); else ctx.rect(h.x, h.y, h.w, h.h);
+    ctx.fillStyle = `rgba(0,0,0,${shown.dim})`;
+    ctx.fill("evenodd");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+
+function updateUi() {
+  if (!book) return;
+  const step = steps[stepIndex];
+  $("pageno").textContent = `Page ${step.page + 1} of ${book.pages.length}`;
+  $("whole").textContent = (overview || step.panel < 0) ? "Panels" : "Whole page";
+  $("prev").disabled = stepIndex === 0 && !overview;
+  $("end").classList.toggle("hidden", !finished);
+}
+
+async function openBook(id) {
+  book = await loadBook(id);
+  steps = buildSteps();
+  stepIndex = 0;
+  overview = false;
+  finished = false;
+  shown = targetFor(steps[0], false);
+  anim = null;
+  restSince = performance.now();
+  $("title").textContent = book.title;
+  $("library").classList.add("hidden");
+  $("reader").classList.remove("hidden");
+  updateUi();
+}
+
+function closeBook() {
+  $("reader").classList.add("hidden");
+  $("library").classList.remove("hidden");
+  book = null;
+}
+
+async function showLibrary() {
+  const grid = $("grid");
+  try {
+    const lib = await findContent();
+    for (const id of lib.books) {
+      const b = await fetchJson(contentBase + "books/" + id + "/book.json");
+      const card = document.createElement("button");
+      card.className = "card";
+      const img = document.createElement("img");
+      img.src = contentBase + "books/" + id + "/" + (b.cover || b.pages[0].image);
+      img.alt = "";
+      const name = document.createElement("span");
+      name.textContent = b.title;
+      card.append(img, name);
+      card.onclick = () => openBook(id);
+      grid.append(card);
+    }
+  } catch (e) {
+    grid.textContent = "Couldn't load books: " + e.message +
+      ". If you opened this file straight from disk, run a local web server instead (see README).";
+  }
+}
+
+// --- settings panel ---
+
+function renderControls() {
+  const root = $("controls");
+  root.innerHTML = "";
+  for (const c of CONTROLS) {
+    if (c.section) { const h = document.createElement("h3"); h.textContent = c.section; root.append(h); continue; }
+    if (c.showIf && !c.showIf(settings)) continue;
+    const row = document.createElement("div");
+    row.className = "row" + (c.type === "check" ? " check" : "");
+    const label = document.createElement("label");
+    let input;
+    if (c.type === "range") {
+      input = document.createElement("input");
+      Object.assign(input, { type: "range", min: c.min, max: c.max, step: c.step, value: settings[c.key] });
+      const out = document.createElement("output");
+      const show = () => out.textContent = (+input.value) + (c.unit || "");
+      show();
+      input.oninput = () => { settings[c.key] = +input.value; show(); changed(c.key); };
+      input.onchange = () => input.blur(); // hand the arrow keys back to the reader
+      label.append(c.label, out);
+      row.append(label, input);
+    } else if (c.type === "select") {
+      input = document.createElement("select");
+      for (const [v, text] of Object.entries(c.options)) input.add(new Option(text, v, false, settings[c.key] === v));
+      input.onchange = () => { settings[c.key] = input.value; changed(c.key); renderControls(); };
+      label.append(c.label);
+      row.append(label, input);
+    } else {
+      input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = !!settings[c.key];
+      input.onchange = () => { settings[c.key] = input.checked; changed(c.key); renderControls(); };
+      label.append(input, c.label);
+      row.append(label);
+    }
+    if (c.help) { const h = document.createElement("div"); h.className = "help"; h.textContent = c.help; row.append(h); }
+    root.append(row);
+  }
+}
+
+function changed(key) {
+  saveSettings();
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  if (!book) return;
+  if (key === "wholePageFirst" || key === "wholePageLast") {
+    // Keep the reader on the same page and panel when the reading order changes.
+    const cur = steps[stepIndex];
+    steps = buildSteps();
+    let i = steps.findIndex(s => s.page === cur.page && s.panel === cur.panel);
+    if (i < 0) i = steps.findIndex(s => s.page === cur.page);
+    stepIndex = Math.max(0, i);
+  }
+  if (["panelPadding", "dim", "wholePageFirst", "wholePageLast"].includes(key)) moveTo(steps[stepIndex].page);
+  if (key === "drift" || key === "driftAmount" || key === "driftSeconds") restSince = performance.now();
+  updateUi();
+}
+
+function toggleSettings(force) {
+  const el = $("settings");
+  const show = force !== undefined ? force : el.classList.contains("hidden");
+  el.classList.toggle("hidden", !show);
+  if (show) renderControls();
+}
+
+$("gear").onclick = () => toggleSettings();
+$("closeSettings").onclick = () => toggleSettings(false);
+$("reset").onclick = () => { settings = { ...DEFAULTS }; saveSettings(); renderControls(); changed("wholePageFirst"); };
+$("replay").onclick = () => {
+  if (!book) return;
+  if (stepIndex > 0) { stepIndex--; moveTo(undefined, true); go(1); }
+};
+$("copy").onclick = async () => {
+  const text = JSON.stringify(settings, null, 2);
+  try { await navigator.clipboard.writeText(text); $("copied").textContent = "Copied"; }
+  catch (_) { $("copied").textContent = "Copy blocked, here it is:"; showSettingsText(text); }
+  setTimeout(() => $("copied").textContent = "", 2500);
+};
+function showSettingsText(text) {
+  const pre = document.createElement("textarea");
+  pre.value = text;
+  pre.rows = 12;
+  pre.style.width = "100%";
+  $("controls").prepend(pre);
+  pre.select();
+}
+
+// --- reader controls ---
+
+$("back").onclick = closeBook;
+$("prev").onclick = () => go(-1);
+$("next").onclick = () => go(1);
+$("whole").onclick = toggleOverview;
+$("again").onclick = () => { finished = false; stepIndex = 0; overview = false; moveTo(undefined); };
+$("endBack").onclick = closeBook;
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
+  if (e.key === "s" || e.key === "S") { toggleSettings(); return; }
+  if (!book) return;
+  if (e.key === "Escape") { if (!$("settings").classList.contains("hidden")) toggleSettings(false); else closeBook(); }
+  else if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { e.preventDefault(); go(1); }
+  else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(-1); }
+  else if (e.key === "w" || e.key === "W" || e.key === "ArrowUp") { e.preventDefault(); toggleOverview(); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); setOverview(false); }
+});
+
+// Wheel: scroll moves through panels, pinch (or Ctrl+wheel) zooms out and in.
+let wheelAcc = 0, wheelLock = 0;
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const now = performance.now();
+  if (now < wheelLock) return;
+  if (e.ctrlKey) {
+    if (e.deltaY > 4) { setOverview(true); wheelLock = now + 400; }
+    else if (e.deltaY < -4) { setOverview(false); wheelLock = now + 400; }
+    return;
+  }
+  wheelAcc += e.deltaY + e.deltaX;
+  if (Math.abs(wheelAcc) > 60) { go(wheelAcc > 0 ? 1 : -1); wheelAcc = 0; wheelLock = now + 350; }
+}, { passive: false });
+
+// Touch and mouse: tap left/right, swipe, two-finger pinch.
+const pointers = new Map();
+let gesture = null;
+canvas.addEventListener("pointerdown", e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) gesture = { x: e.clientX, y: e.clientY, multi: false, startDist: 0, lastDist: 0 };
+  if (pointers.size === 2 && gesture) {
+    const [a, b] = [...pointers.values()];
+    gesture.multi = true;
+    gesture.startDist = gesture.lastDist = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+canvas.addEventListener("pointermove", e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2 && gesture) {
+    const [a, b] = [...pointers.values()];
+    gesture.lastDist = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  const p = pointers.get(e.pointerId);
+  pointers.delete(e.pointerId);
+  if (pointers.size > 0 || !gesture) return;
+  const g = gesture;
+  gesture = null;
+  if (g.multi) {
+    const zoom = g.lastDist / (g.startDist || 1);
+    if (zoom < 0.85) setOverview(true);
+    else if (zoom > 1.15) setOverview(false);
+    return;
+  }
+  const dx = p.x - g.x, dy = p.y - g.y;
+  if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+  else if (Math.hypot(dx, dy) < 10) go(g.x < canvas.clientWidth * 0.3 ? -1 : 1);
+}
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", e => { pointers.delete(e.pointerId); gesture = null; });
+
+showLibrary();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
