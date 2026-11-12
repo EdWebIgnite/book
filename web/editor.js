@@ -777,6 +777,15 @@
     cap.oninput = () => { if (cap.value) s.caption = cap.value; else delete s.caption; setDirty(); renderStopList(); };
     root.append(cap);
 
+    root.append(el('<label class="field">Question for the grown-up (optional)</label>'));
+    const ask = document.createElement("input");
+    ask.type = "text";
+    ask.placeholder = "e.g. How do you think she feels?";
+    ask.value = s.ask || "";
+    ask.onfocus = () => pushUndo();
+    ask.oninput = () => { if (ask.value) s.ask = ask.value; else delete s.ask; setDirty(); };
+    root.append(ask);
+
     const sizeRow = el('<div class="inline"></div>');
     const full = el('<button class="btn small">Make it the whole page</button>');
     full.onclick = () => change(() => { s.box = { x: 0, y: 0, w: 1, h: 1 }; });
@@ -804,6 +813,14 @@
     cap.onfocus = () => pushUndo();
     cap.oninput = () => { if (cap.value) h.caption = cap.value; else delete h.caption; setDirty(); renderStopList(); };
     root.append(cap);
+    root.append(el('<label class="field">Question for the grown-up (optional)</label>'));
+    const ask = document.createElement("input");
+    ask.type = "text";
+    ask.placeholder = "e.g. What else lives in the sea?";
+    ask.value = h.ask || "";
+    ask.onfocus = () => pushUndo();
+    ask.oninput = () => { if (ask.value) h.ask = ask.value; else delete h.ask; setDirty(); };
+    root.append(ask);
     root.append(el('<label class="field">Story step (leave empty for an extra thing to find)</label>'));
     const story = document.createElement("input");
     story.type = "number";
@@ -851,26 +868,20 @@
 
   // ---------------------------------------------------------------- preview
 
-  let preview = null;
-
-  function updatePreviewUi(st) {
-    $("pvPage").textContent = `Page ${st.page + 1} of ${st.pageCount}`;
-    $("pvWhole").textContent = st.wholePage ? "Stops" : "Whole page";
-    $("pvPrev").disabled = !st.canGoBack;
-    $("pvEnd").classList.toggle("hidden", !st.finished);
-    if (st.caption) $("pvCaption").textContent = st.caption;
-    $("pvCaption").classList.toggle("hidden", !st.caption);
-    $("pvShowMe").classList.toggle("hidden", !st.canShowMe);
-    $("pvTip").classList.toggle("hidden", !st.exploring || !!st.caption);
-  }
+  let ui = null, preview = null;
 
   /** Opens the reader on the book as it is now. With a stop, plays the move into that stop. */
   function openPreview(stop) {
     if (!book || !book.pages.length) return;
-    settings = CR.loadSettings();
     $("msg").classList.add("hidden");
-    if (!preview) preview = new CR.Reader($("previewCanvas"), { settings, onChange: updatePreviewUi });
-    preview.settings = settings;
+    if (!ui) {
+      ui = ComicReaderUI.mount($("preview"), { onClose: closePreview, endAgain: "Play again", endBack: "Back to editing" });
+      preview = ui.reader;
+      ui.setTitle("Preview");
+    }
+    // Pick up whatever the playground's settings are now.
+    settings = CR.loadSettings();
+    Object.assign(ui.settings, settings);
     $("preview").classList.remove("hidden");
     preview.setBook(CR.normalizeBook(CR.serializeBook(book)), book.pages.map(p => p._img), 0, { baseUrl: book._dir || "" });
     if (stop === -2) { preview.jumpTo(pageIndex, -2); return; }
@@ -879,6 +890,7 @@
     if (preview.stepIndex > 0) {
       const before = preview.steps[preview.stepIndex - 1];
       preview.jumpTo(before.page, before.stop);
+      preview.lastGo = 0;
       preview.next();
     }
   }
@@ -887,15 +899,6 @@
     $("preview").classList.add("hidden");
     if (preview) preview.settings.autoPlay = false;
   }
-
-  document.querySelectorAll("#preview button").forEach(b => b.addEventListener("mousedown", e => e.preventDefault()));
-  $("pvClose").onclick = closePreview;
-  $("pvBack").onclick = closePreview;
-  $("pvPrev").onclick = () => preview.prev();
-  $("pvNext").onclick = () => preview.next();
-  $("pvWhole").onclick = () => preview.toggleOverview();
-  $("pvAgain").onclick = () => preview.restart();
-  $("pvShowMe").onclick = () => preview.showMe();
 
   // ---------------------------------------------------------------- header, keys, drag and drop
 

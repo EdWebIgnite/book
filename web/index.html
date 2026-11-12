@@ -24,6 +24,8 @@
   #settings h2 { margin: 0 0 4px; font-size: 22px; }
   #settings .sub { margin: 0 0 14px; color: #666; font-size: 13px; }
   #settings h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--orange); }
+  #settings .group { margin: 22px -18px 0; padding: 10px 18px; background: #f4eee6; font-size: 16px; font-weight: 800; }
+  #settings .group small { display: block; font-weight: 400; font-size: 12px; color: #6b5b4b; margin-top: 2px; }
   .row { margin: 10px 0; }
   .row label { display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; }
   .row label output { font-weight: 400; color: #555; }
@@ -42,44 +44,17 @@
 
 <div id="library">
   <h1>My Books</h1>
-  <p class="hint">Movement playground. Pick a book, then press ⚙ (or <kbd>S</kbd>) to change how the camera moves.
+  <p class="hint">Movement playground. Pick a book, then press the gear (or <kbd>S</kbd>) for the settings.
     To mark focus areas on pages, open the <a href="editor.html">editor</a>.</p>
   <div id="grid"></div>
 </div>
 
-<div id="reader" class="reader hidden">
-  <canvas id="stage"></canvas>
-  <div class="bar top">
-    <button class="round" id="back" title="Back to books (Esc)">←</button>
-    <span class="title" id="title"></span>
-    <button class="round" id="gear" title="Movement settings (S)">⚙</button>
-  </div>
-  <div class="explore-tip hidden" id="tip">Drag to look around. Pinch to zoom.</div>
-  <div class="caption hidden" id="caption"></div>
-  <div class="bar bottom">
-    <button class="arrow" id="prev" title="Back (←)">‹</button>
-    <div class="mid">
-      <div class="pills">
-        <button class="pill" id="whole" title="Whole page (W)">Whole page</button>
-        <button class="pill showme hidden" id="showme" title="Fly to something not found yet">✨ Show me</button>
-      </div>
-      <div class="pageno" id="pageno"></div>
-    </div>
-    <button class="arrow" id="next" title="Next (→ or Space)">›</button>
-  </div>
-  <div class="end hidden" id="end">
-    <div class="box">
-      <h2>The End</h2>
-      <button class="primary" id="again">Read again</button>
-      <button id="endBack">Back to books</button>
-    </div>
-  </div>
-</div>
+<div id="reader" class="hidden"></div>
 
 <aside id="settings" class="hidden">
   <button class="close" id="closeSettings" title="Close (S or Esc)">Close ✕</button>
-  <h2>Movement</h2>
-  <p class="sub">Changes apply straight away. When you like a setup, press Copy settings and send it to me so the app can match.</p>
+  <h2>Settings</h2>
+  <p class="sub">Changes apply straight away. The top part is what parents would see in the app. The fine tuning below is only for this playground.</p>
   <div id="controls"></div>
   <div class="actions">
     <button id="replay">Replay this move</button>
@@ -90,12 +65,13 @@
   <div class="keys">
     <kbd>→</kbd> <kbd>Space</kbd> next &nbsp; <kbd>←</kbd> back &nbsp; <kbd>W</kbd> whole page<br>
     Mouse wheel moves through stops. Trackpad pinch or <kbd>Ctrl</kbd>+wheel zooms out and in.<br>
-    On a touch screen: tap right or left, swipe, pinch.<br>
-    Explore pages: drag to move, wheel or pinch to zoom, double-click to zoom in, click things to find them.
+    On a touch screen: tap right or left, or swipe.<br>
+    Explore pages: drag to move, the + and − buttons (or the wheel) to zoom, tap things to find them.
   </div>
 </aside>
 
 <script src="reader.js"></script>
+<script src="reader-ui.js"></script>
 <script src="content.js"></script>
 <script>
 "use strict";
@@ -104,20 +80,43 @@ const $ = id => document.getElementById(id);
 
 // What the settings panel shows. Each entry becomes one control.
 const CONTROLS = [
+  { group: "For parents", note: "These would sit behind the grown-up lock in the app." },
+  { key: "age", label: "Child's age", type: "select", options: { "3-5": "3 to 5", "6-8": "6 to 8", "9+": "9 and up" },
+    help: "Sets move speed, how soon hints appear and how big touch areas are.", preset: true },
+  { key: "reduceMotion", label: "Camera movement", type: "select", options: {
+      auto: "Follow this device's setting", off: "Full movement", on: "Reduced: fades instead of flying" },
+    help: "Reduced movement helps children who feel dizzy or unwell with zooming." },
+  { key: "sound", label: "Touch and movement sounds", type: "check" },
+  { key: "extras", label: "Things to find", type: "select", options: {
+      on: "Everything, any time", afterStory: "The story first, then the rest", off: "Only the story" },
+    help: "In scenes with a story inside, this controls the just-for-fun extras." },
+  { key: "prompts", label: "Show questions for the grown-up", type: "check",
+    help: "A small \"Ask\" line at some stops, to get you talking about the story together." },
+  { key: "captionSize", label: "Word size", type: "select", options: { small: "Small", medium: "Medium", large: "Large" } },
+  { key: "wholePageFirst", label: "Show whole page before its stops", type: "check" },
+  { key: "wholePageLast", label: "Show whole page again after its stops", type: "check" },
+  { key: "autoPlay", label: "Watch mode: move on by itself", type: "check" },
+  { key: "autoSeconds", label: "Seconds per stop", type: "range", min: 1, max: 12, step: 0.5, unit: " s", showIf: s => s.autoPlay },
+  { key: "gate", label: "Lock the gear button (hold for 2 seconds)", type: "check",
+    help: "Off here so the playground is quick to use. S on a keyboard always opens this panel." },
+
+  { group: "Fine tuning", note: "Playground only. Children and parents never see these." },
   { section: "Camera move" },
   { key: "moveMs", label: "Move speed", type: "range", min: 150, max: 2500, step: 50, unit: " ms",
-    help: "How long each move takes. Lower is snappier." },
+    help: "The time for an ordinary hop between two stops." },
+  { key: "scaleTime", label: "Longer moves take longer", type: "check",
+    help: "Keeps the speed even. Zooming is always limited to about double per quarter second." },
   { key: "easing", label: "Feel", type: "select", options: {
       easeInOutCubic: "Smooth start and stop",
       easeOutCubic: "Quick start, gentle stop",
       easeInOutSine: "Soft and floaty",
       easeOutBack: "Small overshoot (bouncy)",
       spring: "Spring (wobbly)",
-      linear: "Robot (constant speed)" } },
+      linear: "Robot (constant speed)" },
+    help: "Bouncy and wobbly are the ones most likely to bother children who are sensitive to motion." },
   { key: "zoomPath", label: "Zoom math", type: "select", options: {
       smooth: "Even zoom speed",
-      straight: "Straight line between boxes" },
-    help: "Even zoom speed looks more natural on big zooms." },
+      straight: "Straight line between boxes" } },
 
   { section: "Between pages" },
   { key: "pageTurn", label: "Page change", type: "select", options: {
@@ -126,10 +125,6 @@ const CONTROLS = [
       cut: "Jump cut" } },
   { key: "arcAmount", label: "How far to zoom out", type: "range", min: 0, max: 1.5, step: 0.05,
     showIf: s => s.pageTurn === "zoomOut" },
-
-  { section: "Reading order" },
-  { key: "wholePageFirst", label: "Show whole page before its stops", type: "check" },
-  { key: "wholePageLast", label: "Show whole page again after its stops", type: "check" },
 
   { section: "Focus" },
   { key: "padding", label: "Space around the focus box", type: "range", min: 0, max: 0.12, step: 0.005 },
@@ -146,44 +141,21 @@ const CONTROLS = [
   { key: "driftSeconds", label: "Drift time", type: "range", min: 2, max: 15, step: 0.5, unit: " s", showIf: s => s.drift !== "off" },
 
   { section: "Explore pages" },
-  { key: "glide", label: "Glide after a flick", type: "range", min: 0, max: 1, step: 0.05,
-    help: "How far the picture keeps sliding when you flick it. 0 stops dead." },
-  { key: "hintSeconds", label: "Hint after idle for", type: "range", min: 2, max: 20, step: 1, unit: " s",
-    help: "On pages with hints on, how long before a glow or arrow points at something not found yet." },
-
-  { section: "Watch mode" },
-  { key: "autoPlay", label: "Move on by itself", type: "check" },
-  { key: "autoSeconds", label: "Seconds per stop", type: "range", min: 1, max: 12, step: 0.5, unit: " s", showIf: s => s.autoPlay },
+  { key: "glide", label: "Glide after a flick", type: "range", min: 0, max: 1, step: 0.05 },
+  { key: "hintSeconds", label: "Hint after idle for", type: "range", min: 2, max: 20, step: 1, unit: " s" },
+  { key: "minTargetCm", label: "Smallest touch area", type: "range", min: 0.8, max: 3, step: 0.1, unit: " cm",
+    help: "Small things to find get a touch area at least this big. 2 cm is the usual advice for young children." },
+  { key: "doubleTapZoom", label: "Double-tap zooms in", type: "check",
+    help: "Off for younger children, who double-tap by accident. The + and − buttons always work." },
 ];
 
 const settings = CR.loadSettings();
-const reader = new CR.Reader($("stage"), { settings, onChange: updateUi });
-
-let wasExploring = false, tipTimer;
-function updateUi(st) {
-  let progress = "";
-  if (st.exploring && st.storyTotal) progress += ` · story ${st.storyFound} of ${st.storyTotal}`;
-  if (st.exploring && st.extraTotal) progress += ` · found ${st.extraFound} of ${st.extraTotal}`;
-  $("pageno").textContent = `Page ${st.page + 1} of ${st.pageCount}` + progress;
-  $("whole").textContent = st.wholePage ? "Stops" : "Whole page";
-  $("showme").classList.toggle("hidden", !st.canShowMe);
-  // Show the "drag to look around" tip for a few seconds each time exploring starts.
-  if (st.exploring && !wasExploring) {
-    $("tip").classList.remove("hidden");
-    clearTimeout(tipTimer);
-    tipTimer = setTimeout(() => $("tip").classList.add("hidden"), 4500);
-  } else if (!st.exploring || st.caption) $("tip").classList.add("hidden");   // a caption takes the tip's place
-  wasExploring = st.exploring;
-  $("prev").disabled = !st.canGoBack;
-  $("end").classList.toggle("hidden", !st.finished);
-  const cap = $("caption");
-  if (st.caption) cap.textContent = st.caption;
-  cap.classList.toggle("hidden", !st.caption);
-}
+const ui = ComicReaderUI.mount($("reader"), { settings, onClose: closeBook, onGear: () => toggleSettings() });
+const reader = ui.reader;
 
 async function openBook(id) {
   const { book, images, dir } = await Content.loadBook(id);
-  $("title").textContent = book.title;
+  ui.setTitle(book.title);
   $("library").classList.add("hidden");
   $("reader").classList.remove("hidden");
   reader.setBook(book, images, 0, { baseUrl: dir });
@@ -221,6 +193,16 @@ function renderControls() {
   const root = $("controls");
   root.innerHTML = "";
   for (const c of CONTROLS) {
+    if (c.group) {
+      const g = document.createElement("div");
+      g.className = "group";
+      g.textContent = c.group;
+      const n = document.createElement("small");
+      n.textContent = c.note;
+      g.append(n);
+      root.append(g);
+      continue;
+    }
     if (c.section) { const h = document.createElement("h3"); h.textContent = c.section; root.append(h); continue; }
     if (c.showIf && !c.showIf(settings)) continue;
     const row = document.createElement("div");
@@ -240,7 +222,12 @@ function renderControls() {
     } else if (c.type === "select") {
       input = document.createElement("select");
       for (const [v, text] of Object.entries(c.options)) input.add(new Option(text, v, false, settings[c.key] === v));
-      input.onchange = () => { settings[c.key] = input.value; changed(c.key); renderControls(); };
+      input.onchange = () => {
+        settings[c.key] = input.value;
+        if (c.preset) Object.assign(settings, CR.AGE_PRESETS[input.value]);   // an age band sets several things at once
+        changed(c.key);
+        renderControls();
+      };
       label.append(c.label);
       row.append(label, input);
     } else {
@@ -258,8 +245,10 @@ function renderControls() {
 
 function changed(key) {
   CR.saveSettings(settings);
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   if (["padding", "dim", "vignette", "wholePageFirst", "wholePageLast"].includes(key)) reader.refresh();
   if (key.startsWith("drift")) reader.restSince = performance.now();
+  ui.refresh();
 }
 
 function toggleSettings(force) {
@@ -269,9 +258,8 @@ function toggleSettings(force) {
   if (show) renderControls();
 }
 
-$("gear").onclick = () => toggleSettings();
 $("closeSettings").onclick = () => toggleSettings(false);
-$("reset").onclick = () => { Object.assign(settings, CR.DEFAULT_SETTINGS); CR.saveSettings(settings); renderControls(); reader.refresh(); };
+$("reset").onclick = () => { Object.assign(settings, CR.DEFAULT_SETTINGS); CR.saveSettings(settings); renderControls(); reader.refresh(); ui.refresh(); };
 $("replay").onclick = () => reader.replay();
 $("copy").onclick = async () => {
   const text = JSON.stringify(settings, null, 2);
@@ -286,24 +274,14 @@ $("copy").onclick = async () => {
   setTimeout(() => $("copied").textContent = "", 2500);
 };
 
-// --- reader controls ---
-
-// Reader buttons shouldn't keep keyboard focus, or Space would press them and advance as well.
-document.querySelectorAll(".reader button").forEach(b => b.addEventListener("mousedown", e => e.preventDefault()));
-
-$("back").onclick = closeBook;
-$("prev").onclick = () => reader.prev();
-$("next").onclick = () => reader.next();
-$("whole").onclick = () => reader.toggleOverview();
-$("showme").onclick = () => reader.showMe();
-$("again").onclick = () => reader.restart();
-$("endBack").onclick = closeBook;
-
 document.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (e.key === "s" || e.key === "S") { toggleSettings(); return; }
   if ($("reader").classList.contains("hidden")) return;
   if (e.key === "Escape") { if (!$("settings").classList.contains("hidden")) toggleSettings(false); else closeBook(); return; }
+  reader.sounds.wake();
+  if (e.key === "+" || e.key === "=") { reader.zoomStep(1.7); return; }
+  if (e.key === "-") { reader.zoomStep(1 / 1.7); return; }
   reader.handleKey(e);
 });
 

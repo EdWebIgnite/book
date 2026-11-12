@@ -120,33 +120,7 @@
   <div id="inspector"></div>
 </aside>
 
-<div id="preview" class="reader hidden">
-  <canvas id="previewCanvas"></canvas>
-  <div class="bar top">
-    <button class="round" id="pvClose" title="Back to editing (Esc)">←</button>
-    <span class="title">Preview</span>
-  </div>
-  <div class="explore-tip hidden" id="pvTip">Drag to look around. Pinch to zoom.</div>
-  <div class="caption hidden" id="pvCaption"></div>
-  <div class="bar bottom">
-    <button class="arrow" id="pvPrev">‹</button>
-    <div class="mid">
-      <div class="pills">
-        <button class="pill" id="pvWhole">Whole page</button>
-        <button class="pill showme hidden" id="pvShowMe">✨ Show me</button>
-      </div>
-      <div class="pageno" id="pvPage"></div>
-    </div>
-    <button class="arrow" id="pvNext">›</button>
-  </div>
-  <div class="end hidden" id="pvEnd">
-    <div class="box">
-      <h2>The End</h2>
-      <button class="primary" id="pvAgain">Play again</button>
-      <button id="pvBack">Back to editing</button>
-    </div>
-  </div>
-</div>
+<div id="preview" class="hidden"></div>
 
 <div id="jsonBox" class="hidden">
   <b>book.json</b>
@@ -161,6 +135,7 @@
 <div id="msg" class="hidden"></div>
 
 <script src="reader.js"></script>
+<script src="reader-ui.js"></script>
 <script src="content.js"></script>
 <script src="editor.js"></script>
 </body>

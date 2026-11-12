@@ -13,7 +13,8 @@
  *           "to":  { ... },          // optional: glide from box to this box while resting
  *           "panSeconds": 4,         // optional: how long that glide takes
  *           "style": "vignette",     // optional: overrides the book's focusStyle for this stop
- *           "caption": "Text..." }   // optional: shown under the picture
+ *           "caption": "Text...",    // optional: shown under the picture
+ *           "ask": "Why is she sad?" }  // optional: a question for the adult reading along
  *       ],
  *       "hotspots": [                                 // explore pages: things to find and tap
  *         { "box": { ... }, "caption": "A sleepy lion!", "effect": "sparkle" | "none",
@@ -35,7 +36,7 @@
 (function () {
 
   const DEFAULT_SETTINGS = {
-    moveMs: 650,
+    moveMs: 700,
     easing: "easeInOutCubic",
     zoomPath: "smooth",
     pageTurn: "fly",
@@ -52,7 +53,27 @@
     autoSeconds: 4,
     hintSeconds: 6,
     glide: 0.5,
+    // For parents
+    age: "6-8",              // which preset was last applied
+    reduceMotion: "auto",    // auto (follow the device) | on | off
+    sound: true,
+    extras: "on",            // things to find that aren't part of the story: on | afterStory | off
+    prompts: true,           // show "ask" questions for the adult
+    captionSize: "medium",
+    gate: false,             // gear needs a two-second hold
+    // Fine tuning
+    scaleTime: true,         // longer moves take longer
+    minTargetCm: 2,          // smallest touch target for things to find
+    doubleTapZoom: false,    // young children double-tap by accident
   };
+
+  /** What each age band changes. Research basis: docs/movement-ideas.md. */
+  const AGE_PRESETS = {
+    "3-5": { moveMs: 900, hintSeconds: 4, minTargetCm: 2.4, doubleTapZoom: false, easing: "easeInOutSine" },
+    "6-8": { moveMs: 700, hintSeconds: 6, minTargetCm: 2.0, doubleTapZoom: false, easing: "easeInOutCubic" },
+    "9+": { moveMs: 550, hintSeconds: 9, minTargetCm: 1.4, doubleTapZoom: true, easing: "easeInOutCubic" },
+  };
+  const CM = 37.8; // CSS pixels per centimetre
 
   const STORE_KEY = "comic-reader-movement";
 
@@ -148,6 +169,7 @@
             if (s.to) { o.to = roundBox(s.to); o.panSeconds = s.panSeconds || 4; }
             if (s.style) o.style = s.style;
             if (s.caption) o.caption = s.caption;
+            if (s.ask) o.ask = s.ask;
             return o;
           }),
         };
@@ -159,6 +181,7 @@
             if (h.name) o.name = h.name;
             if (h.story) o.story = h.story;
             if (h.caption) o.caption = h.caption;
+            if (h.ask) o.ask = h.ask;
             if (h.effect && h.effect !== "sparkle") o.effect = h.effect;
             return o;
           });
@@ -190,6 +213,62 @@
     });
   }
 
+  // ---------------------------------------------------------------- sound
+
+  /** Small synthesised sounds, so every touch can be answered without any audio files. */
+  class Sounds {
+    constructor() { this.ctx = null; }
+
+    /** Browsers only allow sound after a touch, so this is called from the first one. */
+    wake() {
+      if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume(); return; }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { try { this.ctx = new AC(); } catch (_) { /* no audio available */ } }
+    }
+
+    tone(freq, start, len, gain = 0.06, type = "sine") {
+      const c = this.ctx;
+      if (!c) return;
+      const t = c.currentTime + start, o = c.createOscillator(), g = c.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(gain, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      o.connect(g).connect(c.destination);
+      o.start(t);
+      o.stop(t + len + 0.02);
+    }
+
+    tap() { this.tone(720, 0, 0.09, 0.045); }
+    zoom(up) { this.tone(up ? 620 : 520, 0, 0.08, 0.04); this.tone(up ? 820 : 400, 0.05, 0.1, 0.04); }
+    find() { [1047, 1319, 1568].forEach((f, i) => this.tone(f, i * 0.07, 0.3, 0.055, "triangle")); }
+    locked() { this.tone(330, 0, 0.12, 0.05, "triangle"); this.tone(262, 0.1, 0.18, 0.05, "triangle"); }
+    party() { [784, 988, 1175, 1568, 1976].forEach((f, i) => this.tone(f, i * 0.09, 0.45, 0.06, "triangle")); }
+
+    /** Soft rush of air for a camera move, longer for longer moves. */
+    whoosh(ms) {
+      const c = this.ctx;
+      if (!c || ms < 120) return;
+      const len = Math.min(1.2, ms / 1000) * 0.9;
+      const buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      src.buffer = buf;
+      f.type = "bandpass";
+      f.Q.value = 0.8;
+      f.frequency.setValueAtTime(300, c.currentTime);
+      f.frequency.linearRampToValueAtTime(900, c.currentTime + len * 0.5);
+      f.frequency.linearRampToValueAtTime(350, c.currentTime + len);
+      g.gain.setValueAtTime(0, c.currentTime);
+      g.gain.linearRampToValueAtTime(0.035, c.currentTime + len * 0.4);
+      g.gain.linearRampToValueAtTime(0, c.currentTime + len);
+      src.connect(f).connect(g).connect(c.destination);
+      src.start();
+    }
+  }
+
   // ---------------------------------------------------------------- reader
 
   class Reader {
@@ -216,6 +295,10 @@
       this.tileLoads = 0;
       this.baseUrl = "";         // folder the book's files are in, for loading tiles
       this.mapRect = null;       // where the corner map is on screen
+      this.ripples = [];         // the little ring that answers every touch
+      this.sounds = new Sounds();
+      this.lastGo = 0;           // for ignoring accidental double taps
+      this.moved = false;        // has the reader gone anywhere yet (for the first-tap hint)
       this.lastTouch = 0;
       this.running = true;
       this.listeners = new AbortController();
@@ -237,6 +320,8 @@
       this.tiles = new Map();
       this.tileLoads = 0;
       this.party = 0;
+      this.moved = false;
+      this.lastGo = 0;
       this.pageRects = layoutPages(images);
       this.steps = this.buildSteps();
       this.stepIndex = Math.max(0, Math.min(startStep, this.steps.length - 1));
@@ -301,6 +386,31 @@
       if (!this.exploring) this.moveTo(cur.page);
     }
 
+    /** True when moves should be swapped for fades: the parent's setting, or the device's own. */
+    get reduced() {
+      const r = this.settings.reduceMotion;
+      if (r === "on") return true;
+      if (r === "off") return false;
+      return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    }
+
+    play(name, arg) { if (this.settings.sound && this.sounds[name]) this.sounds[name](arg); }
+
+    /** Answer a touch: a small ring where the finger landed. */
+    ripple(sx, sy) { this.ripples.push({ x: sx, y: sy, start: performance.now() }); }
+
+    /**
+     * How long a camera move should take. Longer and bigger moves take longer so the speed feels
+     * even, and zooming is never faster than about double per quarter second.
+     */
+    moveTime(from, to, base) {
+      const gw = Math.sqrt(from.w * to.w);
+      const dc = Math.hypot(to.x + to.w / 2 - from.x - from.w / 2, to.y + to.h / 2 - from.y - from.h / 2) / gw;
+      const dz = Math.abs(Math.log(to.w / from.w));
+      const ms = this.settings.scaleTime ? base * clamp(0.55 + 0.45 * (dc + dz), 0.5, 2.4) : base;
+      return { ms: Math.max(ms, dz * 330), far: dc > 3 };
+    }
+
     boxRect(page, b) {
       const pr = this.pageRects[page];
       return rect(pr.x + b.x * pr.w, pr.y + b.y * pr.h, b.w * pr.w, b.h * pr.h);
@@ -361,8 +471,16 @@
     unfoundHotspots() {
       if (!this.exploring) return [];
       const hs = this.pageData.hotspots, next = this.nextStory();
-      const extras = hs.map((h, i) => ({ h, i })).filter(({ h, i }) => !h.story && !this.isFound(i));
+      const extras = this.extrasOpen() ? hs.map((h, i) => ({ h, i })).filter(({ h, i }) => !h.story && !this.isFound(i)) : [];
       return next >= 0 ? [{ h: hs[next], i: next }, ...extras] : extras;
+    }
+
+    /** Are the just-for-fun things to find switched on right now? (A parent setting.) */
+    extrasOpen() {
+      const mode = this.settings.extras;
+      if (mode === "off") return false;
+      if (mode === "afterStory") return this.nextStory() < 0;   // no story on the page counts as finished
+      return true;
     }
 
     get state() {
@@ -382,13 +500,19 @@
         exploring,
         caption: exploring ? (this.note && this.note.until > now ? this.note.text : "")
                            : (!this.overview && stop && stop.caption ? stop.caption : ""),
+        ask: !this.settings.prompts ? ""
+           : exploring ? (this.note && this.note.until > now && this.note.ask ? this.note.ask : "")
+           : (!this.overview && stop && stop.ask ? stop.ask : ""),
+        firstStep: !this.moved && !exploring && this.stepIndex === 0,
+        canZoomIn: exploring && this.visibleCam().h > 0.12 * 1.03,
+        canZoomOut: exploring && this.visibleCam().w < this.maxCam().w * 0.98,
         canGoBack: this.stepIndex > 0 || this.overview,
         canShowMe: exploring && guidance.showMe !== false && this.unfoundHotspots().length > 0,
         found: hs.filter((_, i) => this.found.has(step.page + ":" + i)).length,
         hotspotCount: hs.length,
         storyTotal: hs.filter(h => h.story).length,
         storyFound: hs.filter((h, i) => h.story && this.found.has(step.page + ":" + i)).length,
-        extraTotal: hs.filter(h => !h.story).length,
+        extraTotal: this.settings.extras === "off" ? 0 : hs.filter(h => !h.story).length,
         extraFound: hs.filter((h, i) => !h.story && this.found.has(step.page + ":" + i)).length,
       };
     }
@@ -398,35 +522,42 @@
       const s = this.settings, now = performance.now();
       this.party = 0;
       const pageChanged = previousPage !== undefined && previousPage !== this.step.page;
-      let ms = s.moveMs;
+      const from = { ...this.shown, cam: this.displayedCam(now) }, to = this.target();
+      const reduced = this.reduced;
+      const timing = this.moveTime(from.cam, to.cam, s.moveMs);
+      let ms = reduced ? 340 : timing.ms;
       if (instant || (pageChanged && s.pageTurn === "cut")) ms = 0;
+      // Pull back mid-flight on page changes (if chosen) and on any long journey, so the child sees where they are going.
+      const arcK = reduced ? 0 : pageChanged && s.pageTurn === "zoomOut" ? s.arcAmount : timing.far ? 0.45 : 0;
       this.fling = null;
       this.note = null;
       this.anim = {
-        kind: "move",
-        from: { ...this.shown, cam: this.displayedCam(now) },
-        to: this.target(),
-        start: now, ms,
+        kind: "move", from, to,
+        start: now, ms: ms + (arcK ? 220 : 0),
         easing: s.easing,
         smooth: s.zoomPath === "smooth",
-        arc: pageChanged && s.pageTurn === "zoomOut",
+        arcK, fade: reduced,
       };
       this.lastTouch = now;
-      if (ms === 0) this._finish();
+      if (ms === 0) this._finish(); else this.play("whoosh", this.anim.ms);
       this.onChange(this.state);
     }
 
     /** Explore: animate the camera to a box, then optionally run something. */
-    flyTo(cam, then) {
+    flyTo(cam, then, quick = false) {
       const now = performance.now();
+      const from = { ...this.shown, cam: this.visibleCam() };
+      const to = { ...this.shown, cam: this.clampCam(this.matchAspect(cam)) };
+      const reduced = this.reduced;
+      const timing = this.moveTime(from.cam, to.cam, Math.max(450, this.settings.moveMs));
+      const arcK = !reduced && !quick && timing.far ? 0.45 : 0;
       this.fling = null;
       this.anim = {
-        kind: "fly",
-        from: { ...this.shown, cam: this.visibleCam() },
-        to: { ...this.shown, cam: this.clampCam(this.matchAspect(cam)) },
-        start: now, ms: Math.max(450, this.settings.moveMs),
-        easing: "easeInOutCubic", smooth: true, arc: false, then,
+        kind: "fly", from, to,
+        start: now, ms: reduced ? 340 : quick ? 260 : timing.ms + (arcK ? 220 : 0),
+        easing: "easeInOutCubic", smooth: true, arcK, fade: reduced && !quick, then,
       };
+      if (!quick) this.play("whoosh", this.anim.ms);
     }
 
     _finish() {
@@ -442,20 +573,33 @@
     _afterArrive() {
       const stop = this.stop;
       if (this.overview || !stop || !stop.to) return;
+      // With reduced motion the glide becomes a short pause and a fade to where it would have ended.
+      const reduced = this.reduced;
       this.anim = {
         kind: "pan",
         from: { ...this.shown },
         to: this.target(true),
-        start: performance.now(),
-        ms: (stop.panSeconds || 4) * 1000,
+        start: performance.now() + (reduced ? 1400 : 0),
+        ms: reduced ? 340 : (stop.panSeconds || 4) * 1000,
         easing: "easeInOutSine",
         smooth: true,
-        arc: false,
+        arcK: 0, fade: reduced,
       };
     }
 
     go(delta) {
       if (this.finished || !this.book) return;
+      const now = performance.now();
+      // Young children often tap twice without meaning to: ignore a second one that comes straight away.
+      if (now - this.lastGo < 300) return;
+      this.lastGo = now;
+      // A tap while the camera is still travelling just finishes that move. The next tap goes on.
+      if (delta > 0 && this.anim && this.anim.kind === "move" && now - this.anim.start < this.anim.ms) {
+        this._finish();
+        this.onChange(this.state);
+        return;
+      }
+      this.moved = true;
       const before = this.step.page;
       const wasOverview = this.overview;
       this.overview = false;
@@ -503,7 +647,17 @@
       this.overview = false;
       this.anim = null;
       this.shown = this.target();
+      this.lastGo = 0;
       this.go(1);
+    }
+
+    /** Explore: zoom in or out a step, for children who can't pinch yet. */
+    zoomStep(f) {
+      if (!this.exploring) return;
+      const cam = this.takeCamera();
+      const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
+      this.play("zoom", f > 1);
+      this.flyTo(this.zoomAt(cam, f, W / 2, this.insets.top + (H - this.insets.top - this.insets.bottom) / 2), () => this.onChange(this.state), true);
     }
 
     /** Explore: fly to the next thing not found yet and make it react. */
@@ -516,9 +670,9 @@
     }
 
     /** Show a caption for a while (longer for longer text), then clear it. */
-    say(text, extra = 0) {
-      const ms = Math.max(4500, 2500 + text.length * 65) + extra;
-      const note = this.note = { text, until: performance.now() + ms };
+    say(text, extra = 0, ask = "") {
+      const ms = Math.max(4500, 2500 + (text.length + ask.length) * 65) + extra;
+      const note = this.note = { text, ask, until: performance.now() + ms };
       this.onChange(this.state);
       setTimeout(() => { if (this.note === note) { this.note = null; this.onChange(this.state); } }, ms + 50);
     }
@@ -530,6 +684,7 @@
       if (h.story && !this.isFound(i) && i !== this.nextStory()) {
         const first = this.pageData.hotspots[this.nextStory()];
         this.effects.push({ box: this.boxRect(p, h.box), start: now, locked: true });
+        this.play("locked");
         this.say("Not yet! First find " + (first.name || "the next part of the story") + ".");
         return;
       }
@@ -538,7 +693,8 @@
       if (h.effect !== "none") this.effects.push({ box: this.boxRect(p, h.box), start: now });
       const storyDone = wasNew && h.story && this.nextStory() < 0;
       if (storyDone) this.party = now;
-      if (h.caption) this.say(h.caption, storyDone ? 3000 : 0); else { this.note = null; this.onChange(this.state); }
+      this.play(storyDone ? "party" : "find");
+      if (h.caption) this.say(h.caption, storyDone ? 3000 : 0, h.ask); else { this.note = null; this.onChange(this.state); }
     }
 
     /** Keyboard shortcuts. Returns true when the key was used. */
@@ -595,9 +751,24 @@
       return cam;
     }
 
-    setCam(cam) {
-      this.shown = { ...this.shown, cam: this.clampCam(cam) };
+    /** soft: let a drag pull a little way past the edge, so the child feels where the scene ends. */
+    setCam(cam, soft = false) {
+      const c = this.clampCam(cam);
+      if (soft && !this.reduced && Math.abs(c.w - cam.w) < 1e-6) {
+        const give = (want, got, size) => got + clamp((want - got) * 0.35, -size * 0.12, size * 0.12);
+        c.x = give(cam.x, c.x, c.w);
+        c.y = give(cam.y, c.y, c.h);
+      }
+      this.shown = { ...this.shown, cam: c };
       this.lastTouch = performance.now();
+    }
+
+    /** After a drag past the edge, ease back inside. Returns true if it had to. */
+    settle() {
+      const cam = this.shown.cam, c = this.clampCam(cam);
+      if (Math.abs(c.x - cam.x) < 1e-5 && Math.abs(c.y - cam.y) < 1e-5) return false;
+      this.flyTo(c, null, true);
+      return true;
     }
 
     screenScale(cam) { return this.canvas.clientWidth / cam.w; }
@@ -616,21 +787,43 @@
       return rect(a.x - sx / sc, a.y - (sy - this.insets.top) / sc, w, h);
     }
 
+    /** Which thing to find is under a touch, or -1. Small things get a touch area of at least minTargetCm. */
+    hotspotAt(sx, sy) {
+      const v = this.view;
+      if (!this.exploring || !v) return -1;
+      const p = this.step.page, min = this.settings.minTargetCm * CM, extras = this.extrasOpen();
+      let inside = -1, insideArea = Infinity, near = -1, nearDist = Infinity;
+      this.pageData.hotspots.forEach((h, i) => {
+        if (!h.story && !extras) return;
+        const b = this.boxRect(p, h.box);
+        const r = rect(b.x * v.sc + v.ox, b.y * v.sc + v.oy, b.w * v.sc, b.h * v.sc);
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        if (contains(r, sx, sy)) {
+          if (r.w * r.h < insideArea) { inside = i; insideArea = r.w * r.h; }   // the smallest box under the finger
+          return;
+        }
+        const w = Math.max(r.w, min), hgt = Math.max(r.h, min);
+        if (Math.abs(sx - cx) <= w / 2 && Math.abs(sy - cy) <= hgt / 2) {
+          const d = Math.hypot(sx - cx, sy - cy);
+          if (d < nearDist) { near = i; nearDist = d; }                         // otherwise the nearest small one
+        }
+      });
+      if (inside >= 0) return inside;
+      // The story step the child is being guided to wins over a nearby extra when the touch is within its area.
+      const next = this.nextStory();
+      if (next >= 0 && near >= 0 && near !== next) {
+        const nb = this.boxRect(p, this.pageData.hotspots[next].box);
+        const cx = (nb.x + nb.w / 2) * v.sc + v.ox, cy = (nb.y + nb.h / 2) * v.sc + v.oy;
+        if (Math.abs(sx - cx) <= Math.max(nb.w * v.sc, min) / 2 && Math.abs(sy - cy) <= Math.max(nb.h * v.sc, min) / 2) return next;
+      }
+      return near;
+    }
+
     tapAt(sx, sy) {
       if (!this.exploring) return;
-      const cam = this.visibleCam();
-      const pt = this.toWorld(cam, sx, sy);
-      const p = this.step.page;
-      const hs = this.pageData.hotspots;
-      // Smallest hotspot under the finger wins.
-      let best = -1, area = Infinity;
-      hs.forEach((h, i) => {
-        const r = this.boxRect(p, h.box);
-        const pad = 0.015; // a little forgiveness for small fingers
-        if (contains(inflate(r, pad), pt.x, pt.y) && r.w * r.h < area) { best = i; area = r.w * r.h; }
-      });
+      const hit = this.hotspotAt(sx, sy);
       this.lastTouch = performance.now();
-      if (best >= 0) this.react(best);
+      if (hit >= 0) this.react(hit); else this.play("tap");
     }
 
     doubleTapAt(sx, sy) {
@@ -645,7 +838,7 @@
     displayedCam(now) {
       if (this.anim || !this.shown) return this.shown ? this.shown.cam : rect(0, 0, 1, 1);
       const s = this.settings, stop = this.stop;
-      if (s.drift === "off" || this.overview || !stop || stop.to) return this.shown.cam;
+      if (s.drift === "off" || this.overview || !stop || stop.to || this.reduced) return this.shown.cam;
       const p = EASINGS.easeInOutSine(Math.min(1, (now - this.restSince) / (s.driftSeconds * 1000)));
       if (s.drift === "zoomIn") return scaleAround(this.shown.cam, 1 - s.driftAmount * p);
       return scaleAround(this.shown.cam, 1, this.shown.cam.w * s.driftAmount * p);
@@ -657,22 +850,28 @@
       this._last = now;
       const a = this.anim;
       if (a) {
-        const raw = a.ms === 0 ? 1 : Math.min(1, (now - a.start) / a.ms);
-        const e = (EASINGS[a.easing] || EASINGS.easeInOutCubic)(raw);
-        let cam = mixRect(a.from.cam, a.to.cam, e, a.smooth);
-        if (a.arc) {
-          // Swell the camera mid-move so both pages fit, then settle in.
-          const u = inflate(union(a.from.cam, a.to.cam), 0.05);
-          const mid = mixRect(a.from.cam, a.to.cam, 0.5, a.smooth);
-          const need = Math.max(u.w / mid.w, u.h / mid.h) - 1;
-          cam = scaleAround(cam, 1 + Math.max(0, need) * this.settings.arcAmount * Math.sin(Math.PI * Math.min(1, Math.max(0, e))));
+        const raw = a.ms === 0 ? 1 : clamp((now - a.start) / a.ms, 0, 1);
+        if (a.fade) {
+          // Reduced motion: no travelling. Dip to dark, switch, and come back.
+          const side = raw < 0.5 ? a.from : a.to;
+          this.shown = { cam: side.cam, focus: side.focus, dim: side.dim, vig: side.vig, fade: 1 - Math.abs(1 - raw * 2) };
+        } else {
+          const e = (EASINGS[a.easing] || EASINGS.easeInOutCubic)(raw);
+          let cam = mixRect(a.from.cam, a.to.cam, e, a.smooth);
+          if (a.arcK) {
+            // Swell the camera mid-move so both ends fit, then settle in.
+            const u = inflate(union(a.from.cam, a.to.cam), 0.05);
+            const mid = mixRect(a.from.cam, a.to.cam, 0.5, a.smooth);
+            const need = Math.max(u.w / mid.w, u.h / mid.h) - 1;
+            cam = scaleAround(cam, 1 + Math.max(0, need) * a.arcK * Math.sin(Math.PI * clamp(e, 0, 1)));
+          }
+          this.shown = {
+            cam,
+            focus: mixRect(a.from.focus, a.to.focus, Math.min(1, e), a.smooth),
+            dim: lerp(a.from.dim, a.to.dim, raw),
+            vig: lerp(a.from.vig, a.to.vig, raw),
+          };
         }
-        this.shown = {
-          cam,
-          focus: mixRect(a.from.focus, a.to.focus, Math.min(1, e), a.smooth),
-          dim: lerp(a.from.dim, a.to.dim, raw),
-          vig: lerp(a.from.vig, a.to.vig, raw),
-        };
         if (raw >= 1) { this._finish(); this.onChange(this.state); }
       } else if (this.fling) {
         // Glide after a flick, slowing down.
@@ -752,8 +951,32 @@
 
       this.drawEffects(now, toScreen);
       this.drawHint(now, toScreen, W, H, top, bottom);
+      if (this.shown.fade > 0.01) {
+        ctx.fillStyle = `rgba(28,27,34,${this.shown.fade})`;
+        ctx.fillRect(0, 0, W, H);
+      }
       this.drawMap(now, W, top);
-      this.drawParty(now, W, H);
+      if (!this.reduced) this.drawParty(now, W, H);
+      this.drawRipples(now);
+    }
+
+    /** The ring that answers every touch. */
+    drawRipples(now) {
+      const ctx = this.ctx;
+      this.ripples = this.ripples.filter(r => now - r.start < 450);
+      for (const r of this.ripples) {
+        const t = (now - r.start) / 450;
+        ctx.save();
+        ctx.globalAlpha = (1 - t) * 0.85;
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 5 * (1 - t) + 1.5;
+        ctx.shadowColor = "rgba(0,0,0,.45)";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, 10 + EASINGS.easeOutCubic(t) * 34, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // ------------------------------------------------ big scenes: tiles
@@ -927,7 +1150,7 @@
         const b = toScreen(this.boxRect(this.step.page, this.pageData.hotspots[story].box));
         const bx = b.x + b.w / 2, by = b.y + b.h / 2;
         if (bx > -b.w && bx < W + b.w && by > -b.h && by < H + b.h) {
-          const grow = (now / 1400) % 1;
+          const grow = this.reduced ? 0.25 : (now / 1400) % 1;
           ctx.save();
           ctx.strokeStyle = `rgba(255,255,255,${0.75 * (1 - grow)})`;
           ctx.lineWidth = 5;
@@ -1036,6 +1259,7 @@
 
     canvas.addEventListener("pointerdown", e => {
       canvas.setPointerCapture(e.pointerId);
+      reader.sounds.wake();
       const p = local(e);
       pointers.set(e.pointerId, p);
       if (pointers.size === 1) {
@@ -1081,7 +1305,7 @@
       if (gesture.explore && !gesture.multi) {
         const sc = reader.screenScale(gesture.cam);
         const dx = p.x - gesture.start.x, dy = p.y - gesture.start.y;
-        reader.setCam(rect(gesture.cam.x - dx / sc, gesture.cam.y - dy / sc, gesture.cam.w, gesture.cam.h));
+        reader.setCam(rect(gesture.cam.x - dx / sc, gesture.cam.y - dy / sc, gesture.cam.w, gesture.cam.h), true);
         const now = performance.now();
         gesture.samples.push({ x: p.x, y: p.y, t: now });
         while (gesture.samples.length && now - gesture.samples[0].t > 90) gesture.samples.shift();
@@ -1103,18 +1327,21 @@
         if (g.multi) { reader.setCam(reader.shown.cam); return; }
         if (isTap) {
           const now = performance.now();
+          reader.ripple(p.x, p.y);
           if (lastTap && now - lastTap.t < 320 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30) {
+            // A second tap in the same spot straight away: zoom if that's switched on, otherwise ignore it.
             lastTap = null;
-            reader.doubleTapAt(p.x, p.y);
+            if (reader.settings.doubleTapZoom) reader.doubleTapAt(p.x, p.y);
           } else {
             lastTap = { x: p.x, y: p.y, t: now };
             reader.tapAt(p.x, p.y);
           }
           return;
         }
-        // Flick: keep gliding in the direction of the last bit of the drag.
+        // Pulled past the edge: ease back. Otherwise a flick keeps gliding the way it was going.
+        if (reader.settle()) return;
         const s = g.samples;
-        if (s.length >= 2) {
+        if (s.length >= 2 && !reader.reduced) {
           const a = s[0], b = s[s.length - 1];
           const dt = Math.max(1, b.t - a.t);
           const sc = reader.screenScale(reader.shown.cam);
@@ -1132,14 +1359,14 @@
       }
       const box = canvas.getBoundingClientRect();
       if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy)) reader.go(dx < 0 ? 1 : -1);
-      else if (isTap) reader.go(g.start.x < box.width * 0.3 ? -1 : 1);
+      else if (isTap) { reader.ripple(p.x, p.y); reader.go(g.start.x < box.width * 0.3 ? -1 : 1); }
     }, opt);
 
     canvas.addEventListener("pointercancel", e => { pointers.delete(e.pointerId); gesture = null; }, opt);
   }
 
   window.ComicReader = {
-    Reader, DEFAULT_SETTINGS, EASINGS,
+    Reader, DEFAULT_SETTINGS, AGE_PRESETS, EASINGS,
     loadSettings, saveSettings, normalizeBook, serializeBook, loadImage, layoutPages,
     rect, inflate, fitToAspect,
   };

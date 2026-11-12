@@ -11,39 +11,76 @@ body { background: var(--cream); color: var(--ink); overflow: hidden; }
 button { font: inherit; cursor: pointer; }
 .hidden { display: none !important; }
 
-.reader { position: fixed; inset: 0; background: var(--backdrop); user-select: none; -webkit-user-select: none; z-index: 20; }
+.reader { position: fixed; inset: 0; background: var(--backdrop); user-select: none; -webkit-user-select: none; z-index: 20; --cap: 22px; }
+.reader[data-cap="small"] { --cap: 18px; }
+.reader[data-cap="large"] { --cap: 28px; }
 .reader canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
 .reader .bar { position: absolute; left: 0; right: 0; display: flex; align-items: center; padding: 8px 12px; pointer-events: none; }
 .reader .bar > * { pointer-events: auto; }
 .reader .top { top: 0; gap: 12px; }
 .reader .title { color: #fff; font-weight: 700; font-size: 20px; flex: 1; text-shadow: 0 1px 4px rgba(0,0,0,.75), 0 0 12px rgba(0,0,0,.45);
-                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.reader .bottom { bottom: 0; justify-content: space-between; padding-bottom: 12px; }
-.reader .round { width: 48px; height: 48px; border-radius: 50%; border: 0; background: #ece4f6; font-size: 22px; }
-.reader .arrow { width: 64px; height: 64px; border-radius: 50%; border: 0; background: rgba(255,255,255,.15); color: #fff; font-size: 40px; line-height: 1; }
-.reader .arrow:disabled { opacity: .3; cursor: default; }
-.reader .mid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.reader .pill { border: 0; border-radius: 999px; padding: 10px 22px; background: #ece4f6; font-size: 16px; white-space: nowrap; }
-.reader .pageno { color: rgba(255,255,255,.9); font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,.8); text-align: center; }
-@media (max-width: 520px) {
-  .reader .pill { padding: 9px 14px; font-size: 14px; }
-  .reader .arrow { width: 54px; height: 54px; font-size: 34px; }
-  .reader .caption { font-size: 18px; }
-}
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 
-.reader .caption { position: absolute; left: 50%; bottom: 100px; transform: translateX(-50%); max-width: min(720px, 90vw);
-                   background: rgba(255,255,255,.95); color: #222; border-radius: 16px; padding: 12px 20px;
-                   font-size: 22px; line-height: 1.35; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,.3);
-                   pointer-events: none; }
+/* Round picture buttons. 56px is about 1.5cm; the arrows children use most are bigger still. */
+.reader .round { width: 56px; height: 56px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); color: #3a2f4a;
+                 display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.3); padding: 0; }
+.reader .round:disabled { opacity: .35; cursor: default; }
+.reader .round:active:not(:disabled), .reader .arrow:active:not(:disabled) { transform: scale(.92); }
+
+/* The next and back arrows sit in the bottom corners, lifted clear of the edge where wrists rest. */
+.reader .bottom { bottom: 0; justify-content: space-between; align-items: flex-end; padding: 0 14px 22px; }
+.reader .arrow { width: 76px; height: 76px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); color: #3a2f4a;
+                 display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,.35); padding: 0; }
+.reader .arrow:disabled { opacity: .3; cursor: default; }
+.reader .pageno { color: rgba(255,255,255,.9); font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,.8); text-align: center; padding-bottom: 4px; pointer-events: none; }
+
+/* Zoom, whole page and Show me: a column on the right, half way up. */
+.reader .side { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 12px; }
+.reader .showme { background: #ffd23f; color: #5a3b00; animation: showme-pulse 2.4s ease-in-out infinite; }
+@keyframes showme-pulse { 50% { box-shadow: 0 0 0 8px rgba(255,210,63,.35), 0 2px 8px rgba(0,0,0,.3); } }
+
+/* Words: the caption, and above it an optional question for the adult. */
+.reader .words { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); width: min(720px, calc(100vw - 150px));
+                 display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.reader .caption { background: rgba(255,255,255,.96); color: #222; border-radius: 16px; padding: 12px 20px;
+                   font-size: var(--cap); line-height: 1.35; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.reader .ask { background: rgba(40,32,58,.88); color: #fff; border-radius: 12px; padding: 7px 14px; font-size: 15px; line-height: 1.35;
+               display: flex; gap: 8px; align-items: baseline; }
+.reader .ask .who { background: #ffd23f; color: #3a2a00; border-radius: 6px; padding: 1px 7px; font-weight: 700; font-size: 12px;
+                    text-transform: uppercase; letter-spacing: .04em; flex: none; }
+
+/* Picture hints, for children who can't read an instruction. */
+.reader .hand { position: absolute; font-size: 64px; line-height: 1; pointer-events: none; filter: drop-shadow(0 3px 6px rgba(0,0,0,.5)); }
+.reader .hand.tap { right: 22%; top: 52%; animation: hand-tap 1.3s ease-in-out infinite; }
+.reader .hand.tap::after { content: ""; position: absolute; left: 50%; top: 6px; width: 34px; height: 34px; margin-left: -17px; border-radius: 50%;
+                           border: 4px solid #fff; animation: hand-ring 1.3s ease-out infinite; }
+.reader .hand.drag { left: 50%; top: 46%; margin-left: -32px; animation: hand-drag 2.2s ease-in-out infinite; }
+@keyframes hand-tap { 0%, 100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-8px) scale(.9); } }
+@keyframes hand-ring { 0%, 35% { transform: scale(.4); opacity: 0; } 50% { opacity: .9; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes hand-drag { 0%, 100% { transform: translateX(-90px); } 50% { transform: translateX(90px); } }
+
+/* Grown-up lock on the gear. */
+.reader .round.holding { animation: gate-hold 2s linear; }
+@keyframes gate-hold { from { box-shadow: 0 0 0 0 rgba(232,115,12,.9); } to { box-shadow: 0 0 0 10px rgba(232,115,12,.9); } }
+.reader .gate-tip { position: absolute; top: 72px; right: 12px; background: rgba(0,0,0,.8); color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
 
 .reader .end { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
 .reader .end .box { background: #fff; border-radius: 24px; padding: 32px 40px; text-align: center; display: flex; flex-direction: column; gap: 12px; }
 .reader .end h2 { font-size: 40px; font-weight: 900; margin: 0 0 12px; }
-.reader .end button { border: 0; border-radius: 999px; padding: 12px 24px; font-size: 18px; }
+.reader .end button { border: 0; border-radius: 999px; padding: 14px 26px; font-size: 18px; }
 .reader .end .primary { background: var(--orange); color: #fff; }
 
-.reader .pills { display: flex; gap: 8px; }
-.reader .showme { background: #ffd23f; font-weight: 700; }
-/* Sits just above the bottom controls so it never covers the corner map. */
-.reader .explore-tip { position: absolute; bottom: 104px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color: #fff;
-                       border-radius: 999px; padding: 8px 18px; font-size: 16px; pointer-events: none; white-space: nowrap; }
+@media (max-width: 520px) {
+  .reader .round { width: 52px; height: 52px; }
+  .reader .arrow { width: 66px; height: 66px; }
+  .reader .words { width: calc(100vw - 24px); bottom: 104px; }
+  .reader[data-cap="medium"] { --cap: 18px; }
+  .reader[data-cap="large"] { --cap: 23px; }
+  .reader .hand { font-size: 52px; }
+}
+
+/* Follow the device's own reduce-motion setting for the hint animations too. */
+@media (prefers-reduced-motion: reduce) {
+  .reader .hand, .reader .hand.tap::after, .reader .showme { animation: none; }
+}
