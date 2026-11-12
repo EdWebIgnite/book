@@ -29,10 +29,24 @@ There are two kinds of page, and a book can mix them.
 - Everything else in the scene is an extra to find, in any order.
 - A **corner map** shows the whole scene and where the child is. Touching the map moves the view there.
 
+## Built for under-nines
+
+The reader follows what the research says about young children and touchscreens (the findings, sources and the full ideas list are in `docs/movement-ideas.md`):
+
+- Everything works with a tap or a one-finger drag. Zoom has + and − buttons, so nobody has to pinch.
+- Every touch gets an answer: a ripple and a soft sound, even on empty space.
+- Things to find have a touch area of at least 2 cm, and accidental double taps are ignored.
+- Longer camera moves take longer and zooming has a speed limit. A reduced-motion mode swaps flights for fades and follows the device's own setting.
+- Controls are picture buttons, kept off the bottom edge where wrists rest. Hints are pictures too (a tapping or dragging hand), since most of these children can't read yet.
+- Captions never cover what the camera is showing: the picture moves up to make room.
+- Stops and things to find can carry a short question for the adult ("Ask: how is Moss feeling now?").
+- Parents get age presets (3 to 5, 6 to 8, 9 and up), a switch for the just-for-fun things to find (always, after the story, or never), sound, word size and an optional hold-to-open lock on the settings.
+
 ## Sample books
 
-Both are original placeholder books drawn in code, there to exercise every feature:
+All are original placeholder books drawn in code, there to exercise every feature:
 
+- **Moss and the Biggest Puddle.** A picture book written for ages 4 to 5. Moss the bear cub has new red boots and no puddle. Eleven guided pages with short sentences, a repeating "too..." pattern, pans, weather that changes the whole garden, and questions for the adult. It ends on the whole garden to explore, where Dot the duck has lost her three ducklings. Every page is a window onto one wide drawing of the garden, so the place stays the same throughout.
 - **Who's at the Waterhole?** A picture book. Seven guided pages using focus areas, pans and captions, then a wide evening scene to explore with ten things to find.
 - **Captain Megawatt and the Runaway Robot.** A three-page comic with the words lettered into the art. Every stop is one panel, using the dim style.
 - **The Light in the Deep.** One big underwater scene (8192 x 6144), from the sunny surface down to the dark sea floor. A six-step story leads from Finn the clownfish to the light at the bottom, with twenty extras to find along the way.
@@ -75,9 +89,11 @@ content/library.json             List of book folders, for the playground and ed
 web/index.html                   Movement playground
 web/editor.html, editor.js       Book editor
 web/reader.js                    Reader engine shared by the playground and editor preview
+web/reader-ui.js, reader.css     The reader screen (buttons, captions, hints), also shared
+docs/movement-ideas.md           Research on comparable apps and on children and touchscreens, and the ideas list
 tools/make_books.js              Draws the sample books (node tools/make_books.js)
-tools/art/                       The drawings: kit.js and waterhole.js (picture book), comic.js and megawatt.js (comic),
-                                 sea.js and deep.js (the big underwater scene)
+tools/art/                       The drawings: garden.js and puddle.js (Moss and the Biggest Puddle), kit.js and waterhole.js
+                                 (waterhole book), comic.js and megawatt.js (comic), sea.js and deep.js (underwater scene)
 tools/art/fonts/                 Open-licence fonts used in the art (Baloo 2, Bangers, Comic Neue), with their licences
 android/                         Android app, parked for now
 ```
@@ -120,7 +136,7 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
 
 - Boxes are fractions of the page image: `x` and `y` are the top-left corner, `w` and `h` the size. `0.5` means halfway across or down.
 - `focusStyle` (book) and `style` (one stop) can be `dim`, `vignette` (soft dark edges) or `none`.
-- `to` and `panSeconds` make a pan stop. `caption` is optional.
+- `to` and `panSeconds` make a pan stop. `caption` is optional. `ask` is an optional question for the adult reading along.
 - A page with no stops is shown whole (good for splash pages).
 - `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints, the Show me button and the corner map (`"map": true`).
 - A hotspot with `"story": 1` (then 2, 3 and so on) is a story step; give story steps a `"name"` so the "First find..." message can name them.

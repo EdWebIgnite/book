@@ -13,20 +13,24 @@ const path = require("path");
 const { renderAll } = require("./art/render");
 
 const CONTENT = path.join(__dirname, "..", "content");
-const BOOKS = { waterhole: "./art/waterhole", "captain-megawatt": "./art/megawatt", "deep-sea": "./art/deep" };
+const BOOKS = { waterhole: "./art/waterhole", "captain-megawatt": "./art/megawatt", "deep-sea": "./art/deep", "biggest-puddle": "./art/puddle" };
 const TILE = 1024;        // tile size for big scenes
 const TILE_LEVELS = 2;    // full size, and half size; the overview image covers anything smaller
 const OVERVIEW = 2048;    // width of a big scene's overview image
 
 function overlay(page, w, h) {
-  const px = b => `x="${b.x * w}" y="${b.y * h}" width="${b.w * w}" height="${b.h * h}"`;
+  // A page can be a window onto a bigger drawing; boxes are fractions of that window.
+  const [vx, vy, vw, vh] = page.view || [0, 0, w, h];
+  const px = b => `x="${vx + b.x * vw}" y="${vy + b.y * vh}" width="${b.w * vw}" height="${b.h * vh}"`;
+  w = vw; h = vh;
+  const ox = vx, oy = vy;
   let s = "";
   (page.stops || []).forEach((st, i) => {
-    s += `<rect ${px(st.box)} fill="none" stroke="#ff2d2d" stroke-width="10"/><text x="${st.box.x * w + 16}" y="${st.box.y * h + 80}" font-size="80" font-weight="800" fill="#ff2d2d">${i + 1}</text>`;
-    if (st.to) s += `<rect ${px(st.to)} fill="none" stroke="#ff2dd0" stroke-width="10" stroke-dasharray="30 18"/><text x="${st.to.x * w + 16}" y="${st.to.y * h + 80}" font-size="80" font-weight="800" fill="#ff2dd0">${i + 1} end</text>`;
+    s += `<rect ${px(st.box)} fill="none" stroke="#ff2d2d" stroke-width="10"/><text x="${ox + st.box.x * w + 16}" y="${oy + st.box.y * h + 80}" font-size="80" font-weight="800" fill="#ff2d2d">${i + 1}</text>`;
+    if (st.to) s += `<rect ${px(st.to)} fill="none" stroke="#ff2dd0" stroke-width="10" stroke-dasharray="30 18"/><text x="${ox + st.to.x * w + 16}" y="${oy + st.to.y * h + 80}" font-size="80" font-weight="800" fill="#ff2dd0">${i + 1} end</text>`;
   });
   (page.hotspots || []).forEach((hs, i) => {
-    s += `<rect ${px(hs.box)} fill="none" stroke="#ffe600" stroke-width="10" stroke-dasharray="12 12"/><text x="${hs.box.x * w + 10}" y="${hs.box.y * h - 14}" font-size="64" font-weight="800" fill="#ffe600">★${i + 1}</text>`;
+    s += `<rect ${px(hs.box)} fill="none" stroke="#ffe600" stroke-width="10" stroke-dasharray="12 12"/><text x="${ox + hs.box.x * w + 10}" y="${oy + hs.box.y * h - 14}" font-size="64" font-weight="800" fill="#ffe600">★${i + 1}</text>`;
   });
   return s;
 }
@@ -67,9 +71,10 @@ async function main() {
           jobs.push({ svg: p.svg + overlay(p, width, height), width: 4096, height: Math.round(4096 * height / width), view: full, file: path.join(process.env.CHECK_DIR, `${id}-${image}`) });
         }
       } else {
-        jobs.push({ svg: p.svg, width, height, file: path.join(dir, image) });
+        // p.view lets a page be a window onto a larger drawing (several pages can share one scene).
+        jobs.push({ svg: p.svg, width, height, view: p.view, file: path.join(dir, image) });
         if (process.env.CHECK_DIR) {
-          jobs.push({ svg: p.svg + overlay(p, width, height), width, height, file: path.join(process.env.CHECK_DIR, `${id}-${image}`) });
+          jobs.push({ svg: p.svg + overlay(p, width, height), width, height, view: p.view, file: path.join(process.env.CHECK_DIR, `${id}-${image}`) });
         }
       }
       if (p.mode === "explore") Object.assign(out, { mode: "explore", hotspots: p.hotspots || [], guidance: p.guidance || {} });

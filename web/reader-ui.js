@@ -104,7 +104,23 @@
       wasExploring = st.exploring;
 
       q(".end").classList.toggle("hidden", !st.finished);
+      makeRoom(st);
       if (opts.onChange) opts.onChange(st);
+    }
+
+    /**
+     * On guided pages the picture moves up to leave room for the words, so a caption never
+     * sits on top of what the camera is showing. Skipped on short screens (a phone on its
+     * side), where the caption tucks in between the arrows instead.
+     */
+    const BASE = 104;
+    function makeRoom(st) {
+      requestAnimationFrame(() => {
+        const words = (st.caption || st.ask) && !st.exploring ? q(".words").offsetHeight + 18 : 0;
+        const H = root.clientHeight;
+        const roomy = H >= 520 && H - 64 - BASE - words >= H * 0.45;
+        reader.insetGoal.bottom = BASE + (roomy ? words : 0);
+      });
     }
 
     // The drag hint goes away as soon as the child touches the picture.

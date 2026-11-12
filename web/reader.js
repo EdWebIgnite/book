@@ -278,6 +278,7 @@
       this.settings = opts.settings || loadSettings();
       this.onChange = opts.onChange || (() => {});
       this.insets = opts.insets || { top: 64, bottom: 88 };
+      this.insetGoal = { ...this.insets };   // the screen can ask for more room (for a caption); the picture eases to it
       this.book = null;
       this.steps = [];
       this.stepIndex = 0;
@@ -848,6 +849,10 @@
       if (!this.running) return;
       const dt = Math.min(50, now - (this._last || now));
       this._last = now;
+      for (const side of ["top", "bottom"]) {
+        const gap = this.insetGoal[side] - this.insets[side];
+        this.insets[side] = Math.abs(gap) < 0.5 ? this.insetGoal[side] : this.insets[side] + gap * Math.min(1, dt / 110);
+      }
       const a = this.anim;
       if (a) {
         const raw = a.ms === 0 ? 1 : clamp((now - a.start) / a.ms, 0, 1);

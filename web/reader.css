@@ -80,6 +80,15 @@ button { font: inherit; cursor: pointer; }
   .reader .hand { font-size: 52px; }
 }
 
+/* A phone on its side: no room to move the picture up, so the words sit in the row between the arrows. */
+@media (max-height: 519px) {
+  .reader .words { bottom: 12px; width: calc(100vw - 210px); gap: 4px; }
+  .reader .caption { padding: 8px 14px; font-size: min(var(--cap), 17px); }
+  .reader .ask { font-size: 12px; padding: 4px 10px; }
+  .reader .pageno { display: none; }
+  .reader .bottom { padding-bottom: 12px; }
+}
+
 /* Follow the device's own reduce-motion setting for the hint animations too. */
 @media (prefers-reduced-motion: reduce) {
   .reader .hand, .reader .hand.tap::after, .reader .showme { animation: none; }

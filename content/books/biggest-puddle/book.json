@@ -1,0 +1,530 @@
+{
+  "id": "biggest-puddle",
+  "title": "Moss and the Biggest Puddle",
+  "author": "Sample book, ages 4 to 5",
+  "cover": "cover.jpg",
+  "focusStyle": "vignette",
+  "pages": [
+    {
+      "image": "page1.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.125,
+            "y": 0.5867,
+            "w": 0.4167,
+            "h": 0.36
+          },
+          "caption": "Moss had new boots."
+        },
+        {
+          "box": {
+            "x": 0.3542,
+            "y": 0.7333,
+            "w": 0.1667,
+            "h": 0.2
+          },
+          "to": {
+            "x": 0.525,
+            "y": 0.4133,
+            "w": 0.25,
+            "h": 0.3067
+          },
+          "panSeconds": 3.5,
+          "caption": "Big, red, shiny boots. Moss loved them.",
+          "ask": "What do you love to wear?"
+        }
+      ]
+    },
+    {
+      "image": "page2.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.275,
+            "y": 0.59,
+            "w": 0.2375,
+            "h": 0.36
+          },
+          "caption": "Boots are for puddles. Everybody knows that."
+        },
+        {
+          "box": {
+            "x": 0.5125,
+            "y": 0.02,
+            "w": 0.225,
+            "h": 0.26
+          },
+          "to": {
+            "x": 0.5313,
+            "y": 0.65,
+            "w": 0.3438,
+            "h": 0.33
+          },
+          "panSeconds": 4,
+          "caption": "But the sun was shining. There was not one puddle anywhere.",
+          "ask": "Where could Moss look for a puddle?"
+        }
+      ]
+    },
+    {
+      "image": "page3.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.3427,
+            "y": 0.5,
+            "w": 0.1613,
+            "h": 0.2581
+          },
+          "caption": "Drip. Drip. Drip."
+        },
+        {
+          "box": {
+            "x": 0.3327,
+            "y": 0.6774,
+            "w": 0.2218,
+            "h": 0.2258
+          },
+          "caption": "A puddle! Moss put in one toe."
+        },
+        {
+          "box": {
+            "x": 0.3931,
+            "y": 0.3387,
+            "w": 0.252,
+            "h": 0.3226
+          },
+          "caption": "Too small."
+        }
+      ]
+    },
+    {
+      "image": "page4.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.1583,
+            "y": 0.6667,
+            "w": 0.1917,
+            "h": 0.2267
+          },
+          "to": {
+            "x": 0.225,
+            "y": 0.2933,
+            "w": 0.3417,
+            "h": 0.3467
+          },
+          "panSeconds": 4,
+          "caption": "The bird bath had water. Moss stretched up, up, up."
+        },
+        {
+          "box": {
+            "x": 0.2833,
+            "y": 0.28,
+            "w": 0.2333,
+            "h": 0.24
+          },
+          "caption": "Too high. And somebody was already in it."
+        }
+      ]
+    },
+    {
+      "image": "page5.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.5429,
+            "y": 0.6326,
+            "w": 0.2,
+            "h": 0.2058
+          },
+          "caption": "The dog’s bowl had water."
+        },
+        {
+          "box": {
+            "x": 0.5429,
+            "y": 0.6326,
+            "w": 0.2,
+            "h": 0.2058
+          },
+          "to": {
+            "x": 0.6476,
+            "y": 0.5488,
+            "w": 0.2095,
+            "h": 0.2515
+          },
+          "panSeconds": 3,
+          "caption": "The dog looked at Moss. Moss looked at the dog."
+        },
+        {
+          "box": {
+            "x": 0.1714,
+            "y": 0.3887,
+            "w": 0.3048,
+            "h": 0.4954
+          },
+          "caption": "Too... not mine.",
+          "ask": "Why didn’t Moss jump in the dog’s bowl?"
+        }
+      ]
+    },
+    {
+      "image": "page6.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.075,
+            "y": 0.51,
+            "w": 0.225,
+            "h": 0.29
+          },
+          "caption": "Moss sat down. Boots with no puddle are just shoes.",
+          "ask": "How is Moss feeling now?"
+        },
+        {
+          "box": {
+            "x": 0.4188,
+            "y": 0.015,
+            "w": 0.3,
+            "h": 0.3
+          },
+          "to": {
+            "x": 0.7,
+            "y": 0.015,
+            "w": 0.3,
+            "h": 0.3
+          },
+          "panSeconds": 4.5,
+          "caption": "Then the sky went grey."
+        },
+        {
+          "box": {
+            "x": 0.125,
+            "y": 0.48,
+            "w": 0.1187,
+            "h": 0.17
+          },
+          "caption": "Plip."
+        }
+      ]
+    },
+    {
+      "image": "page7.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.6042,
+            "y": 0.0067,
+            "w": 0.3958,
+            "h": 0.46
+          },
+          "caption": "Plip, plop, plip, plop... BOOM!"
+        },
+        {
+          "box": {
+            "x": 0.275,
+            "y": 0.48,
+            "w": 0.2333,
+            "h": 0.3333
+          },
+          "caption": "That was a LOT of rain. Moss hid under the bench."
+        },
+        {
+          "box": {
+            "x": 0.4833,
+            "y": 0.5467,
+            "w": 0.1833,
+            "h": 0.2667
+          },
+          "caption": "Somebody else was hiding there too. “I’m Dot,” said the duck. “I don’t like the boom either.”",
+          "ask": "What do you do when it thunders?"
+        }
+      ]
+    },
+    {
+      "image": "page8.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.0469,
+            "y": 0.55,
+            "w": 0.2969,
+            "h": 0.34
+          },
+          "caption": "When the rain stopped, they peeped out."
+        },
+        {
+          "box": {
+            "x": 0.0469,
+            "y": 0.55,
+            "w": 0.2969,
+            "h": 0.34
+          },
+          "to": {
+            "x": 0.2813,
+            "y": 0.67,
+            "w": 0.5313,
+            "h": 0.325
+          },
+          "panSeconds": 4,
+          "caption": "And there it was. The biggest puddle in the whole world.",
+          "ask": "What do you think Moss will do?"
+        }
+      ]
+    },
+    {
+      "image": "page9.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.5833,
+            "y": 0.52,
+            "w": 0.25,
+            "h": 0.3067
+          },
+          "caption": "One... two... three..."
+        },
+        {
+          "box": {
+            "x": 0.2,
+            "y": 0.1067,
+            "w": 0.3167,
+            "h": 0.6933
+          },
+          "caption": "JUMP!"
+        }
+      ]
+    },
+    {
+      "image": "page10.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.0625,
+            "y": 0.2667,
+            "w": 0.625,
+            "h": 0.7067
+          },
+          "caption": "SPLASH!"
+        },
+        {
+          "box": {
+            "x": 0.2,
+            "y": 0.4533,
+            "w": 0.3333,
+            "h": 0.44
+          },
+          "caption": "It was a very, very good puddle."
+        },
+        {
+          "box": {
+            "x": 0.5833,
+            "y": 0.3467,
+            "w": 0.275,
+            "h": 0.32
+          },
+          "caption": "“Again!” said Dot."
+        }
+      ]
+    },
+    {
+      "image": "page11.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.0625,
+            "y": 0.4533,
+            "w": 0.3125,
+            "h": 0.4533
+          },
+          "caption": "Moss’s boots were full of water."
+        },
+        {
+          "box": {
+            "x": 0.0625,
+            "y": 0.4533,
+            "w": 0.3125,
+            "h": 0.4533
+          },
+          "to": {
+            "x": 0.3667,
+            "y": 0.52,
+            "w": 0.2667,
+            "h": 0.4
+          },
+          "panSeconds": 3.5,
+          "caption": "And one boot made a very good boat."
+        },
+        {
+          "box": {
+            "x": 0,
+            "y": 0,
+            "w": 1,
+            "h": 1
+          },
+          "caption": "It was the best puddle day ever.",
+          "ask": "What was your favourite part?"
+        }
+      ]
+    },
+    {
+      "image": "page12.jpg",
+      "stops": [
+        {
+          "box": {
+            "x": 0.625,
+            "y": 0.575,
+            "w": 0.1875,
+            "h": 0.375
+          },
+          "style": "none",
+          "caption": "After the rain, the garden was full of surprises. But Dot has lost her three ducklings! Can you find them?"
+        }
+      ],
+      "mode": "explore",
+      "hotspots": [
+        {
+          "box": {
+            "x": 0.2719,
+            "y": 0.635,
+            "w": 0.0469,
+            "h": 0.15
+          },
+          "caption": "One! Having a paddle in the watering can.",
+          "story": 1,
+          "name": "the duckling at the watering can"
+        },
+        {
+          "box": {
+            "x": 0.8578,
+            "y": 0.715,
+            "w": 0.05,
+            "h": 0.14
+          },
+          "caption": "Two! Splashing in the dog’s bowl. The dog does not mind. Much.",
+          "story": 2,
+          "name": "the duckling by the dog"
+        },
+        {
+          "box": {
+            "x": 0.9281,
+            "y": 0.795,
+            "w": 0.0594,
+            "h": 0.18
+          },
+          "caption": "Three! Hiding under the big leaf, nice and dry. “Thank you!” said Dot.",
+          "story": 3,
+          "name": "the duckling under the big leaf"
+        },
+        {
+          "box": {
+            "x": 0.2203,
+            "y": 0.455,
+            "w": 0.0406,
+            "h": 0.1
+          },
+          "caption": "A butterfly, drying her wings in the sun.",
+          "name": "the butterfly"
+        },
+        {
+          "box": {
+            "x": 0.3008,
+            "y": 0.505,
+            "w": 0.0266,
+            "h": 0.07
+          },
+          "caption": "A ladybird! Can you count her spots?",
+          "name": "the ladybird",
+          "ask": "How many spots can you see?"
+        },
+        {
+          "box": {
+            "x": 0.3547,
+            "y": 0.9075,
+            "w": 0.0375,
+            "h": 0.065
+          },
+          "caption": "A wiggly worm has come up to see.",
+          "name": "the worm"
+        },
+        {
+          "box": {
+            "x": 0.4219,
+            "y": 0.475,
+            "w": 0.0531,
+            "h": 0.13
+          },
+          "caption": "The little bird has her bath back.",
+          "name": "the bird"
+        },
+        {
+          "box": {
+            "x": 0.4703,
+            "y": 0.86,
+            "w": 0.0469,
+            "h": 0.1
+          },
+          "caption": "A snail! Snails love the rain.",
+          "name": "the snail"
+        },
+        {
+          "box": {
+            "x": 0.5859,
+            "y": 0.075,
+            "w": 0.3125,
+            "h": 0.375
+          },
+          "caption": "A rainbow! The sun came back.",
+          "name": "the rainbow",
+          "ask": "What colours can you see?"
+        },
+        {
+          "box": {
+            "x": 0.7891,
+            "y": 0.82,
+            "w": 0.0406,
+            "h": 0.11
+          },
+          "caption": "A paper boat, sailing across the puddle.",
+          "name": "the paper boat"
+        },
+        {
+          "box": {
+            "x": 0.7977,
+            "y": 0.57,
+            "w": 0.0406,
+            "h": 0.085
+          },
+          "caption": "Mushrooms pop up after the rain.",
+          "name": "the mushrooms"
+        },
+        {
+          "box": {
+            "x": 0.8516,
+            "y": 0.88,
+            "w": 0.0344,
+            "h": 0.09
+          },
+          "caption": "Ribbit! Frog thinks this is the best puddle too.",
+          "name": "the frog"
+        },
+        {
+          "box": {
+            "x": 0.9,
+            "y": 0.695,
+            "w": 0.0813,
+            "h": 0.14
+          },
+          "caption": "The dog is having a rest.",
+          "name": "the dog"
+        }
+      ],
+      "guidance": {
+        "hints": true,
+        "showMe": true,
+        "map": true
+      }
+    }
+  ]
+}

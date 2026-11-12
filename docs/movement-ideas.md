@@ -4,6 +4,8 @@ Written after looking at comparable apps and the published research on young chi
 
 Effort tags: **[S]** a day or less, **[M]** a few days, **[L]** a week or more. **[art]** means it needs artwork delivered in separate layers, not one flat picture. **(have)** means the playground already does it in some form.
 
+**Built in the playground so far** (item numbers from Part 2): 1, 2, 3, 4, 5, 6, 31, 33, 41, 48, 49, 50, 65 (synthesised whoosh), 68, 74, 75, 86, 87, 88, 90 (optional hold on the gear), 93, 94. Also from the "have" list: picture hints in place of text tips, and the guided story step winning over a nearby extra when a touch is close to both.
+
 ---
 
 ## Part 1: What the research says
