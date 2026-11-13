@@ -43,9 +43,8 @@
 <body>
 
 <div id="library">
-  <h1>My Books</h1>
-  <p class="hint">Movement playground. Pick a book, then press the gear (or <kbd>S</kbd>) for the settings.
-    To mark focus areas on pages, open the <a href="editor.html">editor</a>.</p>
+  <h1 id="shelfTitle">My Books</h1>
+  <p class="hint">Movement playground. Pick a book, then press the gear (or <kbd>S</kbd>) for the settings.</p>
   <div id="grid"></div>
 </div>
 
@@ -275,10 +274,20 @@ $("copy").onclick = async () => {
   setTimeout(() => $("copied").textContent = "", 2500);
 };
 
+// The book editor is for the makers, not for parents or children, so nothing on screen points to it.
+// Hold the "My Books" title for three seconds, or press Shift+E on the shelf, to open it.
+{
+  let timer = 0;
+  const title = $("shelfTitle"), cancel = () => clearTimeout(timer);
+  title.addEventListener("pointerdown", () => { cancel(); timer = setTimeout(() => { location.href = "editor.html"; }, 3000); });
+  for (const type of ["pointerup", "pointerleave", "pointercancel"]) title.addEventListener(type, cancel);
+  title.addEventListener("contextmenu", e => e.preventDefault());
+}
+
 document.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   if (e.key === "s" || e.key === "S") { toggleSettings(); return; }
-  if ($("reader").classList.contains("hidden")) return;
+  if ($("reader").classList.contains("hidden")) { if (e.key === "E" && e.shiftKey) location.href = "editor.html"; return; }
   if (e.key === "Escape") { if (!$("settings").classList.contains("hidden")) toggleSettings(false); else closeBook(); return; }
   reader.sounds.wake();
   if (e.key === "+" || e.key === "=") { reader.zoomStep(1.7); return; }

@@ -25,6 +25,13 @@
  *           "name": "Old Turtle" }   // optional: used in "First find Old Turtle" when tapped too early
  *       ],
  *       "guidance": { "hints": true, "showMe": true, "map": false },  // idle hints, Show me button, corner map
+ *       "effects": [                                  // optional: things the reader draws moving over the picture
+ *         { "type": "rain", "amount": 0.6,            // how heavy, 0 to 1
+ *           "from": 2,                                // optional: starts at this stop (1 = first); else all page
+ *           "ground": 0.62,                           // optional: splash rings below this line (fraction of height)
+ *           "dry": [ { box } ] },                     // optional: areas where no rain falls (under a roof)
+ *         { "type": "lightning", "stop": 1 }          // a soft flash and a rumble on arriving at this stop
+ *       ],
  *       "tiles": { "width": 8192, "height": 6144, "size": 1024, "levels": 2,
  *                  "path": "page1_tiles/{z}/{x}_{y}.jpg" }   // optional, for very big scenes: "image" is then
  *                                    // a small overview, and sharp tiles load only where the child is looking.
@@ -149,6 +156,7 @@
       stops: (p.stops || (p.panels || []).map(b => ({ box: b }))).map(s => ({ ...s })),
       hotspots: (p.hotspots || []).map(h => ({ ...h })),
       guidance: { hints: true, showMe: true, map: false, ...(p.guidance || {}) },
+      effects: (p.effects || []).map(e => ({ ...e, ...(e.dry ? { dry: e.dry.map(b => ({ ...b })) } : {}) })),
       tiles: p.tiles ? { ...p.tiles } : null,
     }));
     return book;
@@ -178,6 +186,16 @@
           }),
         };
         if (p.openWhole === false) page.openWhole = false;
+        if (p.effects && p.effects.length) {
+          page.effects = p.effects.map(e => {
+            if (e.type === "lightning") return { type: "lightning", stop: e.stop || 1 };
+            const o = { type: e.type, amount: round4(e.amount === undefined ? 0.6 : e.amount) };
+            if (e.from > 1) o.from = e.from;
+            if (e.ground) o.ground = round4(e.ground);
+            if (e.dry && e.dry.length) o.dry = e.dry.map(roundBox);
+            return o;
+          });
+        }
         if (p.tiles) page.tiles = { ...p.tiles };
         if (p.mode === "explore") {
           page.mode = "explore";
@@ -250,6 +268,47 @@
     find() { [1047, 1319, 1568].forEach((f, i) => this.tone(f, i * 0.07, 0.3, 0.055, "triangle")); }
     locked() { this.tone(330, 0, 0.12, 0.05, "triangle"); this.tone(262, 0.1, 0.18, 0.05, "triangle"); }
     party() { [784, 988, 1175, 1568, 1976].forEach((f, i) => this.tone(f, i * 0.09, 0.45, 0.06, "triangle")); }
+
+    noise(seconds) {
+      const c = this.ctx, buf = c.createBuffer(1, Math.ceil(c.sampleRate * seconds), c.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      return src;
+    }
+
+    /** Steady rain, as loud as `level` (0 to 1). Call it again to change or stop it. */
+    rain(level) {
+      const c = this.ctx;
+      if (!c) return;
+      if (!this._rain) {
+        if (level < 0.01) return;
+        const src = this.noise(2), hi = c.createBiquadFilter(), lo = c.createBiquadFilter(), g = c.createGain();
+        src.loop = true;
+        hi.type = "highpass"; hi.frequency.value = 1100;
+        lo.type = "lowpass"; lo.frequency.value = 7000;
+        g.gain.value = 0;
+        src.connect(hi).connect(lo).connect(g).connect(c.destination);
+        src.start();
+        this._rain = g;
+      }
+      this._rain.gain.setTargetAtTime(level * 0.045, c.currentTime, 0.2);
+    }
+
+    /** A low rumble, not a crack: this is for small children. */
+    thunder(delay = 0) {
+      const c = this.ctx;
+      if (!c) return;
+      const t = c.currentTime + delay, src = this.noise(2.4), f = c.createBiquadFilter(), g = c.createGain();
+      f.type = "lowpass";
+      f.frequency.setValueAtTime(260, t);
+      f.frequency.exponentialRampToValueAtTime(70, t + 2.2);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.5, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 2.3);
+      src.connect(f).connect(g).connect(c.destination);
+      src.start(t);
+    }
 
     /** Soft rush of air for a camera move, longer for longer moves. */
     whoosh(ms) {
@@ -324,6 +383,8 @@
       this.images = images;
       this.baseUrl = opts.baseUrl || "";
       this.tiles = new Map();
+      this.weather = null;
+      this.flash = 0;
       this.tileLoads = 0;
       this.party = 0;
       this.moved = false;
@@ -574,7 +635,7 @@
       this.shown = { ...done.to };
       this.anim = null;
       this.restSince = performance.now();
-      if (done.kind === "move") this._afterArrive();
+      if (done.kind === "move") { this._weatherArrive(); this._afterArrive(); }
       if (done.then) done.then();
     }
 
@@ -903,6 +964,7 @@
                  && now - this.restSince > this.settings.autoSeconds * 1000) {
         this.next();
       }
+      this.updateWeather(now);
       this.draw(now);
       requestAnimationFrame(this._frame);
     }
@@ -938,6 +1000,7 @@
         ctx.fillRect(r.x, r.y, r.w, r.h);
         ctx.drawImage(this.images[i], r.x, r.y, r.w, r.h);
         if (this.book.pages[i].tiles && this.baseUrl) this.drawTiles(i, pr, sc, dpr, toScreen, W, H, now);
+        if (this.weather && this.weather[i] > 0.01) this.drawRain(i, pr, r, now, W, H);
       });
 
       const f = toScreen(this.shown.focus);
@@ -984,9 +1047,113 @@
         ctx.fillStyle = `rgba(28,27,34,${this.shown.fade})`;
         ctx.fillRect(0, 0, W, H);
       }
+      if (this.flash) {
+        // Lightning: one soft flash and a fainter echo. Kept gentle and short on purpose.
+        const t = now - this.flash;
+        if (t > 800) this.flash = 0;
+        else if (t >= 0) {
+          const a = 0.5 * Math.exp(-t / 90) + (t > 170 ? 0.28 * Math.exp(-(t - 170) / 150) : 0);
+          ctx.fillStyle = `rgba(255,255,238,${Math.min(0.6, a)})`;
+          ctx.fillRect(0, 0, W, H);
+        }
+      }
       this.drawMap(now, W, top);
       if (!this.reduced) this.drawParty(now, W, H);
       this.drawRipples(now);
+    }
+
+    // ------------------------------------------------------------ weather
+
+    /** Is this page's rain falling at the step we're on? */
+    rainOn(i) {
+      const step = this.step, page = this.book.pages[i];
+      if (!step || step.page !== i || this.reduced) return 0;
+      const e = (page.effects || []).find(x => x.type === "rain");
+      if (!e) return 0;
+      if (e.from > 1 && step.stop >= -1 && step.stop < e.from - 1) return 0;
+      return 1;
+    }
+
+    /** Rain fades in and out over about half a second, and its sound follows. */
+    updateWeather(now) {
+      if (!this.book) return;
+      const dt = Math.min(50, now - (this._weatherAt || now));
+      this._weatherAt = now;
+      if (!this.weather || this.weather.length !== this.book.pages.length) this.weather = this.book.pages.map(() => 0);
+      let loud = 0;
+      const showing = this.canvas.clientWidth > 0;
+      this.book.pages.forEach((page, i) => {
+        if (!page.effects || !page.effects.length) return;
+        const want = showing ? this.rainOn(i) : 0;
+        const have = this.weather[i];
+        this.weather[i] = Math.abs(want - have) < 0.01 ? want : have + (want - have) * Math.min(1, dt / 260);
+        const e = page.effects.find(x => x.type === "rain");
+        if (e) loud = Math.max(loud, this.weather[i] * (0.4 + 0.6 * (e.amount === undefined ? 0.6 : e.amount)));
+      });
+      if (!this.settings.sound) loud = 0;
+      if (Math.abs(loud - (this._rainLoud || 0)) > 0.01 || (loud === 0 && this._rainLoud)) { this._rainLoud = loud; this.sounds.rain(loud); }
+    }
+
+    /** Arriving at a stop that has lightning: flash after a beat, then the rumble. */
+    _weatherArrive() {
+      const step = this.step;
+      if (!step || this.overview || step.stop < 0) return;
+      const e = (this.book.pages[step.page].effects || []).find(x => x.type === "lightning" && (x.stop || 1) - 1 === step.stop);
+      if (!e) return;
+      if (!this.reduced) this.flash = performance.now() + 700;
+      this.play("thunder", 0.85);
+    }
+
+    /**
+     * Falling rain, drawn in the page's own space so it stays put as the camera moves. Every streak's
+     * place comes from the clock and its number, so there is nothing to keep track of between frames.
+     */
+    drawRain(i, pr, r, now, W, H) {
+      if (r.x > W || r.y > H || r.x + r.w < 0 || r.y + r.h < 0) return;
+      const e = this.book.pages[i].effects.find(x => x.type === "rain");
+      if (!e) return;
+      const ctx = this.ctx, level = this.weather[i], t = now / 1000;
+      const amount = e.amount === undefined ? 0.6 : e.amount, aspect = pr.w / pr.h, slant = 0.2;
+      const rnd = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(r.x, r.y, r.w, r.h);
+      for (const b of e.dry || []) ctx.rect(r.x + b.x * r.w, r.y + b.y * r.h, b.w * r.w, b.h * r.h);
+      ctx.clip("evenodd");
+      ctx.lineCap = "round";
+      // Three depths: far rain is thin, slow and faint; near rain is thick, fast and bright.
+      const perLayer = Math.round(110 * amount * aspect / 1.6);
+      for (let layer = 0; layer < 3; layer++) {
+        const depth = 0.5 + layer * 0.25, len = 0.035 + 0.045 * depth;
+        ctx.beginPath();
+        for (let k = 0; k < perLayer; k++) {
+          const id = layer * 1000 + k;
+          const fall = t * (1.1 + 0.5 * rnd(id + 0.5)) * depth * 1.25 + rnd(id) * 9;
+          const y = (fall % 1.3) - 0.15;
+          const x = rnd(id * 1.37 + Math.floor(fall / 1.3) * 7.9) * (aspect + slant) - slant * y;
+          const sx = r.x + x * r.h, sy = r.y + y * r.h;
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx + slant * len * r.h, sy - len * r.h);
+        }
+        ctx.strokeStyle = `rgba(236,244,255,${(0.2 + 0.4 * depth) * level})`;
+        ctx.lineWidth = Math.max(0.8, r.h * 0.0024 * depth);
+        ctx.stroke();
+      }
+      if (e.ground) {
+        // Splash rings where drops land, bigger towards the bottom of the picture (nearer to us).
+        const rings = Math.round(46 * amount * aspect / 1.6);
+        ctx.lineWidth = Math.max(0.8, r.h * 0.002);
+        for (let k = 0; k < rings; k++) {
+          const beat = t / (0.7 + 0.6 * rnd(k + 40)) + rnd(k + 80) * 5, n = Math.floor(beat), u = beat - n;
+          const gy = rnd(k * 3.1 + n * 2.9), y = e.ground + gy * (1 - e.ground), x = rnd(k * 7.3 + n * 1.7) * aspect;
+          const size = (0.004 + 0.022 * u) * (0.45 + gy);
+          ctx.beginPath();
+          ctx.ellipse(r.x + x * r.h, r.y + y * r.h, size * r.h, size * r.h * 0.36, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(240,247,255,${(1 - u) * 0.55 * level})`;
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
     }
 
     /** The ring that answers every touch. */

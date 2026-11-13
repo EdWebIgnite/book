@@ -243,6 +243,25 @@
           "caption": "Somebody else was hiding there too. “I’m Dot,” said the duck. “I don’t like the boom either.”",
           "ask": "What do you do when it thunders?"
         }
+      ],
+      "effects": [
+        {
+          "type": "rain",
+          "amount": 0.7,
+          "ground": 0.62,
+          "dry": [
+            {
+              "x": 0.2433,
+              "y": 0.5707,
+              "w": 0.4717,
+              "h": 0.3027
+            }
+          ]
+        },
+        {
+          "type": "lightning",
+          "stop": 1
+        }
       ]
     },
     {

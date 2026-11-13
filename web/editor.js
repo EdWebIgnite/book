@@ -13,7 +13,7 @@
   let pageIndex = 0;
   let selected = -1;         // stop index on the current page, -1 for none
   let selHot = -1;           // hotspot index on the current page, -1 for none (never both)
-  let drawKind = "stop";     // what dragging on the page creates: "stop" or "hot"
+  let drawKind = "stop";     // what dragging on the page creates: "stop", "hot", or "dry" (an area rain misses)
   let dirHandle = null;      // folder from "Open folder" or the first "Save", when the browser allows it
   let dirty = false;
   let settings = CR.loadSettings();
@@ -22,6 +22,7 @@
   const page = () => (book && book.pages[pageIndex]) || null;
   const stopColor = i => COLORS[i % COLORS.length];
   const HOT = "#ffd23f";
+  const DRY = "#7fd3f2";
   const newPage = (image, extra = {}) => ({ image, mode: "guided", stops: [], hotspots: [], guidance: { hints: true, showMe: true }, ...extra });
   const isExplore = () => !!page() && page().mode === "explore";
   function select(kind, i) { selected = kind === "stop" ? i : -1; selHot = kind === "hot" ? i : -1; }
@@ -63,6 +64,7 @@
         stops: JSON.parse(JSON.stringify(p.stops)),
         hotspots: JSON.parse(JSON.stringify(p.hotspots || [])),
         guidance: { ...(p.guidance || {}) },
+        effects: JSON.parse(JSON.stringify(p.effects || [])),
       })),
       pageIndex, selected, selHot,
     };
@@ -360,6 +362,19 @@
       }
     });
 
+    // Areas the rain misses.
+    for (const e of p.effects || []) {
+      for (const b of e.dry || []) {
+        const r = toScreen(b);
+        ctx.strokeStyle = DRY;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([2, 5]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.setLineDash([]);
+        label(r.x + 4, r.y + 4, "dry", "#2a7f9e");
+      }
+    }
+
     // Hotspots: things to find on explore pages.
     if (p.mode === "explore") {
       p.hotspots.forEach((h, i) => {
@@ -404,7 +419,7 @@
     if (drag && drag.mode === "new" && drag.cur) {
       const r = toScreen(normRect(drag.start, drag.cur));
       ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = drawKind === "hot" ? HOT : "#fff";
+      ctx.strokeStyle = drawKind === "hot" ? HOT : drawKind === "dry" ? DRY : "#fff";
       ctx.lineWidth = 2;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
       ctx.setLineDash([]);
@@ -523,7 +538,12 @@
       const r = d.cur ? normRect(d.start, d.cur) : null;
       if (r && r.w > MIN && r.h > MIN) {
         change(() => {
-          if (drawKind === "hot" && isExplore()) {
+          const rain = (page().effects || []).find(e => e.type === "rain");
+          if (drawKind === "dry" && rain) {
+            (rain.dry = rain.dry || []).push(r);
+            drawKind = "stop";
+            select(null);
+          } else if (drawKind === "hot" && isExplore()) {
             page().hotspots.push({ box: r });
             select("hot", page().hotspots.length - 1);
           } else {
@@ -652,6 +672,8 @@
       kind.onchange = () => { drawKind = kind.value; kind.blur(); renderAll(); };
       root.append(kind);
     }
+
+    renderEffects(root, p, el);
 
     root.append(el(`<h2>${p.mode === "explore" ? "Intro stops" : "Stops"}</h2>`));
     if (!p.stops.length) {
@@ -799,6 +821,67 @@
     full.onclick = () => change(() => { s.box = { x: 0, y: 0, w: 1, h: 1 }; });
     sizeRow.append(full);
     root.append(sizeRow);
+  }
+
+  /** Weather the reader draws moving over the page: rain, and a lightning flash on one stop. */
+  function renderEffects(root, p, el) {
+    p.effects = p.effects || [];
+    const rain = p.effects.find(e => e.type === "rain"), bolt = p.effects.find(e => e.type === "lightning");
+    const stopOptions = (sel, first) => {
+      if (first) sel.add(new Option(first, "1"));
+      p.stops.forEach((s, i) => { if (!(first && i === 0)) sel.add(new Option(`Stop ${i + 1}`, String(i + 1))); });
+    };
+    const check = (text, on, fn) => {
+      const row = el(`<label class="check"><input type="checkbox"> ${text}</label>`), box = row.querySelector("input");
+      box.checked = on;
+      box.onchange = () => change(() => fn(box.checked));
+      root.append(row);
+    };
+    const slider = (text, min, max, step, value, fn) => {
+      root.append(el(`<label class="field">${text}</label>`));
+      const input = el(`<input type="range" min="${min}" max="${max}" step="${step}">`);
+      input.value = value;
+      input.oninput = () => { fn(+input.value); setDirty(); draw(); };
+      root.append(input);
+    };
+
+    root.append(el("<h2>Moving effects</h2>"));
+    check("Rain falls on this page", !!rain, on => {
+      if (on) p.effects.push({ type: "rain", amount: 0.6 }); else p.effects = p.effects.filter(e => e.type !== "rain");
+      if (drawKind === "dry") drawKind = "stop";
+    });
+    if (rain) {
+      slider("How heavy", 0.2, 1, 0.05, rain.amount === undefined ? 0.6 : rain.amount, v => { rain.amount = v; });
+      if (p.stops.length > 1) {
+        root.append(el('<label class="field">The rain starts</label>'));
+        const from = document.createElement("select");
+        stopOptions(from, "As the page opens");
+        from.value = String(rain.from > 1 ? rain.from : 1);
+        from.onchange = () => change(() => { rain.from = +from.value; });
+        root.append(from);
+      }
+      check("Splashes where it lands", !!rain.ground, on => { rain.ground = on ? 0.6 : 0; });
+      if (rain.ground) slider("The ground starts this far down the page", 0.2, 0.95, 0.01, rain.ground, v => { rain.ground = v; });
+      const n = (rain.dry || []).length;
+      const row = el(`<div class="inline"><button class="btn small">${drawKind === "dry" ? "Now drag on the page..." : "Draw a dry area"}</button>${n ? `<button class="btn small">Clear dry areas (${n})</button>` : ""}</div>`);
+      row.firstChild.onclick = () => { drawKind = drawKind === "dry" ? "stop" : "dry"; select(null); renderAll(); };
+      if (n) row.lastChild.onclick = () => change(() => { rain.dry = []; });
+      root.append(row);
+      root.append(el('<p class="help">A dry area is somewhere the rain should miss, like under a bench or a roof. The picture itself should be painted without rain, or you will see both.</p>'));
+    }
+    if (p.stops.length) {
+      check("Lightning flash and a rumble", !!bolt, on => {
+        if (on) p.effects.push({ type: "lightning", stop: 1 }); else p.effects = p.effects.filter(e => e.type !== "lightning");
+      });
+      if (bolt) {
+        root.append(el('<label class="field">It happens on arriving at</label>'));
+        const at = document.createElement("select");
+        stopOptions(at);
+        at.value = String(bolt.stop || 1);
+        at.onchange = () => change(() => { bolt.stop = +at.value; });
+        root.append(at);
+      }
+    }
   }
 
   function renderHotspotInspector(root, p, h) {

@@ -17,6 +17,8 @@ There are two kinds of page, and a book can mix them.
 - A stop can have a **caption** for books where the words aren't in the artwork.
 - Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back. Pinch in, or press **Whole page**, to zoom out.
 
+**Moving effects.** A page can have rain that the reader draws falling over the picture, with splash rings on the ground, a rain sound, and dry areas where it shouldn't fall (under a bench or a roof). A stop can have a soft lightning flash and a rumble. Reduced motion switches the movement off. The picture should be painted without the rain, or both will show.
+
 **Explore pages.** The child is in control: drag to move around, pinch (or double-tap) to zoom, flick to glide. Good for big scenes such as a wide panorama.
 
 - Any stops on an explore page play first as a short **guided intro**, then the page is handed over.
@@ -58,7 +60,7 @@ Original books, there to exercise every feature. Moss and the Biggest Puddle has
 
 ## Book editor (computer)
 
-`web/editor.html` is where books are put together:
+`web/editor.html` is where books are put together. It is for the people making the books, so the playground has no link to it: open it directly, hold the "My Books" title for three seconds, or press Shift+E on the shelf.
 
 - **Open a book** from the library, **Open folder** (a folder of page images, with or without a `book.json`), or **New book** and add page images (button, or drag the files onto the page area).
 - **Drag on a page** to draw a stop. Click to select, drag to move, drag a white corner to resize. Hold Shift to draw a new stop on top of an existing one.
@@ -66,6 +68,7 @@ Original books, there to exercise every feature. Moss and the Biggest Puddle has
 - **Show the whole page first** can be switched off per page.
 - For the selected stop: the focus style (including Spotlight), **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
 - **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its name, caption and (if it's part of the story) its story step number, and switch hints, the Show me button and the corner map on or off.
+- **Moving effects** for the page: rain (how heavy, which stop it starts at, splashes, dry areas you draw on the page) and a lightning flash on a chosen stop.
 - **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
 - **Preview** (or `P`) plays the book from the selected stop using the playground's movement settings.
 - **Save** writes `book.json` (and any new images) into a folder in Chrome or Edge. In other browsers it shows the `book.json` text to copy.
@@ -146,6 +149,7 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
 - `to` and `panSeconds` make a pan stop. `caption` is optional. `ask` is an optional question for the adult reading along.
 - A page with no stops is shown whole (good for splash pages).
 - `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints, the Show me button and the corner map (`"map": true`).
+- `"effects"` on a page adds moving weather: `{ "type": "rain", "amount": 0.7, "from": 2, "ground": 0.62, "dry": [ { box } ] }` and `{ "type": "lightning", "stop": 1 }`. `from` is the stop the rain starts at, `ground` is how far down the page the ground begins (for splashes), `dry` lists boxes the rain misses.
 - A hotspot with `"story": 1` (then 2, 3 and so on) is a story step; give story steps a `"name"` so the "First find..." message can name them.
 - A big scene adds `"tiles": { "width": 8192, "height": 6144, "size": 1024, "levels": 2, "path": "page1_tiles/{z}/{x}_{y}.jpg" }` to the page. `image` is then a small overview of the whole scene, level 0 holds the full-size tiles and each level after is half the size. `tools/make_books.js` shows how the sample's tiles are cut. The editor keeps these settings but can't cut tiles itself yet.
 - Older files with `"panels": [ {x, y, w, h}, ... ]` still load; each panel becomes a stop.
