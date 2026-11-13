@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Sound for the desktop reader. SoundFlow (MIT) opens the sound device and reads wav and mp3 files,
+    using the miniaudio library it ships for Windows, Linux and macOS. The little interface sounds
+    are made here in plain C# (Synth.cs), so nothing but the device and the file reading depends on it.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Reader.Audio</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SoundFlow" Version="1.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Reader.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+  </ItemGroup>
+</Project>

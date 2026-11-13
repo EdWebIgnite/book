@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>BookReader</AssemblyName>
+    <RootNamespace>Player</RootNamespace>
+    <!-- WinExe means no console window opens behind the reader on Windows. -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <!-- Draws the window with no screen attached, for the screenshot hook. -->
+    <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+    <ProjectReference Include="..\Reader.Avalonia\Reader.Avalonia.csproj" />
+    <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
+  </ItemGroup>
+</Project>

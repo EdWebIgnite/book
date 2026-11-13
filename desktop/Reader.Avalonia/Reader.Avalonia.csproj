@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The reader drawn with Avalonia. The namespace is Reader.Ui rather than Reader.Avalonia, because a
+    namespace ending in ".Avalonia" would hide the real Avalonia namespace from everything beside it.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Reader.Ui</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+  </ItemGroup>
+</Project>

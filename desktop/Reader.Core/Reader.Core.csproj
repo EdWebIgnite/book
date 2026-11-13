@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure logic: no drawing, no files beyond the settings file, no UI packages. -->
+  <PropertyGroup>
+    <RootNamespace>Reader.Core</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Reader.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+    <!-- Only for the sound tests, which run the synthesiser with no sound device. -->
+    <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- What the browser reader writes for each sample book (see Fixtures/make-fixtures.js). -->
+    <None Include="Fixtures\*.browser.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
