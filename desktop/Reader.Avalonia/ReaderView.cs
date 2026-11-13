@@ -265,8 +265,12 @@ public sealed class ReaderView : Control
 
     // ---------------------------------------------------------------- drawing
 
+    /// <summary>How many times the picture has been drawn. The bench uses it to tell drawn frames from skipped ones.</summary>
+    public int RenderCount { get; private set; }
+
     public override void Render(DrawingContext ctx)
     {
+        RenderCount++;
         double w = Bounds.Width, h = Bounds.Height;
         var all = new Rect(0, 0, w, h);
         ctx.FillRectangle(BackdropBrush, all);

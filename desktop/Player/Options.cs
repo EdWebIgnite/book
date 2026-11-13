@@ -26,6 +26,8 @@ sealed class Options
     public List<(string Key, string Value)> Set = new();
     /// <summary>Touches and key presses to act out before the picture is taken, separated by semicolons.</summary>
     public string? Do;
+    /// <summary>Play a fixed sequence with no window and print how long the frames took.</summary>
+    public bool Bench;
 
     public string? Problem;
     public bool Help;
@@ -91,6 +93,7 @@ sealed class Options
                 case "--settings": o.ShowSettings = true; break;
                 case "--finish": o.Finish = true; break;
                 case "--do": o.Do = Value(); break;
+                case "--bench": o.Bench = true; break;
                 case "--find": if (Int(Value(), a, o) is int n) o.Find.Add(n); break;
                 case "--size":
                 {
