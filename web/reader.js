@@ -332,8 +332,6 @@
       this._rain.gain.setTargetAtTime(level * 0.045, c.currentTime, 0.2);
     }
 
-    thud() { this.tone(64, 0, 0.32, 0.3); this.tone(48, 0.04, 0.4, 0.22); }
-
     /** A low rumble, not a crack: this is for small children. */
     thunder(delay = 0) {
       const c = this.ctx;
@@ -1195,8 +1193,8 @@
           if (!this.reduced) this.flash = performance.now() + 700;
           this.play("thunder", 0.85);
         } else if (e.type === "shake") {
+          // Silent on purpose: a stop that wants a sound with its shake sets its own sound file.
           if (!this.reduced) this.shake = { start: performance.now() + 120, k: e.strength === undefined ? 0.6 : e.strength };
-          this.play("thud");
         }
       }
     }
