@@ -1538,6 +1538,8 @@
   $("fileInput").onchange = () => { addFiles($("fileInput").files); $("fileInput").value = ""; };
   $("save").onclick = save;
   $("undo").onclick = undo;
+  // Leaving with unsaved changes asks once: the first click warns, the second goes.
+  $("exit").onclick = e => { if (!okToDiscard()) e.preventDefault(); };
   for (const b of $("modeSwitch").children) b.onclick = () => setUi(b.dataset.mode);
   for (const b of $("steps").querySelectorAll("button")) b.onclick = () => setUi("guided", b.dataset.step);
   $("previewBtn").onclick = () => openPreview(selected >= 0 ? selected : undefined);
