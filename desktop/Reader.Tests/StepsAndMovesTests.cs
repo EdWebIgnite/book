@@ -328,3 +328,66 @@ public class StepsAndMovesTests
         Assert.Equal(180, e.Insets.Bottom);
     }
 }
+
+/// <summary>When the picture is still, the engine says so, and a renderer can stop redrawing.</summary>
+public class RestlessTests
+{
+    [Fact]
+    public void A_still_page_is_at_rest_and_a_move_is_not()
+    {
+        Rig rig = Kit.Open("captain-megawatt");
+        rig.Run(500);
+        Assert.False(rig.Engine.Restless);
+        rig.Next();
+        rig.Run(100);
+        Assert.True(rig.Engine.Restless);
+        rig.RunUntilStill();
+        rig.Run(500);
+        Assert.False(rig.Engine.Restless);
+    }
+
+    [Fact]
+    public void Weather_bobbing_layers_pans_and_touch_ripples_keep_it_restless()
+    {
+        Rig rig = Kit.Open("biggest-puddle");
+        rig.Jump(6, 0);                                  // rain
+        rig.Run(1000);
+        Assert.True(rig.Engine.Restless);
+        rig.Jump(7, 0);                                  // sparkles and a bobbing butterfly
+        rig.Run(3000);
+        Assert.True(rig.Engine.Restless);
+
+        rig.Jump(0, 1);                                  // a pan stop: moving for three and a half seconds, then still
+        rig.Run(1000);
+        Assert.True(rig.Engine.Restless);
+        rig.Run(4000);
+        Assert.False(rig.Engine.Restless);
+
+        rig.Engine.Ripple(100, 100);
+        rig.Run(16);
+        Assert.True(rig.Engine.Restless);
+        rig.Run(600);
+        Assert.False(rig.Engine.Restless);
+    }
+
+    [Fact]
+    public void Reduced_motion_lets_the_rain_page_rest()
+    {
+        Rig rig = Kit.Open("biggest-puddle", s => s.ReduceMotion = "on");
+        rig.Jump(6, 0);
+        rig.Run(1000);
+        Assert.False(rig.Engine.Restless);
+    }
+
+    [Fact]
+    public void A_scene_with_a_story_beacon_or_a_hint_keeps_pulsing_and_one_with_everything_found_rests()
+    {
+        Rig rig = Kit.Open("biggest-puddle", s => s.Extras = "off");
+        rig.Jump(11, Step.Exploring);
+        rig.Run(1000);
+        Assert.True(rig.Engine.Restless);                // the first duckling's beacon
+        rig.Engine.React(0); rig.Engine.React(1); rig.Engine.React(2);
+        rig.Run(20_000);                                 // party over, words cleared
+        Assert.False(rig.Engine.Restless);
+    }
+}

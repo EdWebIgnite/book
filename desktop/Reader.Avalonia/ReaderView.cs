@@ -31,7 +31,7 @@ public sealed class ReaderView : Control
     readonly HashSet<int> _down = new();
     readonly Dictionary<uint, IImmutableBrush> _brushes = new();
     LoadedBook? _book;
-    bool _frameAsked, _attached;
+    bool _frameAsked, _attached, _wasRestless;
 
     public ReaderView(ReaderSettings settings, ISoundOutput? sound = null)
     {
@@ -41,6 +41,8 @@ public sealed class ReaderView : Control
         Focusable = true;
         ClipToBounds = true;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
+        // A cut to another stop changes the picture without anything being in motion, so draw on every change too.
+        Engine.Changed += _ => InvalidateVisual();
         _tiles.Arrived += InvalidateVisual;
         _pictures.Arrived += InvalidateVisual;
         AddHandler(PointerTouchPadGestureMagnifyEvent, OnMagnify);
@@ -134,6 +136,7 @@ public sealed class ReaderView : Control
     {
         base.OnSizeChanged(e);
         Engine.SetViewSize(e.NewSize.Width, e.NewSize.Height);
+        InvalidateVisual();
     }
 
     void AskFrame()
@@ -165,7 +168,11 @@ public sealed class ReaderView : Control
         Engine.SetViewSize(Bounds.Width, Bounds.Height);
         Engine.Update(now);
         FrameTick?.Invoke(now);
-        InvalidateVisual();
+        // Only draw again when something is moving, plus once more after it stops so the last frame is the
+        // settled one. A child looking at a still page then costs the computer almost nothing.
+        bool restless = Engine.Restless;
+        if (restless || _wasRestless) InvalidateVisual();
+        _wasRestless = restless;
     }
 
     // ---------------------------------------------------------------- input
@@ -291,15 +298,15 @@ public sealed class ReaderView : Control
         if (shown.Vig > 0.01)
         {
             // Soft oval darkening that leaves the focus box clear.
-            ctx.FillRectangle(Oval(f.CenterX, f.CenterY, Math.Max(f.W / 2, 1) * 2.6, Math.Max(f.H / 2, 1) * 2.6,
-                1.25 / 2.6, Color.FromArgb(0, 0, 0, 0), Rgba(0, 0, 0, shown.Vig)), all);
+            FillOval(ctx, all, f.CenterX, f.CenterY, Math.Max(f.W / 2, 1) * 2.6, Math.Max(f.H / 2, 1) * 2.6,
+                1.25 / 2.6, Color.FromArgb(0, 0, 0, 0), Rgba(0, 0, 0, shown.Vig));
         }
         if (shown.Spot > 0.01)
         {
             // Spotlight: an oval of light a quarter bigger than the focus box, so what's inside the box is lit
             // (all but its corners). Soft at the rim, dark everywhere else.
-            ctx.FillRectangle(Oval(f.CenterX, f.CenterY, Math.Max(f.W * 0.625, 1), Math.Max(f.H * 0.625, 1),
-                0.8, Color.FromArgb(0, 10, 9, 16), Rgba(10, 9, 16, shown.Spot)), all);
+            FillOval(ctx, all, f.CenterX, f.CenterY, Math.Max(f.W * 0.625, 1), Math.Max(f.H * 0.625, 1),
+                0.8, Color.FromArgb(0, 10, 9, 16), Rgba(10, 9, 16, shown.Spot));
         }
         if (shown.Dim > 0.01)
         {
@@ -607,6 +614,24 @@ public sealed class ReaderView : Control
             SpreadMethod = GradientSpreadMethod.Pad,
             GradientStops = { new GradientStop(inner, 0), new GradientStop(inner, clearTo), new GradientStop(outer, 1) },
         }.ToImmutable();
+
+    /// <summary>
+    /// Cover the screen with a colour that is clear inside an oval and reaches <paramref name="outer"/> at
+    /// its rim. It is drawn as a circle under a vertical stretch: a radial brush given two different radii
+    /// came out nearly round here, which made the spotlight a circle instead of an oval that fits its box.
+    /// </summary>
+    static void FillOval(DrawingContext ctx, Rect all, double cx, double cy, double radiusX, double radiusY,
+        double clearTo, Color inner, Color outer)
+    {
+        double stretch = radiusY / radiusX;
+        Matrix m = Matrix.CreateTranslation(-cx, -cy) * Matrix.CreateScale(1, stretch) * Matrix.CreateTranslation(cx, cy);
+        using (ctx.PushTransform(m))
+        {
+            // The area to fill, as it has to be before the stretch so that it still covers the screen after.
+            var area = new Rect(all.X - 2, cy + (all.Y - cy) / stretch - 2, all.Width + 4, all.Height / stretch + 4);
+            ctx.FillRectangle(Oval(cx, cy, radiusX, radiusX, clearTo, inner, outer), area);
+        }
+    }
 
     static void AddRect(StreamGeometryContext g, Rect r)
     {

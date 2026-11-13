@@ -118,6 +118,13 @@ public sealed class ReaderEngine
     /// <summary>True while the camera is travelling, gliding or panning.</summary>
     public bool Animating => _anim is not null || _fling is not null;
 
+    /// <summary>
+    /// True when the picture would look different a moment from now: the camera is moving, weather is
+    /// falling, something is pulsing or fading. A renderer can skip redrawing while this is false, which
+    /// is most of the time a child spends looking at a page. Worked out by <see cref="Update"/>.
+    /// </summary>
+    public bool Restless { get; private set; }
+
     public void SetViewSize(double width, double height)
     {
         ViewWidth = Math.Max(0, width);
@@ -937,6 +944,40 @@ public sealed class ReaderEngine
         if (_shake is (double shakeStart, _) && now - shakeStart > 620) _shake = null;
         if (_flash is double flashStart && now - flashStart > 800) _flash = null;
         if (_party is double partyStart && now - partyStart > 4200) _party = null;
+
+        Restless = IsRestless();
+    }
+
+    bool IsRestless()
+    {
+        if (!HasBook) return false;
+        if (_anim is not null || _fling is not null) return true;
+        if (Insets.Top != InsetGoal.Top || Insets.Bottom != InsetGoal.Bottom) return true;
+        if (_bursts.Count > 0 || _ripples.Count > 0 || _party is not null || _flash is not null || _shake is not null) return true;
+        if (_shown.Fade > 0) return true;
+
+        // Weather that is showing or fading, and pictures on top that are moving, fading or bobbing.
+        foreach (double level in _fx.Values) if (level > 0) return true;
+        bool reduced = Reduced;
+        int page = CurrentStep.Page;
+        foreach (var (key, st) in _layers)
+        {
+            if (st.Vis is > 0 and < 1 || st.T is > 0 and < 1) return true;
+            if (key.Page != page || st.Vis <= 0 || reduced) continue;
+            Layer l = Book!.Pages[key.Page].Layers[key.Index];
+            if (l.Idle is "bob" or "sway") return true;
+            var (show, moved) = LayerWanted(key.Page, l);
+            if ((show ? 1 : 0) != st.Vis || moved != st.T) return true;
+        }
+
+        // A slow drift while resting on a stop.
+        Stop? stop = CurrentStop;
+        if (Settings.Drift != "off" && !Overview && stop is not null && stop.To is null && !reduced
+            && _now - _restSince < Settings.DriftSeconds * 1000 + 50) return true;
+
+        // The story beacon and the idle hint both pulse.
+        if (Exploring && ViewWidth > 0 && (NextStory() >= 0 || GetHint(GetView(withShake: false)) is not null)) return true;
+        return false;
     }
 
     static double EaseInset(double have, double goal, double ease)

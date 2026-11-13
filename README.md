@@ -2,7 +2,7 @@
 
 A reading app for children's books where the camera does the storytelling: it moves between areas of a page, pans across a picture, or hands the page to the child to explore by touch.
 
-**Where things stand:** the movement is being worked out in the browser first (`web/`). The Android app (`android/`) is parked until that is settled, then it will be brought in line. iPhone comes after and will read the same book format.
+**Where things stand:** the movement was worked out in the browser (`web/`), which stays as the quick test bed. The reader is now also a desktop program in C# and Avalonia (`desktop/`), which plays the same book files; the book editor moves there next, and the phone apps will reuse its reader library. The Android prototype (`android/`) is parked.
 
 ## How reading works
 
@@ -118,6 +118,7 @@ tools/make_brief_images.js       Draws the character sheet used in the art brief
 tools/art/                       The drawings: garden.js and puddle.js (the old drawn Moss book, now only layout roughs), kit.js and waterhole.js
                                  (waterhole book), comic.js and megawatt.js (comic), sea.js and deep.js (underwater scene)
 tools/art/fonts/                 Open-licence fonts used in the art (Baloo 2, Bangers, Comic Neue), with their licences
+desktop/                         The reader as a desktop program (C#, Avalonia). See desktop/README.md
 android/                         Android app, parked for now
 ```
 

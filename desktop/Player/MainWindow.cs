@@ -224,6 +224,7 @@ sealed class MainWindow : Window
         if (NeedRefresh.Contains(key)) _screen.View.Do(e => e.Refresh());
         if (key.StartsWith("drift", StringComparison.Ordinal)) _screen.View.Do(e => e.RestartRest());
         _screen.Refresh();
+        _screen.View.InvalidateVisual();
     }
 
     async void CopySettings(string json)
