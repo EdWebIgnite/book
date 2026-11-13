@@ -4,10 +4,12 @@
  * Book format (book.json):
  * {
  *   "id": "zolas-kite", "title": "...", "author": "...", "cover": "cover.webp",
- *   "focusStyle": "dim" | "vignette" | "none",       // book default, see below
+ *   "focusStyle": "dim" | "vignette" | "spotlight" | "none",   // book default, see below
  *   "pages": [
  *     { "image": "page1.webp",
  *       "mode": "guided" | "explore",                 // optional, guided by default
+ *       "openWhole": false,                           // optional: go straight to the first stop instead of
+ *                                                     // showing the whole page first (keeps a surprise hidden)
  *       "stops": [                                    // on explore pages these play first as a guided intro
  *         { "box": { "x": 0.1, "y": 0.2, "w": 0.4, "h": 0.3 },   // fractions of the page image
  *           "to":  { ... },          // optional: glide from box to this box while resting
@@ -36,14 +38,15 @@
 (function () {
 
   const DEFAULT_SETTINGS = {
-    moveMs: 700,
-    easing: "easeInOutCubic",
+    moveMs: 1400,
+    easing: "easeInOutSine",
     zoomPath: "smooth",
     pageTurn: "fly",
     arcAmount: 0.6,
     padding: 0.025,
     dim: 0.72,
     vignette: 0.75,
+    spotlight: 0.97,        // how dark it gets outside the light on a "spotlight" stop
     wholePageFirst: true,
     wholePageLast: false,
     drift: "off",
@@ -51,25 +54,25 @@
     driftSeconds: 6,
     autoPlay: false,
     autoSeconds: 4,
-    hintSeconds: 6,
+    hintSeconds: 4,
     glide: 0.5,
     // For parents
-    age: "6-8",              // which preset was last applied
+    age: "3-5",              // which preset was last applied
     reduceMotion: "auto",    // auto (follow the device) | on | off
     sound: true,
-    extras: "on",            // things to find that aren't part of the story: on | afterStory | off
-    prompts: true,           // show "ask" questions for the adult
+    extras: "afterStory",    // things to find that aren't part of the story: on | afterStory | off
+    prompts: false,          // show "ask" questions for the adult
     captionSize: "medium",
     gate: false,             // gear needs a two-second hold
     // Fine tuning
     scaleTime: true,         // longer moves take longer
-    minTargetCm: 2,          // smallest touch target for things to find
+    minTargetCm: 2.4,        // smallest touch target for things to find
     doubleTapZoom: false,    // young children double-tap by accident
   };
 
   /** What each age band changes. Research basis: docs/movement-ideas.md. */
   const AGE_PRESETS = {
-    "3-5": { moveMs: 900, hintSeconds: 4, minTargetCm: 2.4, doubleTapZoom: false, easing: "easeInOutSine" },
+    "3-5": { moveMs: 1400, hintSeconds: 4, minTargetCm: 2.4, doubleTapZoom: false, easing: "easeInOutSine" },
     "6-8": { moveMs: 700, hintSeconds: 6, minTargetCm: 2.0, doubleTapZoom: false, easing: "easeInOutCubic" },
     "9+": { moveMs: 550, hintSeconds: 9, minTargetCm: 1.4, doubleTapZoom: true, easing: "easeInOutCubic" },
   };
@@ -142,6 +145,7 @@
     book.pages = (book.pages || []).map(p => ({
       image: p.image,
       mode: p.mode === "explore" ? "explore" : "guided",
+      openWhole: p.openWhole !== false,
       stops: (p.stops || (p.panels || []).map(b => ({ box: b }))).map(s => ({ ...s })),
       hotspots: (p.hotspots || []).map(h => ({ ...h })),
       guidance: { hints: true, showMe: true, map: false, ...(p.guidance || {}) },
@@ -173,6 +177,7 @@
             return o;
           }),
         };
+        if (p.openWhole === false) page.openWhole = false;
         if (p.tiles) page.tiles = { ...p.tiles };
         if (p.mode === "explore") {
           page.mode = "explore";
@@ -365,13 +370,13 @@
         const n = page.stops.length;
         if (page.mode === "explore") {
           // Guided intro (if any), then the page is handed over for exploring.
-          if (n && s.wholePageFirst) out.push({ page: p, stop: -1 });
+          if (n && s.wholePageFirst && page.openWhole !== false) out.push({ page: p, stop: -1 });
           for (let i = 0; i < n; i++) out.push({ page: p, stop: i });
           out.push({ page: p, stop: -2, explore: true });
           return;
         }
         if (n === 0) { out.push({ page: p, stop: -1 }); return; }
-        if (s.wholePageFirst) out.push({ page: p, stop: -1 });
+        if (s.wholePageFirst && page.openWhole !== false) out.push({ page: p, stop: -1 });
         for (let i = 0; i < n; i++) out.push({ page: p, stop: i });
         if (s.wholePageLast) out.push({ page: p, stop: -1 });
       });
@@ -445,10 +450,13 @@
         cam, focus,
         dim: style === "dim" ? s.dim * k : 0,
         vig: style === "vignette" ? s.vignette * k : 0,
+        spot: style === "spotlight" ? s.spotlight * k : 0,
       });
       if (step.explore) return styled(this.exploreStart(), pr, "none", 0);
       const stop = this.stop;
-      if (this.overview || !stop) return styled(inflate(pr, 0.03), pr, this.book.focusStyle, 0.6);
+      // The whole page never gets a spotlight: a book set to spotlight shows soft edges here instead.
+      const wholeStyle = this.book.focusStyle === "spotlight" ? "vignette" : this.book.focusStyle;
+      if (this.overview || !stop) return styled(inflate(pr, 0.03), pr, wholeStyle, 0.6);
       const box = this.boxRect(step.page, end && stop.to ? stop.to : stop.box);
       return styled(inflate(box, s.padding), box, stop.style || this.book.focusStyle, 1);
     }
@@ -747,7 +755,7 @@
       if (this.anim && this.anim.kind === "move") this._finish();
       this.anim = null;
       this.fling = null;
-      this.shown = { ...this.shown, cam, dim: 0, vig: 0 };
+      this.shown = { ...this.shown, cam, dim: 0, vig: 0, spot: 0 };
       this.lastTouch = performance.now();
       return cam;
     }
@@ -859,7 +867,7 @@
         if (a.fade) {
           // Reduced motion: no travelling. Dip to dark, switch, and come back.
           const side = raw < 0.5 ? a.from : a.to;
-          this.shown = { cam: side.cam, focus: side.focus, dim: side.dim, vig: side.vig, fade: 1 - Math.abs(1 - raw * 2) };
+          this.shown = { cam: side.cam, focus: side.focus, dim: side.dim, vig: side.vig, spot: side.spot, fade: 1 - Math.abs(1 - raw * 2) };
         } else {
           const e = (EASINGS[a.easing] || EASINGS.easeInOutCubic)(raw);
           let cam = mixRect(a.from.cam, a.to.cam, e, a.smooth);
@@ -875,6 +883,7 @@
             focus: mixRect(a.from.focus, a.to.focus, Math.min(1, e), a.smooth),
             dim: lerp(a.from.dim, a.to.dim, raw),
             vig: lerp(a.from.vig, a.to.vig, raw),
+            spot: lerp(a.from.spot || 0, a.to.spot || 0, raw),
           };
         }
         if (raw >= 1) { this._finish(); this.onChange(this.state); }
@@ -942,6 +951,21 @@
         const g = ctx.createRadialGradient(0, 0, 1.25, 0, 0, 2.6);
         g.addColorStop(0, "rgba(0,0,0,0)");
         g.addColorStop(1, `rgba(0,0,0,${this.shown.vig})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(-cx / rx - 1, -cy / ry - 1, W / rx + 2, H / ry + 2);
+        ctx.restore();
+      }
+      if (this.shown.spot > 0.01) {
+        // Spotlight: an oval of light a quarter bigger than the focus box, so what's inside the box is lit
+        // (all but its corners). Soft at the rim, dark everywhere else.
+        const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+        const rx = Math.max(f.w * 0.625, 1), ry = Math.max(f.h * 0.625, 1);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(rx, ry);
+        const g = ctx.createRadialGradient(0, 0, 0.8, 0, 0, 1);
+        g.addColorStop(0, "rgba(10,9,16,0)");
+        g.addColorStop(1, `rgba(10,9,16,${this.shown.spot})`);
         ctx.fillStyle = g;
         ctx.fillRect(-cx / rx - 1, -cy / ry - 1, W / rx + 2, H / ry + 2);
         ctx.restore();

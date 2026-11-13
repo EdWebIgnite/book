@@ -171,14 +171,16 @@
     },
     {
       "image": "page6.jpg",
+      "openWhole": false,
       "stops": [
         {
           "box": {
-            "x": 0.1667,
-            "y": 0.48,
-            "w": 0.2667,
-            "h": 0.44
+            "x": 0.2017,
+            "y": 0.5467,
+            "w": 0.2,
+            "h": 0.4
           },
+          "style": "spotlight",
           "caption": "Moss sat down. Boots with no puddle are just shoes.",
           "ask": "How is Moss feeling now?"
         },
@@ -196,6 +198,7 @@
             "h": 0.36
           },
           "panSeconds": 4,
+          "style": "spotlight",
           "caption": "Then the sky went grey."
         },
         {

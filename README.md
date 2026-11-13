@@ -11,7 +11,8 @@ There are two kinds of page, and a book can mix them.
 **Guided pages.** The page is read as a series of **stops**. A stop is a box on the page: a comic panel, or any area of a picture (a face, an animal, a detail). The camera moves from stop to stop.
 
 - By default each page opens whole first, then goes through its stops, then moves across to the next page.
-- What happens around a stop is set per book and can be changed per stop: **dim** the rest (good for comics), **soft dark edges**, or **nothing** (the camera just frames it).
+- What happens around a stop is set per book and can be changed per stop: **dim** the rest (good for comics), **soft dark edges**, a **spotlight** (an oval of light with everything else dark), or **nothing** (the camera just frames it).
+- A page can skip the whole-page opening and start on its first stop. Together with spotlight stops this keeps a surprise hidden until its moment, such as the first raindrop in the Moss book.
 - A stop can **pan**: the camera arrives at one box, then glides to a second box (for example from a giraffe's legs up to her head).
 - A stop can have a **caption** for books where the words aren't in the artwork.
 - Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back. Pinch in, or press **Whole page**, to zoom out.
@@ -62,7 +63,8 @@ Original books, there to exercise every feature. Moss and the Biggest Puddle has
 - **Open a book** from the library, **Open folder** (a folder of page images, with or without a `book.json`), or **New book** and add page images (button, or drag the files onto the page area).
 - **Drag on a page** to draw a stop. Click to select, drag to move, drag a white corner to resize. Hold Shift to draw a new stop on top of an existing one.
 - Stops play in the order listed on the right. Change the order with Earlier and Later.
-- For the selected stop: the focus style, **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
+- **Show the whole page first** can be switched off per page.
+- For the selected stop: the focus style (including Spotlight), **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
 - **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its name, caption and (if it's part of the story) its story step number, and switch hints, the Show me button and the corner map on or off.
 - **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
 - **Preview** (or `P`) plays the book from the selected stop using the playground's movement settings.
@@ -139,7 +141,8 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
 ```
 
 - Boxes are fractions of the page image: `x` and `y` are the top-left corner, `w` and `h` the size. `0.5` means halfway across or down.
-- `focusStyle` (book) and `style` (one stop) can be `dim`, `vignette` (soft dark edges) or `none`.
+- `focusStyle` (book) and `style` (one stop) can be `dim`, `vignette` (soft dark edges), `spotlight` or `none`.
+- `"openWhole": false` on a page makes it open on its first stop instead of showing the whole page first.
 - `to` and `panSeconds` make a pan stop. `caption` is optional. `ask` is an optional question for the adult reading along.
 - A page with no stops is shown whole (good for splash pages).
 - `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints, the Show me button and the corner map (`"map": true`).

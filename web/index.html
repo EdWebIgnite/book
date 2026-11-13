@@ -130,6 +130,7 @@ const CONTROLS = [
   { key: "padding", label: "Space around the focus box", type: "range", min: 0, max: 0.12, step: 0.005 },
   { key: "dim", label: "Dim strength (books or stops set to Dim)", type: "range", min: 0, max: 1, step: 0.02 },
   { key: "vignette", label: "Soft edge strength (set to Soft edges)", type: "range", min: 0, max: 1, step: 0.02 },
+  { key: "spotlight", label: "Spotlight darkness (stops set to Spotlight)", type: "range", min: 0.5, max: 1, step: 0.01 },
 
   { section: "Movement while resting on a stop" },
   { key: "drift", label: "Drift", type: "select", options: {
@@ -246,7 +247,7 @@ function renderControls() {
 function changed(key) {
   CR.saveSettings(settings);
   if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
-  if (["padding", "dim", "vignette", "wholePageFirst", "wholePageLast"].includes(key)) reader.refresh();
+  if (["padding", "dim", "vignette", "spotlight", "wholePageFirst", "wholePageLast"].includes(key)) reader.refresh();
   if (key.startsWith("drift")) reader.restSince = performance.now();
   ui.refresh();
 }

@@ -6,7 +6,7 @@
   const COLORS = ["#ff5a36", "#2f9bff", "#21c07a", "#ffb800", "#c45bff", "#ff4fa3", "#00c2c7", "#9acd32"];
   const MIN = 0.01;          // smallest box, as a fraction of the page
   const HANDLE = 9;          // corner handle grab size, in screen pixels
-  const STYLE_NAMES = { dim: "Dim the rest", vignette: "Soft dark edges", none: "Nothing, just frame it" };
+  const STYLE_NAMES = { dim: "Dim the rest", vignette: "Soft dark edges", spotlight: "Spotlight (everything else dark)", none: "Nothing, just frame it" };
 
   // The open book. Pages also carry _img (the loaded image) and _file (a File added from disk, until saved).
   let book = null;
@@ -627,6 +627,14 @@
     type.value = p.mode || "guided";
     type.onchange = () => change(() => { p.mode = type.value; select(null); drawKind = "stop"; });
     root.append(type);
+    {
+      const row = el('<label class="check"><input type="checkbox"> Show the whole page first</label>');
+      const box = row.querySelector("input");
+      box.checked = p.openWhole !== false;
+      box.onchange = () => change(() => { p.openWhole = box.checked; });
+      root.append(row);
+      if (p.openWhole === false) root.append(el('<p class="help">This page opens on its first stop, so nothing on it is given away early. Use Spotlight stops to keep the rest dark.</p>'));
+    }
     if (p.mode === "explore") {
       root.append(el('<p class="help">Any stops below play first as a guided intro. Then the page is handed to the child to drag, pinch and discover.</p>'));
       for (const [key, text] of [["hints", "Hint at things not found when the child is idle"], ["showMe", "Show a \"Show me\" button"], ["map", "Show a small map in the corner (for big scenes)"]]) {
