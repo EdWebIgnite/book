@@ -18,7 +18,11 @@ There are two kinds of page, and a book can mix them.
 - A stop can set **how long the camera takes to reach it** (or cut straight to it), and can **go on by itself** after a rest, so several moves play from one tap.
 - Tap the right side of the screen or swipe left to go on. Tap the left side or swipe right to go back. Pinch in, or press **Whole page**, to zoom out.
 
-**Moving effects.** A page can have rain that the reader draws falling over the picture, with splash rings on the ground, a rain sound, and dry areas where it shouldn't fall (under a bench or a roof). A stop can have a soft lightning flash and a rumble. Reduced motion switches the movement off. The picture should be painted without the rain, or both will show.
+**Moving effects.** The reader can draw things moving over a page: **rain** (with splash rings and a rain sound), **snow**, **falling leaves** and **sparkles**. Each can run for the whole page or only between two stops, and can have areas it misses, such as under a bench. A stop can also have a soft **lightning** flash with a rumble, or a **camera shake**. Reduced motion switches the movement off. The picture should be painted without the rain or snow, or both will show.
+
+**Pictures on top.** A page can carry extra pictures with see-through backgrounds, such as a character or a prop. Each can appear and go away at chosen stops, move to a second place when a stop arrives (straight, or in a hop), and bob or sway while it waits.
+
+**Sound.** A stop can play a sound file when the camera arrives: a line of narration or a sound effect. A stop that goes on by itself waits for its sound to finish. Things to find can have a sound too.
 
 **Explore pages.** The child is in control: drag to move around, pinch (or double-tap) to zoom, flick to glide. Good for big scenes such as a wide panorama.
 
@@ -73,7 +77,11 @@ Original books, there to exercise every feature. Moss and the Biggest Puddle has
 - **Show the whole page first** can be switched off per page.
 - For the selected stop: the time the camera takes to get there, whether it goes on by itself, the focus style (including Spotlight), **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
 - **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its name, caption and (if it's part of the story) its story step number, and switch hints, the Show me button and the corner map on or off.
-- **Moving effects** for the page: rain (how heavy, which stop it starts at, splashes, dry areas you draw on the page) and a lightning flash on a chosen stop.
+- **Moving effects** for the page: add rain, snow, leaves, sparkles, lightning or a camera shake, and set how much, which stops they run between, and areas they miss (drawn on the page).
+- **Pictures on top**: add a PNG, drag it into place, size it by a corner, choose when it appears, and drag its faded copy to where it should move to.
+- **Sound**: choose a sound file for a stop or a thing to find.
+- **Quicker editing**: Duplicate (Ctrl+D), Copy and Paste between pages (Ctrl+C, Ctrl+V), and drag pages in the left strip to reorder them.
+- **Big pictures**: a page wider or taller than 4096 pixels gets a tick box to cut it into tiles when saving to a folder.
 - **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
 - **Play** (or `P`) plays the book from the selected stop using the playground's movement settings.
 - **Save** writes `book.json` (and any new images) into a folder in Chrome or Edge. In other browsers it shows the `book.json` text to copy.
@@ -105,6 +113,7 @@ docs/art-brief/                  Brief for the illustrator of Moss and the Bigge
 art/biggest-puddle/              Painted artwork for Moss and the Biggest Puddle, with notes on how it was exported
 tools/make_books.js              Draws the three placeholder books (node tools/make_books.js)
 tools/make_puddle_pages.py       Turns the Moss paintings into page images and letters the cover
+tools/make_puddle_extras.js      Makes the Moss book's demo butterfly picture and splash sound
 tools/make_brief_images.js       Draws the character sheet used in the art brief
 tools/art/                       The drawings: garden.js and puddle.js (the old drawn Moss book, now only layout roughs), kit.js and waterhole.js
                                  (waterhole book), comic.js and megawatt.js (comic), sea.js and deep.js (underwater scene)
@@ -155,9 +164,11 @@ The easiest way is the editor. By hand: make a folder in `content/books/` with t
 - `to` and `panSeconds` make a pan stop. `caption` is optional. `ask` is an optional question for the adult reading along.
 - A page with no stops is shown whole (good for splash pages).
 - `"mode": "explore"` makes an explore page. Its `stops` are the guided intro, `hotspots` are the things to find (add `"effect": "none"` for words without the sparkle), and `guidance` switches hints, the Show me button and the corner map (`"map": true`).
-- `"effects"` on a page adds moving weather: `{ "type": "rain", "amount": 0.7, "from": 2, "ground": 0.62, "dry": [ { box } ] }` and `{ "type": "lightning", "stop": 1 }`. `from` is the stop the rain starts at, `ground` is how far down the page the ground begins (for splashes), `dry` lists boxes the rain misses.
+- `"effects"` on a page adds moving effects. `{ "type": "rain", "amount": 0.7, "from": 2, "to": 3, "ground": 0.62, "dry": [ { box } ] }`: the type can be `rain`, `snow`, `leaves` or `sparkles`; `from` and `to` are the stops it runs between; `ground` (rain only) is how far down the page the ground begins, for splashes; `dry` lists boxes it misses. `{ "type": "lightning", "stop": 1 }` and `{ "type": "shake", "stop": 1, "strength": 0.6 }` happen on arriving at a stop.
+- `"layers"` on a page adds pictures on top: `{ "image": "boat.png", "box": {...}, "from": 2, "to": 3, "moveTo": {...}, "moveAt": 2, "moveSeconds": 1.2, "path": "hop", "idle": "bob" }`. Only `image` and `box` are needed.
+- `"sound": "file.mp3"` on a stop or a hotspot plays that file from the book's folder.
 - A hotspot with `"story": 1` (then 2, 3 and so on) is a story step; give story steps a `"name"` so the "First find..." message can name them.
-- A big scene adds `"tiles": { "width": 8192, "height": 6144, "size": 1024, "levels": 2, "path": "page1_tiles/{z}/{x}_{y}.jpg" }` to the page. `image` is then a small overview of the whole scene, level 0 holds the full-size tiles and each level after is half the size. `tools/make_books.js` shows how the sample's tiles are cut. The editor keeps these settings but can't cut tiles itself yet.
+- A big scene adds `"tiles": { "width": 8192, "height": 6144, "size": 1024, "levels": 2, "path": "page1_tiles/{z}/{x}_{y}.jpg" }` to the page. `image` is then a small overview of the whole scene, level 0 holds the full-size tiles and each level after is half the size. `tools/make_books.js` shows how the sample's tiles are cut. The editor cuts tiles itself when saving to a folder.
 - Older files with `"panels": [ {x, y, w, h}, ... ]` still load; each panel becomes a stop.
 - JPEG, PNG or WebP all work. Around 2000 to 3200 pixels on the long side is plenty for a normal page; wide explore scenes can be bigger.
 

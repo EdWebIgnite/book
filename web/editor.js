@@ -39,9 +39,44 @@
   const stopColor = i => COLORS[i % COLORS.length];
   const HOT = "#ffd23f";
   const DRY = "#7fd3f2";
+  const LAYER = "#b08cff";
   const newPage = (image, extra = {}) => ({ image, mode: "guided", stops: [], hotspots: [], guidance: { hints: true, showMe: true }, ...extra });
   const isExplore = () => !!page() && page().mode === "explore";
-  function select(kind, i) { selected = kind === "stop" ? i : -1; selHot = kind === "hot" ? i : -1; }
+  let selLayer = -1;         // picture-on-top index on the current page, -1 for none
+  let dryTarget = null;      // the effect a newly drawn dry area belongs to
+  let clipItem = null;       // a copied stop or thing to find: { kind, data }
+  const assets = new Map();  // files added this session that aren't in the book folder yet: name -> { file, url }
+  const layerImgs = new Map(); // layer pictures for drawing on the page: name -> Image (or null while loading)
+  const FX_NAMES = { rain: "Rain", snow: "Snow", leaves: "Falling leaves", sparkles: "Sparkles", lightning: "Lightning", shake: "Camera shake" };
+  const FALLING = ["rain", "snow", "leaves", "sparkles"];
+  function select(kind, i) { selected = kind === "stop" ? i : -1; selHot = kind === "hot" ? i : -1; selLayer = kind === "layer" ? i : -1; }
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const assetUrl = name => (assets.get(name) && assets.get(name).url) || (book && book._dir ? book._dir + name : "");
+  /** A layer's picture, loaded the first time it's needed; the page redraws when it arrives. */
+  function layerImg(name) {
+    if (!layerImgs.has(name)) {
+      layerImgs.set(name, null);
+      const src = assetUrl(name);
+      if (src) CR.loadImage(src).then(img => { layerImgs.set(name, img); draw(); }).catch(() => {});
+    }
+    return layerImgs.get(name);
+  }
+  /** Keep a newly chosen file under a name no other file in the book uses. */
+  function addAsset(file) {
+    let name = file.name.replace(/[^\w.\-]+/g, "_"), n = 1;
+    const dot = name.lastIndexOf("."), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : "";
+    const taken = nm => assets.has(nm) || (book && book.pages.some(pg => pg.image === nm));
+    while (taken(name)) name = `${stem}-${++n}${ext}`;
+    assets.set(name, { file, url: URL.createObjectURL(file) });
+    return name;
+  }
+  function pickFile(accept, then) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.onchange = () => { if (input.files[0]) then(input.files[0]); };
+    input.click();
+  }
   const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
   const slugify = s => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -81,8 +116,9 @@
         hotspots: JSON.parse(JSON.stringify(p.hotspots || [])),
         guidance: { ...(p.guidance || {}) },
         effects: JSON.parse(JSON.stringify(p.effects || [])),
+        layers: JSON.parse(JSON.stringify(p.layers || [])),
       })),
-      pageIndex, selected, selHot,
+      pageIndex, selected, selHot, selLayer,
     };
   }
 
@@ -100,6 +136,9 @@
     pageIndex = clamp(s.pageIndex, 0, Math.max(0, book.pages.length - 1));
     selected = s.selected;
     selHot = s.selHot;
+    selLayer = s.selLayer === undefined ? -1 : s.selLayer;
+    dryTarget = null;
+    if (drawKind === "dry") drawKind = "stop";
     setDirty();
     renderAll();
   }
@@ -116,6 +155,7 @@
 
   function setBook(b) {
     book = b;
+    layerImgs.clear();
     pageIndex = 0;
     select(null);
     drawKind = "stop";
@@ -127,6 +167,7 @@
   async function openFromLibrary(id) {
     try {
       const { book: b, images, dir } = await Content.loadBook(id);
+      assets.clear();
       b.pages.forEach((p, i) => p._img = images[i]);
       b._dir = dir;
       dirHandle = null;
@@ -138,6 +179,7 @@
 
   function newBook() {
     dirHandle = null;
+    assets.clear();
     setBook(CR.normalizeBook({ id: "", title: "New book", author: "", focusStyle: "vignette", pages: [] }));
     say("Add your page images with the button on the left, or drag them onto the page area.");
   }
@@ -190,6 +232,12 @@
         if (!files[p.image]) throw new Error("book.json lists " + p.image + " but it isn't in the folder");
         p._img = await CR.loadImage(URL.createObjectURL(await files[p.image].getFile()));
       }
+      // Pictures on top and sounds the book already uses, so they show and play here.
+      assets.clear();
+      for (const pg of b.pages) {
+        const used = [...(pg.layers || []).map(l => l.image), ...pg.stops.map(st => st.sound), ...pg.hotspots.map(h => h.sound)];
+        for (const name of used) if (name && files[name] && !assets.has(name)) assets.set(name, { url: URL.createObjectURL(await files[name].getFile()) });
+      }
       dirHandle = handle;
       setBook(b);
       say(files["book.json"] ? `Opened ${handle.name}. Save writes book.json back into it.`
@@ -212,11 +260,55 @@
     try { await dir.getFileHandle(name); return true; } catch (_) { return false; }
   }
 
+  /** Every picture-on-top and sound file the book uses. */
+  function extraFiles() {
+    const names = new Set();
+    for (const pg of book.pages) {
+      for (const l of pg.layers || []) names.add(l.image);
+      for (const st of pg.stops) if (st.sound) names.add(st.sound);
+      for (const h of pg.hotspots || []) if (h.sound) names.add(h.sound);
+    }
+    return [...names];
+  }
+
+  /**
+   * Cut a big page into tiles: a small overview picture, then the picture at full and at half size in
+   * 1024-pixel squares. The reader loads only the squares under the camera.
+   */
+  async function cutTiles(dir, p) {
+    const img = p._img, W = img.naturalWidth, H = img.naturalHeight, SIZE = 1024, LEVELS = 2;
+    const base = (p._source || p.image).replace(/\.[^.]+$/, "").replace(/_overview$/, "");
+    const cv = document.createElement("canvas"), c = cv.getContext("2d");
+    const shot = (w, h, paint) => { cv.width = w; cv.height = h; paint(); return new Promise(done => cv.toBlob(done, "image/jpeg", 0.85)); };
+    const tilesDir = await dir.getDirectoryHandle(base + "_tiles", { create: true });
+    let count = 0;
+    for (let z = 0; z < LEVELS; z++) {
+      const f = 2 ** z, lw = Math.ceil(W / f), lh = Math.ceil(H / f);
+      const zDir = await tilesDir.getDirectoryHandle(String(z), { create: true });
+      for (let ty = 0; ty * SIZE < lh; ty++) {
+        for (let tx = 0; tx * SIZE < lw; tx++) {
+          const w = Math.min(SIZE, lw - tx * SIZE), h = Math.min(SIZE, lh - ty * SIZE);
+          await writeFile(zDir, `${tx}_${ty}.jpg`, await shot(w, h, () => c.drawImage(img, tx * SIZE * f, ty * SIZE * f, w * f, h * f, 0, 0, w, h)));
+          count++;
+          if (count % 12 === 0) say(`Cutting tiles for ${base}: ${count} done...`, 60000);
+        }
+      }
+    }
+    const ow = 2048, oh = Math.round(ow * H / W), overview = base + "_overview.jpg";
+    await writeFile(dir, overview, await shot(ow, oh, () => c.drawImage(img, 0, 0, ow, oh)));
+    if (book.cover === p.image) book.cover = overview;
+    p._source = p._source || p.image;
+    p.image = overview;
+    p.tiles = { width: W, height: H, size: SIZE, levels: LEVELS, path: `${base}_tiles/{z}/{x}_{y}.jpg` };
+    delete p._tile;
+    return count;
+  }
+
   async function save() {
     if (!book) return;
     if (!book.id) book.id = slugify(book.title) || "my-book";
     if (!book.cover && book.pages[0]) book.cover = book.pages[0].image;
-    const json = JSON.stringify(CR.serializeBook(book), null, 2);
+    let json = JSON.stringify(CR.serializeBook(book), null, 2);
 
     // First save of a book that didn't come from a folder: offer to pick one.
     if (!dirHandle && window.showDirectoryPicker) {
@@ -231,11 +323,14 @@
 
     if (dirHandle) {
       try {
-        const names = [...book.pages.map(p => p.image), book.cover];
+        let tiles = 0;
+        for (const pg of book.pages) if (pg._tile) tiles += await cutTiles(dirHandle, pg);
+        json = JSON.stringify(CR.serializeBook(book), null, 2);
+        const names = [...book.pages.map(p => p.image), book.cover, ...extraFiles()];
         for (const name of new Set(names)) {
           if (!name || await exists(dirHandle, name)) continue;
           const p = book.pages.find(pg => pg.image === name);
-          let data = p && p._file;
+          let data = (p && p._file) || (assets.get(name) && assets.get(name).file);
           if (!data) {
             const src = p ? p._img.src : book._dir ? book._dir + name : null;
             if (src) data = await (await fetch(src)).blob();
@@ -245,7 +340,8 @@
         await writeFile(dirHandle, "book.json", json);
         book.pages.forEach(p => delete p._file);
         setDirty(false);
-        say(`Saved in the folder "${dirHandle.name}". If it's a new book, add "${book.id}" to content/library.json.`, 6000);
+        say(`Saved in the folder "${dirHandle.name}"${tiles ? `, with ${tiles} tiles cut` : ""}. If it's a new book, add "${book.id}" to content/library.json.`, 6000);
+        renderAll();
         return;
       } catch (e) {
         say("Couldn't save to the folder (" + e.message + "). Showing book.json instead.", 6000);
@@ -262,8 +358,9 @@
       a.remove();
     } catch (_) { /* downloads blocked */ }
     showJson();
-    const newImages = book.pages.filter(p => p._file).map(p => p.image);
-    if (newImages.length) say("Also copy these images into the book folder: " + newImages.join(", "), 8000);
+    const newImages = [...book.pages.filter(p => p._file).map(p => p.image), ...extraFiles().filter(n => assets.get(n) && assets.get(n).file)];
+    if (newImages.length) say("Also copy these files into the book folder: " + newImages.join(", "), 8000);
+    if (book.pages.some(pg => pg._tile)) say("Tiles can only be cut when saving to a folder, in Chrome or Edge on a computer.", 8000);
     setDirty(false, "Exported book.json");
   }
 
@@ -346,6 +443,34 @@
     if (!p || !view) return;
 
     ctx.drawImage(p._img, view.ox, view.oy, view.pw, view.ph);
+
+    // Pictures on top of the page. The selected one shows where it moves to as a ghost.
+    (p.layers || []).forEach((l, i) => {
+      const img = layerImg(l.image), r = toScreen(l.box), sel = i === selLayer;
+      if (img) ctx.drawImage(img, r.x, r.y, r.w, r.h);
+      if (sel || !img) {
+        ctx.strokeStyle = LAYER;
+        ctx.lineWidth = sel ? 3 : 1.5;
+        ctx.setLineDash([]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+      }
+      if (sel) {
+        label(r.x + 4, r.y + 4, "picture " + (i + 1), "#7a4fd6");
+        for (const [hx, hy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]) {
+          ctx.fillStyle = "#fff"; ctx.fillRect(hx - 6, hy - 6, 12, 12);
+          ctx.strokeStyle = LAYER; ctx.lineWidth = 2; ctx.strokeRect(hx - 6, hy - 6, 12, 12);
+        }
+        if (l.moveTo) {
+          const t = toScreen(l.moveTo);
+          if (img) { ctx.globalAlpha = 0.45; ctx.drawImage(img, t.x, t.y, t.w, t.h); ctx.globalAlpha = 1; }
+          ctx.strokeStyle = LAYER; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]);
+          ctx.strokeRect(t.x, t.y, t.w, t.h);
+          ctx.setLineDash([]);
+          label(t.x + 4, t.y + 4, "moves to", "#7a4fd6");
+          arrow(r.x + r.w / 2, r.y + r.h / 2, t.x + t.w / 2, t.y + t.h / 2, LAYER);
+        }
+      }
+    });
 
     p.stops.forEach((s, i) => {
       const color = stopColor(i), sel = i === selected;
@@ -459,6 +584,16 @@
       for (const [h, hx, hy] of corners) if (Math.abs(px - hx) <= HANDLE && Math.abs(py - hy) <= HANDLE) return h;
       return null;
     };
+    // A selected picture is on top of everything, so it gets the first say.
+    if (selLayer >= 0 && p.layers && p.layers[selLayer]) {
+      const l = p.layers[selLayer];
+      const h = cornerHit(toScreen(l.box));
+      if (h) return { kind: "layer", stop: selLayer, part: "box", handle: h };
+      for (const part of l.moveTo ? ["moveTo", "box"] : ["box"]) {
+        const r = toScreen(l[part]);
+        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return { kind: "layer", stop: selLayer, part, handle: null };
+      }
+    }
     if (selected >= 0 && p.stops[selected]) {
       const s = p.stops[selected];
       for (const part of s.to ? ["to", "box"] : ["box"]) {
@@ -495,7 +630,7 @@
   }
 
   /** The stop or hotspot a hit or drag refers to. */
-  const dragItem = d => d.kind === "hot" ? page().hotspots[d.stop] : page().stops[d.stop];
+  const dragItem = d => d.kind === "hot" ? page().hotspots[d.stop] : d.kind === "layer" ? page().layers[d.stop] : page().stops[d.stop];
 
   function localPoint(e) {
     const r = canvas.getBoundingClientRect();
@@ -535,7 +670,16 @@
     if (Math.abs(dx) + Math.abs(dy) > 0.002) drag.moved = true;
     const o = drag.orig, s = dragItem(drag);
     if (drag.mode === "move") {
-      s[drag.part] = { x: clamp(o.x + dx, 0, 1 - o.w), y: clamp(o.y + dy, 0, 1 - o.h), w: o.w, h: o.h };
+      // A picture may sit partly, or wholly, off the page: that's how something comes in from the side.
+      const off = drag.kind === "layer";
+      s[drag.part] = { x: clamp(o.x + dx, off ? -o.w : 0, off ? 1 : 1 - o.w), y: clamp(o.y + dy, off ? -o.h : 0, off ? 1 : 1 - o.h), w: o.w, h: o.h };
+    } else if (drag.kind === "layer") {
+      // Pictures keep their shape: the width follows the mouse and the height follows the width.
+      const img = layerImg(s.image), pg = page()._img;
+      const shape = img ? (img.naturalHeight / img.naturalWidth) * (pg.naturalWidth / pg.naturalHeight) : o.h / o.w;
+      const w = Math.max(MIN, drag.handle.includes("w") ? o.w - dx : o.w + dx), h = w * shape;
+      s.box = { x: drag.handle.includes("w") ? o.x + o.w - w : o.x, y: drag.handle.includes("n") ? o.y + o.h - h : o.y, w, h };
+      if (s.moveTo) s.moveTo = { ...s.moveTo, w, h };
     } else {
       let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
       if (drag.handle.includes("w")) x0 += dx; else x1 += dx;
@@ -554,10 +698,10 @@
       const r = d.cur ? normRect(d.start, d.cur) : null;
       if (r && r.w > MIN && r.h > MIN) {
         change(() => {
-          const rain = (page().effects || []).find(e => e.type === "rain");
-          if (drawKind === "dry" && rain) {
-            (rain.dry = rain.dry || []).push(r);
+          if (drawKind === "dry" && dryTarget && (page().effects || []).includes(dryTarget)) {
+            (dryTarget.dry = dryTarget.dry || []).push(r);
             drawKind = "stop";
+            dryTarget = null;
             select(null);
           } else if (drawKind === "hot" && isExplore()) {
             page().hotspots.push({ box: r });
@@ -598,6 +742,18 @@
     book.pages.forEach((p, i) => {
       const item = document.createElement("div");
       item.className = "page-item" + (i === pageIndex ? " active" : "");
+      item.draggable = true;
+      item.ondragstart = ev => { ev.dataTransfer.setData("text/plain", "page:" + i); ev.dataTransfer.effectAllowed = "move"; };
+      item.ondragover = ev => { ev.preventDefault(); item.classList.add("dragover"); };
+      item.ondragleave = () => item.classList.remove("dragover");
+      item.ondrop = ev => {
+        ev.preventDefault();
+        item.classList.remove("dragover");
+        const data = ev.dataTransfer.getData("text/plain"), from = data.startsWith("page:") ? parseInt(data.slice(5), 10) : -1;
+        if (!(from >= 0) || from === i || from >= book.pages.length) return;
+        ev.stopPropagation();
+        change(() => { const [moved] = book.pages.splice(from, 1); book.pages.splice(i, 0, moved); pageIndex = i; select(null); });
+      };
       const img = document.createElement("img");
       img.src = p._img.src;
       img.alt = "";
@@ -654,7 +810,7 @@
     root.innerHTML = "";
     const p = page();
     $("stopsTitle").textContent = p ? `Page ${pageIndex + 1}` : "Page";
-    if (!p) { $("fxPanel").innerHTML = ""; $("fxTag").textContent = ""; renderTimeline(); return; }
+    if (!p) { $("fxPanel").innerHTML = $("layerPanel").innerHTML = ""; $("fxTag").textContent = $("layerTag").textContent = ""; renderTimeline(); return; }
     const el = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
 
     // Page type and guidance
@@ -672,6 +828,17 @@
       box.onchange = () => change(() => { p.openWhole = box.checked; });
       root.append(row);
       if (p.openWhole === false) root.append(el('<p class="help">This page opens on its first stop, so nothing on it is given away early. Use Spotlight stops to keep the rest dark.</p>'));
+    }
+    // A very big picture can be cut into tiles so a phone only loads the part being looked at.
+    const big = Math.max(p._img.naturalWidth, p._img.naturalHeight);
+    if (p.tiles && big < p.tiles.width) {
+      root.append(el(`<p class="help">This is a big scene, already cut into tiles (${p.tiles.width} x ${p.tiles.height}).</p>`));
+    } else if (big > 4096) {
+      const row = el('<label class="check"><input type="checkbox"> Cut this big picture into tiles when saving</label>'), tick = row.querySelector("input");
+      tick.checked = !!p._tile || !!p.tiles;
+      tick.onchange = () => { p._tile = tick.checked; if (!tick.checked) delete p.tiles; setDirty(); renderSide(); };
+      root.append(row);
+      root.append(el(`<p class="help">It is ${p._img.naturalWidth} x ${p._img.naturalHeight}. With tiles, only the part being looked at loads sharp, so it stays quick on a phone. Tiles are written when you save to a folder.</p>`));
     }
     if (p.mode === "explore") {
       root.append(el('<p class="help">Any stops play first as a guided intro. Then the page is handed to the child to drag, pinch and discover.</p>'));
@@ -694,8 +861,13 @@
     const fx = $("fxPanel");
     fx.innerHTML = "";
     renderEffects(fx, p, el);
-    const kinds = (p.effects || []).map(e => e.type === "rain" ? "Rain" : "Lightning");
+    const kinds = (p.effects || []).map(e => FX_NAMES[e.type] || e.type);
     $("fxTag").textContent = kinds.length ? kinds.join(", ") : "None";
+    const lay = $("layerPanel");
+    lay.innerHTML = "";
+    renderLayers(lay, p, el);
+    $("layerTag").textContent = (p.layers || []).length ? String(p.layers.length) : "None";
+    if (selLayer >= 0) $("layerGroup").open = true;
     renderTimeline();
   }
 
@@ -716,7 +888,13 @@
     const n = p.stops.length;
     head.querySelector(".sub").textContent = (n ? `${n} stop${n === 1 ? "" : "s"}` : "No stops yet: drag on the page to draw one")
       + (explore ? ` · ${p.hotspots.length} to find` : "");
-    for (const e of p.effects || []) head.append(el(`<span class="tl-fx">${e.type === "rain" ? "Rain" : "Lightning on stop " + (e.stop || 1)}</span>`));
+    for (const e of p.effects || []) head.append(el(`<span class="tl-fx">${(FX_NAMES[e.type] || e.type) + (e.stop ? " on stop " + e.stop : e.from > 1 ? " from stop " + e.from : "")}</span>`));
+    if ((p.layers || []).length) head.append(el(`<span class="tl-fx" style="background:#2c2444;color:#cdb8ff">${p.layers.length} picture${p.layers.length === 1 ? "" : "s"} on top</span>`));
+    if (clipItem) {
+      const paste = el(`<button class="btn small" title="Ctrl+V">Paste ${clipItem.kind === "hot" ? "thing to find" : "stop"}</button>`);
+      paste.onclick = pasteClip;
+      head.append(paste);
+    }
     const whole = el('<button class="btn small" title="A stop that shows the whole page, for example to end on the full picture">+ Whole page stop</button>');
     whole.onclick = () => change(() => {
       const at = selected >= 0 ? selected + 1 : p.stops.length;
@@ -746,6 +924,7 @@
       if (s.moveSeconds !== undefined) badge(+s.moveSeconds === 0 ? "cut" : s.moveSeconds + "s", "Time the camera takes to get here");
       if (s.to) badge("glide " + (s.panSeconds || 4) + "s", "Glides to a second box");
       if (s.style === "spotlight") badge("spot", "Spotlight");
+      if (s.sound) badge("♪", "Plays " + s.sound);
       drawThumb(card.querySelector("canvas"), p._img, s.box);
       card.title = stopSummary(s);
       card.onclick = () => { select("stop", i); renderAll(); };
@@ -827,6 +1006,8 @@
     const act = (text, fn, title) => { const b = el(`<button class="btn small">${text}</button>`); if (title) b.title = title; b.onclick = fn; actions.append(b); };
     act("Earlier", () => selected > 0 && change(() => { swap(p.stops, selected, selected - 1); selected--; }));
     act("Later", () => selected < p.stops.length - 1 && change(() => { swap(p.stops, selected, selected + 1); selected++; }));
+    act("Duplicate", duplicateSelected, "Make a copy of this stop (Ctrl+D)");
+    act("Copy", copySelected, "Copy it, to paste on another page (Ctrl+C, then Ctrl+V)");
     act("Delete", () => change(() => { p.stops.splice(selected, 1); select(null); }));
     act("▶ Play", () => openPreview(selected), "Play the move into this stop");
     card.append(actions);
@@ -914,6 +1095,7 @@
     ask.oninput = () => { if (ask.value) s.ask = ask.value; else delete s.ask; setDirty(); };
     tgt.append(ask);
 
+    tgt.append(soundRow(el, s, "Sound when the camera arrives (narration or an effect)"));
     tgt = camSec;
     const sizeRow = el('<div class="inline"></div>');
     const full = el('<button class="btn small">Make it the whole page</button>');
@@ -922,63 +1104,219 @@
     tgt.append(sizeRow);
   }
 
-  /** Weather the reader draws moving over the page: rain, and a lightning flash on one stop. */
+  /** Things the reader draws moving over the page. Add as many as the page needs. */
   function renderEffects(root, p, el) {
     p.effects = p.effects || [];
-    const rain = p.effects.find(e => e.type === "rain"), bolt = p.effects.find(e => e.type === "lightning");
-    const stopOptions = (sel, first) => {
-      if (first) sel.add(new Option(first, "1"));
-      p.stops.forEach((s, i) => { if (!(first && i === 0)) sel.add(new Option(`Stop ${i + 1}`, String(i + 1))); });
+    const stopSelect = (first, value, fn) => {
+      const sel = document.createElement("select");
+      if (first) sel.add(new Option(first, "0"));
+      p.stops.forEach((s, i) => sel.add(new Option(`Stop ${i + 1}`, String(i + 1))));
+      sel.value = String(value || (first ? 0 : 1));
+      if (sel.selectedIndex < 0) sel.selectedIndex = 0;
+      sel.onchange = () => change(() => fn(+sel.value));
+      return sel;
     };
-    const check = (text, on, fn) => {
-      const row = el(`<label class="check"><input type="checkbox"> ${text}</label>`), box = row.querySelector("input");
-      box.checked = on;
-      box.onchange = () => change(() => fn(box.checked));
-      root.append(row);
-    };
-    const slider = (text, min, max, step, value, fn) => {
-      root.append(el(`<label class="field">${text}</label>`));
+    const slider = (box, text, min, max, step, value, fn) => {
+      box.append(el(`<label class="field">${text}</label>`));
       const input = el(`<input type="range" min="${min}" max="${max}" step="${step}">`);
       input.value = value;
+      input.onpointerdown = () => pushUndo();
       input.oninput = () => { fn(+input.value); setDirty(); draw(); };
-      root.append(input);
+      box.append(input);
     };
 
-    check("Rain falls on this page", !!rain, on => {
-      if (on) p.effects.push({ type: "rain", amount: 0.6 }); else p.effects = p.effects.filter(e => e.type !== "rain");
-      if (drawKind === "dry") drawKind = "stop";
-    });
-    if (rain) {
-      slider("How heavy", 0.2, 1, 0.05, rain.amount === undefined ? 0.6 : rain.amount, v => { rain.amount = v; });
-      if (p.stops.length > 1) {
-        root.append(el('<label class="field">The rain starts</label>'));
-        const from = document.createElement("select");
-        stopOptions(from, "As the page opens");
-        from.value = String(rain.from > 1 ? rain.from : 1);
-        from.onchange = () => change(() => { rain.from = +from.value; });
-        root.append(from);
-      }
-      check("Splashes where it lands", !!rain.ground, on => { rain.ground = on ? 0.6 : 0; });
-      if (rain.ground) slider("The ground starts this far down the page", 0.2, 0.95, 0.01, rain.ground, v => { rain.ground = v; });
-      const n = (rain.dry || []).length;
-      const row = el(`<div class="inline"><button class="btn small">${drawKind === "dry" ? "Now drag on the page..." : "Draw a dry area"}</button>${n ? `<button class="btn small">Clear dry areas (${n})</button>` : ""}</div>`);
-      row.firstChild.onclick = () => { drawKind = drawKind === "dry" ? "stop" : "dry"; select(null); renderAll(); };
-      if (n) row.lastChild.onclick = () => change(() => { rain.dry = []; });
-      root.append(row);
-      root.append(el('<p class="help">A dry area is somewhere the rain should miss, like under a bench or a roof. The picture itself should be painted without rain, or you will see both.</p>'));
-    }
-    if (p.stops.length) {
-      check("Lightning flash and a rumble", !!bolt, on => {
-        if (on) p.effects.push({ type: "lightning", stop: 1 }); else p.effects = p.effects.filter(e => e.type !== "lightning");
+    p.effects.forEach((e, idx) => {
+      const box = el(`<div class="fx-item"><div class="fx-head"><b>${FX_NAMES[e.type] || e.type}</b><button class="btn small">Remove</button></div></div>`);
+      box.querySelector("button").onclick = () => change(() => {
+        p.effects.splice(idx, 1);
+        if (dryTarget === e) { dryTarget = null; drawKind = "stop"; }
       });
-      if (bolt) {
-        root.append(el('<label class="field">It happens on arriving at</label>'));
-        const at = document.createElement("select");
-        stopOptions(at);
-        at.value = String(bolt.stop || 1);
-        at.onchange = () => change(() => { bolt.stop = +at.value; });
-        root.append(at);
+      if (e.type === "lightning" || e.type === "shake") {
+        if (!p.stops.length) box.append(el('<p class="help">Draw a stop first: this happens when the camera arrives at one.</p>'));
+        else {
+          box.append(el('<label class="field">It happens on arriving at</label>'));
+          box.append(stopSelect(null, e.stop || 1, v => { e.stop = v; }));
+        }
+        if (e.type === "shake") slider(box, "How hard", 0.2, 1.5, 0.05, e.strength === undefined ? 0.6 : e.strength, v => { e.strength = v; });
+      } else {
+        slider(box, "How much", 0.2, 1, 0.05, e.amount === undefined ? 0.6 : e.amount, v => { e.amount = v; });
+        if (p.stops.length > 1) {
+          box.append(el('<label class="field">It starts</label>'));
+          box.append(stopSelect("As the page opens", e.from > 1 ? e.from : 0, v => { if (v > 1) e.from = v; else delete e.from; }));
+          box.append(el('<label class="field">It stops</label>'));
+          box.append(stopSelect("Never, it stays for the whole page", e.to >= 1 ? e.to : 0, v => { if (v >= 1) e.to = v; else delete e.to; }));
+        }
+        if (e.type === "rain") {
+          const row = el('<label class="check"><input type="checkbox"> Splashes where it lands</label>'), tick = row.querySelector("input");
+          tick.checked = !!e.ground;
+          tick.onchange = () => change(() => { e.ground = tick.checked ? 0.6 : 0; });
+          box.append(row);
+          if (e.ground) slider(box, "The ground starts this far down the page", 0.2, 0.95, 0.01, e.ground, v => { e.ground = v; });
+        }
+        const n = (e.dry || []).length, drawing = drawKind === "dry" && dryTarget === e;
+        const row = el(`<div class="inline"><button class="btn small">${drawing ? "Now drag on the page..." : "Draw an area it misses"}</button>${n ? `<button class="btn small">Clear areas (${n})</button>` : ""}</div>`);
+        row.firstChild.onclick = () => {
+          if (drawing) { drawKind = "stop"; dryTarget = null; } else { drawKind = "dry"; dryTarget = e; }
+          select(null);
+          renderAll();
+        };
+        if (n) row.lastChild.onclick = () => change(() => { e.dry = []; });
+        box.append(row);
       }
+      root.append(box);
+    });
+
+    const add = document.createElement("select");
+    add.add(new Option("Add an effect...", ""));
+    for (const [type, name] of Object.entries(FX_NAMES)) add.add(new Option(name, type));
+    add.onchange = () => change(() => {
+      const type = add.value;
+      if (FALLING.includes(type)) p.effects.push({ type, amount: 0.6 });
+      else if (type === "shake") p.effects.push({ type, stop: Math.max(1, selected + 1), strength: 0.6 });
+      else if (type) p.effects.push({ type, stop: Math.max(1, selected + 1) });
+    });
+    root.append(add);
+    if (p.effects.some(e => FALLING.includes(e.type))) {
+      root.append(el('<p class="help">An area it misses is somewhere it should not fall, like under a bench or a roof. Paint the picture without rain or snow in it, or you will see both.</p>'));
+    }
+  }
+
+  /** Pictures placed on top of the page: a character or a prop with a see-through background. */
+  function renderLayers(root, p, el) {
+    p.layers = p.layers || [];
+    const stopSelect = (first, value, fn) => {
+      const sel = document.createElement("select");
+      sel.add(new Option(first, "0"));
+      p.stops.forEach((s, i) => sel.add(new Option(`Stop ${i + 1}`, String(i + 1))));
+      sel.value = String(value || 0);
+      if (sel.selectedIndex < 0) sel.selectedIndex = 0;
+      sel.onchange = () => change(() => fn(+sel.value));
+      return sel;
+    };
+    p.layers.forEach((l, i) => {
+      const row = el(`<div class="stop-row${i === selLayer ? " active" : ""}"><span class="dot" style="background:#7a4fd6">${i + 1}</span><span class="txt"></span></div>`);
+      row.querySelector(".txt").textContent = l.image + (l.moveTo ? " · moves" : "") + (l.idle ? " · " + l.idle + "s" : "");
+      row.onclick = () => { select(i === selLayer ? null : "layer", i); renderAll(); };
+      root.append(row);
+    });
+    const add = el('<div class="inline"><button class="btn small">+ Add a picture</button></div>');
+    add.firstChild.onclick = () => pickFile("image/png,image/webp,image/gif,image/*", async file => {
+      const name = addAsset(file);
+      const img = await CR.loadImage(assets.get(name).url);
+      layerImgs.set(name, img);
+      const pg = p._img, w = clamp(img.naturalWidth / pg.naturalWidth, 0.06, 0.35), h = w * (img.naturalHeight / img.naturalWidth) * (pg.naturalWidth / pg.naturalHeight);
+      change(() => { p.layers.push({ image: name, box: { x: 0.5 - w / 2, y: 0.5 - h / 2, w, h } }); select("layer", p.layers.length - 1); });
+    });
+    root.append(add);
+    const l = selLayer >= 0 ? p.layers[selLayer] : null;
+    if (!l) {
+      root.append(el('<p class="help">Use a PNG with a see-through background. Click a picture in this list to place it, size it, and make it move.</p>'));
+      return;
+    }
+    const box = el(`<div class="fx-item"><div class="fx-head"><b>Picture ${selLayer + 1}</b><button class="btn small">Remove</button></div></div>`);
+    box.querySelector("button").onclick = () => change(() => { p.layers.splice(selLayer, 1); select(null); });
+    box.append(el('<p class="help">Drag it on the page to place it. Drag a corner to size it.</p>'));
+    if (p.stops.length) {
+      box.append(el('<label class="field">It appears</label>'));
+      box.append(stopSelect("As the page opens", l.from > 1 ? l.from : 0, v => { if (v > 1) l.from = v; else delete l.from; }));
+      box.append(el('<label class="field">It goes away</label>'));
+      box.append(stopSelect("Never, it stays", l.to >= 1 ? l.to : 0, v => { if (v >= 1) l.to = v; else delete l.to; }));
+    }
+    const moveRow = el('<label class="check"><input type="checkbox"> It moves somewhere</label>'), moves = moveRow.querySelector("input");
+    moves.checked = !!l.moveTo;
+    moves.onchange = () => change(() => {
+      if (moves.checked) {
+        l.moveTo = { ...l.box, x: clamp(l.box.x + l.box.w * 1.2, -l.box.w, 1) };
+        l.moveAt = l.moveAt || Math.max(1, selected + 1);
+        l.moveSeconds = l.moveSeconds || 1.2;
+      } else { delete l.moveTo; delete l.moveAt; delete l.moveSeconds; delete l.path; }
+    });
+    box.append(moveRow);
+    if (l.moveTo) {
+      box.append(el('<p class="help">Drag the faded copy to where it should end up.</p>'));
+      if (p.stops.length) {
+        box.append(el('<label class="field">It sets off when the camera reaches</label>'));
+        const at = document.createElement("select");
+        p.stops.forEach((s, i) => at.add(new Option(`Stop ${i + 1}`, String(i + 1))));
+        at.value = String(l.moveAt || 1);
+        at.onchange = () => change(() => { l.moveAt = +at.value; });
+        box.append(at);
+      }
+      const lab = el(`<label class="field">The move takes <output>${l.moveSeconds || 1.2} s</output></label>`);
+      const range = el('<input type="range" min="0.3" max="8" step="0.1">');
+      range.value = l.moveSeconds || 1.2;
+      range.onpointerdown = () => pushUndo();
+      range.oninput = () => { l.moveSeconds = +range.value; lab.querySelector("output").textContent = range.value + " s"; setDirty(); };
+      box.append(lab, range);
+      box.append(el('<label class="field">The way it travels</label>'));
+      const path = document.createElement("select");
+      path.add(new Option("Straight there", "straight"));
+      path.add(new Option("In a hop, up and over", "hop"));
+      path.value = l.path === "hop" ? "hop" : "straight";
+      path.onchange = () => change(() => { if (path.value === "hop") l.path = "hop"; else delete l.path; });
+      box.append(path);
+    }
+    box.append(el('<label class="field">While it waits</label>'));
+    const idle = document.createElement("select");
+    idle.add(new Option("It keeps still", ""));
+    idle.add(new Option("It bobs up and down", "bob"));
+    idle.add(new Option("It sways", "sway"));
+    idle.value = l.idle || "";
+    idle.onchange = () => change(() => { if (idle.value) l.idle = idle.value; else delete l.idle; });
+    box.append(idle);
+    root.append(box);
+  }
+
+  /** A row for choosing a sound file for a stop or a thing to find. */
+  function soundRow(el, item, text) {
+    const wrap = el(`<div><label class="field">${text}</label><div class="inline" style="margin-top:0"></div></div>`), row = wrap.lastChild;
+    if (item.sound) {
+      const name = el('<span class="help" style="margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>');
+      name.textContent = item.sound;
+      const play = el('<button class="btn small" title="Listen">▶</button>'), remove = el('<button class="btn small">Remove</button>');
+      play.onclick = () => { const src = assetUrl(item.sound); if (src) new Audio(src).play().catch(() => say("That sound couldn't be played here.")); };
+      remove.onclick = () => change(() => { delete item.sound; });
+      row.append(name, play, remove);
+    } else {
+      const pick = el('<button class="btn small">Choose a sound file</button>');
+      pick.onclick = () => pickFile("audio/*", file => change(() => { item.sound = addAsset(file); }));
+      row.append(pick);
+    }
+    return wrap;
+  }
+
+  // ---------------------------------------------------------------- duplicate, copy, paste
+
+  function duplicateSelected() {
+    const p = page();
+    if (!p) return;
+    if (selHot >= 0 && p.hotspots[selHot]) {
+      change(() => { const h = clone(p.hotspots[selHot]); delete h.story; nudge(h.box); p.hotspots.splice(selHot + 1, 0, h); select("hot", selHot + 1); });
+    } else if (selected >= 0 && p.stops[selected]) {
+      change(() => { const st = clone(p.stops[selected]); nudge(st.box); if (st.to) nudge(st.to); p.stops.splice(selected + 1, 0, st); select("stop", selected + 1); });
+    }
+  }
+  function nudge(b) { b.x = clamp(b.x + 0.03, 0, 1 - b.w); b.y = clamp(b.y + 0.03, 0, 1 - b.h); }
+
+  function copySelected() {
+    const p = page();
+    if (!p) return false;
+    if (selHot >= 0 && p.hotspots[selHot]) clipItem = { kind: "hot", data: clone(p.hotspots[selHot]) };
+    else if (selected >= 0 && p.stops[selected]) clipItem = { kind: "stop", data: clone(p.stops[selected]) };
+    else return false;
+    say(`Copied. Go to any page and press Ctrl+V to paste it.`, 2500);
+    renderTimeline();
+    return true;
+  }
+
+  function pasteClip() {
+    const p = page();
+    if (!p || !clipItem) return;
+    if (clipItem.kind === "hot") {
+      if (p.mode !== "explore") { say("Things to find can only go on an explore page."); return; }
+      change(() => { const h = clone(clipItem.data); delete h.story; p.hotspots.push(h); select("hot", p.hotspots.length - 1); });
+    } else {
+      change(() => { const at = selected >= 0 ? selected + 1 : p.stops.length; p.stops.splice(at, 0, clone(clipItem.data)); select("stop", at); });
     }
   }
 
@@ -987,8 +1325,10 @@
     const card = el('<div class="card"></div>');
     root.append(card);
     card.append(el(`<h2><span class="dot" style="background:#a37a00">★</span>Thing to find ${selHot + 1}</h2>`));
-    const actions = el('<div class="inline"><button class="btn small">Delete</button></div>');
-    actions.firstChild.onclick = () => change(() => { p.hotspots.splice(selHot, 1); select(null); });
+    const actions = el('<div class="inline"><button class="btn small">Duplicate</button><button class="btn small">Copy</button><button class="btn small">Delete</button></div>');
+    actions.children[0].onclick = duplicateSelected;
+    actions.children[1].onclick = copySelected;
+    actions.children[2].onclick = () => change(() => { p.hotspots.splice(selHot, 1); select(null); });
     card.append(actions);
     const wordsSec = el('<div data-g="words"><h3>Words</h3></div>'), camSec = el('<div data-g="camera"><h3>How it behaves</h3></div>');
     card.append(wordsSec, camSec);
@@ -1015,6 +1355,7 @@
     ask.onfocus = () => pushUndo();
     ask.oninput = () => { if (ask.value) h.ask = ask.value; else delete h.ask; setDirty(); };
     tgt.append(ask);
+    tgt.append(soundRow(el, h, "Sound when it is found"));
     tgt = camSec;
     tgt.append(el('<label class="field">Story step (leave empty for an extra thing to find)</label>'));
     const story = document.createElement("input");
@@ -1163,7 +1504,11 @@
     settings = CR.loadSettings();
     Object.assign(ui.settings, settings);
     $("preview").classList.remove("hidden");
-    preview.setBook(CR.normalizeBook(CR.serializeBook(book)), book.pages.map(p => p._img), 0, { baseUrl: book._dir || "" });
+    const copy = CR.normalizeBook(CR.serializeBook(book)), urls = {};
+    // A big picture that's still in memory at full size plays from that; its tiles may not exist yet.
+    copy.pages.forEach((pg, i) => { const im = book.pages[i]._img; if (pg.tiles && Math.max(im.naturalWidth, im.naturalHeight) >= pg.tiles.width) pg.tiles = null; });
+    for (const [name, a] of assets) urls[name] = a.url;
+    preview.setBook(copy, book.pages.map(p => p._img), 0, { baseUrl: book._dir || "", assets: urls });
     if (stop === -2) { preview.jumpTo(pageIndex, -2); return; }
     if (stop === undefined || stop < 0) { preview.jumpTo(pageIndex, -1); return; }
     preview.jumpTo(pageIndex, stop);
@@ -1218,12 +1563,16 @@
     if (!book) return;
     const p = page();
     const hot = p && selHot >= 0 ? p.hotspots[selHot] : null;
-    const s = hot || (p && selected >= 0 ? p.stops[selected] : null);
+    const layer = p && selLayer >= 0 && p.layers ? p.layers[selLayer] : null;
+    const s = hot || layer || (p && selected >= 0 ? p.stops[selected] : null);
+    if (mod && (e.key === "d" || e.key === "D")) { e.preventDefault(); duplicateSelected(); return; }
+    if (mod && (e.key === "c" || e.key === "C")) { if (copySelected()) e.preventDefault(); return; }
+    if (mod && (e.key === "v" || e.key === "V")) { if (clipItem) { e.preventDefault(); pasteClip(); } return; }
 
     if (e.key === "Escape") { $("jsonBox").classList.add("hidden"); select(null); renderAll(); }
     else if ((e.key === "Delete" || e.key === "Backspace") && s) {
       e.preventDefault();
-      change(() => { if (hot) p.hotspots.splice(selHot, 1); else p.stops.splice(selected, 1); select(null); });
+      change(() => { if (hot) p.hotspots.splice(selHot, 1); else if (layer) p.layers.splice(selLayer, 1); else p.stops.splice(selected, 1); select(null); });
     }
     else if (e.key === "p" || e.key === "P") openPreview(hot ? -2 : selected >= 0 ? selected : undefined);
     else if (e.key === "PageDown" && pageIndex < book.pages.length - 1) { pageIndex++; select(null); drawKind = "stop"; renderAll(); }
@@ -1260,5 +1609,5 @@
 
   renderAll();
   // For automated tests.
-  window.__editor = { get book() { return book; }, get selected() { return selected; }, get selHot() { return selHot; }, get pageIndex() { return pageIndex; } };
+  window.__editor = { get book() { return book; }, get selected() { return selected; }, get selHot() { return selHot; }, get pageIndex() { return pageIndex; }, get view() { return view; }, get preview() { return preview; } };
 })();

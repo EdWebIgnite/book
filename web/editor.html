@@ -117,6 +117,13 @@
   #right h3 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 16px 0 2px; font-weight: 700; }
   .card { border: 1px solid var(--line); border-radius: 10px; background: #20232b; padding: 12px; margin-bottom: 10px; }
   .dot { width: 22px; height: 22px; border-radius: 50%; color: #fff; display: inline-grid; place-items: center; font-weight: 700; font-size: 12px; flex: none; }
+  .fx-item { border: 1px solid var(--line); border-radius: 9px; padding: 10px; margin: 0 0 10px; background: #1a1d24; }
+  .fx-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .stop-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; border: 1px solid transparent; }
+  .stop-row:hover { background: #2a2e39; }
+  .stop-row.active { border-color: #b08cff; background: #2a2540; }
+  .stop-row .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-item.dragover { border-color: var(--accent); border-style: dashed; }
   .word-row { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; margin: 10px 0; }
   .word-row textarea { min-height: 54px; }
   .word-row input { margin-top: 5px; }
@@ -248,6 +255,11 @@
   <details class="group" id="fxGroup" data-g="effects">
     <summary>Moving effects <span class="tag" id="fxTag"></span></summary>
     <div class="body" id="fxPanel"></div>
+  </details>
+
+  <details class="group" id="layerGroup" data-g="effects">
+    <summary>Pictures on top <span class="tag" id="layerTag"></span></summary>
+    <div class="body" id="layerPanel"></div>
   </details>
 
   <div id="inspector"></div>

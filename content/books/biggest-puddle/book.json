@@ -293,6 +293,32 @@
           "caption": "And there it was. The biggest puddle in the whole world.",
           "ask": "What do you think Moss will do?"
         }
+      ],
+      "effects": [
+        {
+          "type": "sparkles",
+          "amount": 0.5
+        }
+      ],
+      "layers": [
+        {
+          "image": "butterfly.png",
+          "box": {
+            "x": 0.3,
+            "y": 0.66,
+            "w": 0.075,
+            "h": 0.1
+          },
+          "moveTo": {
+            "x": 0.84,
+            "y": 0.63,
+            "w": 0.075,
+            "h": 0.1
+          },
+          "moveAt": 2,
+          "moveSeconds": 5,
+          "idle": "bob"
+        }
       ]
     },
     {
@@ -333,7 +359,8 @@
             "h": 0.6533
           },
           "moveSeconds": 0,
-          "caption": "SPLASH!"
+          "caption": "SPLASH!",
+          "sound": "splash.wav"
         },
         {
           "box": {
@@ -352,6 +379,18 @@
             "h": 0.3467
           },
           "caption": "“Again!” said Dot."
+        }
+      ],
+      "effects": [
+        {
+          "type": "shake",
+          "stop": 1,
+          "strength": 0.7
+        },
+        {
+          "type": "sparkles",
+          "amount": 0.4,
+          "from": 2
         }
       ]
     },
