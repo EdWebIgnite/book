@@ -627,6 +627,8 @@
     if (s.box.w > 0.95 && s.box.h > 0.95) bits.push("Whole page");
     if (s.to) bits.push("Pan " + (s.panSeconds || 4) + "s");
     if (s.style) bits.push(STYLE_NAMES[s.style]);
+    if (s.moveSeconds !== undefined) bits.push(+s.moveSeconds === 0 ? "Cut" : `${s.moveSeconds}s to get here`);
+    if (s.auto) bits.push(`Goes on after ${s.holdSeconds || 1.5}s`);
     if (s.caption) bits.push("“" + s.caption + "”");
     return bits.join(" · ") || "Stop";
   }
@@ -796,6 +798,29 @@
       range.onpointerdown = () => pushUndo();
       range.oninput = () => { s.panSeconds = +range.value; lab.querySelector("output").textContent = range.value + " s"; setDirty(); renderStopList(); };
       root.append(lab, range);
+    }
+
+    // Timing
+    root.append(el('<label class="field">Time the camera takes to get here</label>'));
+    const timeRow = el('<div class="inline"><input type="number" min="0" max="20" step="0.1" placeholder="automatic" style="width:110px"> <span class="help" style="margin:0">seconds. Empty: the reader decides. 0: cut straight to it.</span></div>');
+    const time = timeRow.querySelector("input");
+    time.value = s.moveSeconds === undefined ? "" : s.moveSeconds;
+    time.onfocus = () => pushUndo();
+    time.oninput = () => { if (time.value === "") delete s.moveSeconds; else s.moveSeconds = clamp(+time.value, 0, 20); setDirty(); renderStopList(); };
+    root.append(timeRow);
+    const autoRow = el('<label class="check"><input type="checkbox"> Go on to the next stop by itself (no tap)</label>');
+    const autoBox = autoRow.querySelector("input");
+    autoBox.checked = !!s.auto;
+    autoBox.onchange = () => change(() => { if (autoBox.checked) { s.auto = true; s.holdSeconds = s.holdSeconds || 1.5; } else { delete s.auto; delete s.holdSeconds; } });
+    root.append(autoRow);
+    if (s.auto) {
+      const lab = el(`<label class="field">It rests here for <output>${s.holdSeconds || 1.5} s</output> first</label>`);
+      const range = el('<input type="range" min="0.5" max="10" step="0.5" style="width:100%">');
+      range.value = s.holdSeconds || 1.5;
+      range.onpointerdown = () => pushUndo();
+      range.oninput = () => { s.holdSeconds = +range.value; lab.querySelector("output").textContent = range.value + " s"; setDirty(); renderStopList(); };
+      root.append(lab, range);
+      root.append(el('<p class="help">Use this to chain several camera moves into one tap. Keep the words short: a child cannot stop it to read.</p>'));
     }
 
     // Caption

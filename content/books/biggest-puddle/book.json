@@ -305,6 +305,8 @@
             "w": 0.2583,
             "h": 0.3467
           },
+          "auto": true,
+          "holdSeconds": 2.5,
           "caption": "One... two... three..."
         },
         {
@@ -314,12 +316,14 @@
             "w": 0.4167,
             "h": 0.84
           },
+          "moveSeconds": 0.7,
           "caption": "JUMP!"
         }
       ]
     },
     {
       "image": "page10.jpg",
+      "openWhole": false,
       "stops": [
         {
           "box": {
@@ -328,6 +332,7 @@
             "w": 0.675,
             "h": 0.6533
           },
+          "moveSeconds": 0,
           "caption": "SPLASH!"
         },
         {

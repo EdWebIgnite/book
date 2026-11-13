@@ -14,6 +14,9 @@
  *         { "box": { "x": 0.1, "y": 0.2, "w": 0.4, "h": 0.3 },   // fractions of the page image
  *           "to":  { ... },          // optional: glide from box to this box while resting
  *           "panSeconds": 4,         // optional: how long that glide takes
+ *           "moveSeconds": 2.5,      // optional: how long the camera takes to get to this stop (0 = cut)
+ *           "auto": true,            // optional: go on to the next stop without a tap...
+ *           "holdSeconds": 1.5,      // ...after resting here this long (also the rest time in watch mode)
  *           "style": "vignette",     // optional: overrides the book's focusStyle for this stop
  *           "caption": "Text...",    // optional: shown under the picture
  *           "ask": "Why is she sad?" }  // optional: a question for the adult reading along
@@ -180,6 +183,9 @@
             const o = { box: roundBox(s.box) };
             if (s.to) { o.to = roundBox(s.to); o.panSeconds = s.panSeconds || 4; }
             if (s.style) o.style = s.style;
+            if (s.moveSeconds !== undefined && s.moveSeconds !== null && s.moveSeconds !== "") o.moveSeconds = +s.moveSeconds;
+            if (s.auto) o.auto = true;
+            if (s.holdSeconds) o.holdSeconds = +s.holdSeconds;
             if (s.caption) o.caption = s.caption;
             if (s.ask) o.ask = s.ask;
             return o;
@@ -385,6 +391,7 @@
       this.tiles = new Map();
       this.weather = null;
       this.flash = 0;
+      this.arrivedForward = false;
       this.tileLoads = 0;
       this.party = 0;
       this.moved = false;
@@ -414,6 +421,7 @@
 
     /** Show a page and stop straight away, then play its pan if it has one. */
     jumpTo(page, stop) {
+      this.arrivedForward = false;
       this.stepIndex = this.findStep(page, stop);
       this.overview = false;
       this.finished = false;
@@ -596,7 +604,11 @@
       const reduced = this.reduced;
       const timing = this.moveTime(from.cam, to.cam, s.moveMs);
       let ms = reduced ? 340 : timing.ms;
-      if (instant || (pageChanged && s.pageTurn === "cut")) ms = 0;
+      // A stop can set its own travel time. It only applies when arriving from the stop before it.
+      const own = this.stop && !this.overview && this.arrivedForward ? this.stop.moveSeconds : undefined;
+      const hasOwn = own !== undefined && own !== null && own !== "";
+      if (hasOwn && !reduced) ms = Math.max(0, +own * 1000);
+      if (instant || (pageChanged && s.pageTurn === "cut" && !hasOwn)) ms = 0;
       // Pull back mid-flight on page changes (if chosen) and on any long journey, so the child sees where they are going.
       const arcK = reduced ? 0 : pageChanged && s.pageTurn === "zoomOut" ? s.arcAmount : timing.far ? 0.45 : 0;
       this.fling = null;
@@ -674,6 +686,7 @@
       const wasOverview = this.overview;
       this.overview = false;
       const next = this.stepIndex + delta;
+      this.arrivedForward = delta > 0;
       if (next >= this.steps.length) { this.finished = true; this.onChange(this.state); return; }
       if (next < 0) { if (wasOverview) this.moveTo(before); return; }
       this.stepIndex = next;
@@ -960,9 +973,16 @@
         f.vx *= decay;
         f.vy *= decay;
         if (Math.hypot(f.vx, f.vy) < 1e-5) this.fling = null;
-      } else if (this.book && this.settings.autoPlay && !this.finished && !this.exploring && this.canvas.clientWidth > 0
-                 && now - this.restSince > this.settings.autoSeconds * 1000) {
-        this.next();
+      } else if (this.book && !this.finished && !this.exploring && this.canvas.clientWidth > 0) {
+        // Moving on without a tap: a stop marked to go on by itself (only when we came to it going forwards,
+        // so going back never gets pushed forward again), or watch mode.
+        const stop = this.stop, rested = now - this.restSince;
+        const own = stop && stop.auto && this.arrivedForward && !this.overview;
+        const hold = stop && stop.holdSeconds ? +stop.holdSeconds : 0;
+        if (own ? rested > (hold || 1.5) * 1000 : this.settings.autoPlay && rested > (hold || this.settings.autoSeconds) * 1000) {
+          this.lastGo = 0;
+          this.next();
+        }
       }
       this.updateWeather(now);
       this.draw(now);
