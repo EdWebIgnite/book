@@ -61,14 +61,17 @@
     moveMs: 1400,
     easing: "easeInOutSine",
     zoomPath: "smooth",
-    pageTurn: "fly",
+    pageTurn: "flip",        // flip (like a book page) | fly | zoomOut | cut. The flip is drawn by the desktop program;
+                             // here it falls back to flying across.
     arcAmount: 0.6,
     padding: 0.025,
     dim: 0.72,
     vignette: 0.75,
     spotlight: 0.97,        // how dark it gets outside the light on a "spotlight" stop
     wholePageFirst: true,
-    wholePageLast: false,
+    wholePageLast: true,     // after a page's stops, show the whole page again before moving on
+    bookLook: true,          // desktop program: draw the whole page as a page in a book
+    settingsVersion: 2,      // raised when defaults change in a way saved settings should pick up
     drift: "off",
     driftAmount: 0.06,
     driftSeconds: 6,
@@ -107,6 +110,9 @@
       const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
       if (saved.panelPadding !== undefined && saved.padding === undefined) saved.padding = saved.panelPadding;
       for (const k of Object.keys(DEFAULT_SETTINGS)) if (saved[k] !== undefined) s[k] = saved[k];
+      // Settings saved before version 2 pick up the book behaviour: whole page after the stops, and the flip.
+      if (Object.keys(saved).length && !(saved.settingsVersion >= 2)) { s.wholePageLast = true; s.pageTurn = "flip"; s.bookLook = true; }
+      s.settingsVersion = DEFAULT_SETTINGS.settingsVersion;
     } catch (_) { /* storage blocked: use defaults */ }
     return s;
   }
@@ -483,7 +489,9 @@
         if (n === 0) { out.push({ page: p, stop: -1 }); return; }
         if (s.wholePageFirst && page.openWhole !== false) out.push({ page: p, stop: -1 });
         for (let i = 0; i < n; i++) out.push({ page: p, stop: i });
-        if (s.wholePageLast) out.push({ page: p, stop: -1 });
+        // The whole page again at the end, unless the last stop already shows all of it.
+        const last = page.stops[n - 1], full = !last.to && last.box.w > 0.95 && last.box.h > 0.95;
+        if (s.wholePageLast && !full) out.push({ page: p, stop: -1, closing: true });
       });
       return out;
     }
@@ -1139,7 +1147,9 @@
     effectOn(i, e) {
       const step = this.step;
       if (!step || step.page !== i || this.reduced) return 0;
-      const at = step.stop;                                   // -1 is the whole page, -2 is exploring
+      // -1 is the whole page as it opens, -2 is exploring. The whole page shown again after the stops
+      // counts as being past the last stop, so what started during the page is still there.
+      const at = step.closing ? this.book.pages[i].stops.length : step.stop;
       if (e.from > 1 && at >= -1 && at < e.from - 1) return 0;
       if (e.to >= 1 && (at === -2 || at > e.to - 1)) return 0;
       return 1;
@@ -1163,7 +1173,7 @@
         });
         (page.layers || []).forEach((l, k) => {
           const key = i + ":" + k, st = this.layerState.get(key) || { vis: -1, t: -1 };
-          const step = this.step, here = step && step.page === i, at = here ? step.stop : 0;
+          const step = this.step, here = step && step.page === i, at = !here ? 0 : step.closing ? page.stops.length : step.stop;
           // Before its page is reached a layer waits at its start; once the page is behind us it stays at its end.
           let show, moved;
           if (!step || step.page < i) { show = !(l.from > 1); moved = 0; }
