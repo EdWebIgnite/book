@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moss and the Biggest Puddle: art brief</title>
+<style>
+  :root {
+    --paper: #faf6ee; --card: #fffdf8; --ink: #2b2925; --soft: #6b655b; --line: #e2d9c8;
+    --red: #d2382f; --accent: #2f6f7a; --wash: #eef3ea; --code: #f3ede0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #1c1b19; --card: #252421; --ink: #ece6da; --soft: #a59d8f; --line: #3a3833; --accent: #7fc0cb; --wash: #262b26; --code: #2d2b27; }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 28px 20px 96px; }
+  h1, h2, h3 { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; line-height: 1.2; text-wrap: balance; }
+  h1 { font-size: clamp(32px, 6vw, 50px); margin: 0 0 6px; font-weight: 700; }
+  h1 span { color: var(--red); }
+  h2 { font-size: 28px; margin: 60px 0 12px; padding-top: 16px; border-top: 2px solid var(--line); }
+  h3 { font-size: 20px; margin: 26px 0 6px; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 20px; color: var(--soft); max-width: 62ch; }
+  a { color: var(--accent); }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin: 4px 0; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; }
+  nav a { text-decoration: none; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 13px; font-size: 14px; color: var(--ink); }
+  figure { margin: 18px 0; }
+  figure img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+  figcaption { font-size: 14px; color: var(--soft); margin-top: 6px; }
+  .wide { overflow-x: auto; border-radius: 10px; border: 1px solid var(--line); }
+  .wide img { border: 0; border-radius: 0; min-width: 1300px; }
+  .note { background: var(--wash); border-left: 4px solid var(--accent); border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 16px 0; }
+  .note p:last-child { margin: 0; }
+  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+  .chip { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13px; }
+  .chip i { display: block; height: 54px; }
+  .chip b { display: block; padding: 6px 9px 0; font-size: 14px; }
+  .chip span { display: block; padding: 0 9px 8px; color: var(--soft); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 16px; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--soft); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--soft); margin: 8px 0 0; }
+  .legend i { display: inline-block; width: 22px; height: 12px; vertical-align: -1px; margin-right: 6px; }
+  .page { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 22px 0; }
+  .page h3 { margin: 0 0 2px; font-size: 23px; }
+  .page .meta { font-size: 14px; color: var(--soft); margin-bottom: 10px; }
+  .page figure { margin: 10px 0 14px; }
+  .page.portrait figure img { max-width: 300px; }
+  .words { font-family: Georgia, serif; font-size: 18px; border-left: 3px solid var(--red); padding-left: 14px; margin: 0 0 14px; }
+  .words div { margin: 3px 0; }
+  .label { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--soft); font-weight: 600; margin: 14px 0 4px; }
+  .prompt { position: relative; background: var(--code); border-radius: 10px; padding: 12px 14px 12px; font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; }
+  .copy { float: right; margin: -2px -4px 6px 10px; font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  .copy:hover { border-color: var(--accent); }
+  details { margin: 10px 0 0; }
+  summary { cursor: pointer; color: var(--accent); font-size: 15px; }
+  footer { margin-top: 60px; font-size: 14px; color: var(--soft); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Moss and the <span>Biggest Puddle</span></h1>
+<p class="lede">Art brief for a 12-page picture book, ages 4 to 5, in soft watercolour. It is read in an app where the camera moves around each picture, so a few layout rules matter more than usual.</p>
+
+<nav>
+  <a href="#app">How the app shows it</a>
+  <a href="#style">Style</a>
+  <a href="#cast">Characters</a>
+  <a href="#garden">The garden</a>
+  <a href="#specs">Sizes and files</a>
+  <a href="#pages">Page by page</a>
+  <a href="#tool">Using an image tool</a>
+  <a href="#back">Sending pictures back</a>
+</nav>
+
+<h2 id="what">What is needed</h2>
+<table>
+  <tr><th>Piece</th><th>How many</th><th>Size in pixels</th><th>Shape</th></tr>
+  <tr><td>Story pages</td><td>11</td><td>3200 x 2000</td><td>Landscape, 16:10</td></tr>
+  <tr><td>Whole-garden scene (page 12)</td><td>1</td><td>6400 x 2000 or bigger</td><td>Very wide, 3.2:1</td></tr>
+  <tr><td>Cover</td><td>1</td><td>1600 x 2400</td><td>Portrait, 2:3</td></tr>
+  <tr><td>Character sheet</td><td>1</td><td>Any</td><td>For reference, not shown in the book</td></tr>
+</table>
+<p>The story: Moss the bear cub has new red boots and no puddle to jump in. Moss tries three puddles that are wrong (too small, too high, not mine), gives up, sits out a thunderstorm under a bench with a duck called Dot, and comes out to find the biggest puddle in the world. The last page is the whole garden, where the child hunts for Dot's three lost ducklings.</p>
+<div class="note"><p>The pictures in this brief are flat placeholder drawings from the working prototype. Use them for <strong>layout only</strong>: who is where, how big, what is in the frame. The finish, line and colour should follow the style section, not the placeholders.</p></div>
+
+<h2 id="app">How the app shows a picture</h2>
+<p>A page opens whole. Then, on each tap, the camera moves in to a close-up of one part of the picture, and the words for that part appear underneath. A page has two or three of these stops. Some stops glide slowly from one spot to another, for example from Moss up to the sun.</p>
+<p>What that means for the artwork:</p>
+<ul>
+  <li><strong>Each stop has to work as a small picture by itself.</strong> A stop is often only a quarter of the page, shown full screen on a tablet, so faces and hands need to hold up at that size.</li>
+  <li><strong>Leave air around each stop.</strong> Phones are long and thin, tablets are nearly square, so the app shows a bit more than the box on one side or the other. Don't crowd a stop with something that belongs to another moment.</li>
+  <li><strong>Keep the boxed things roughly where they are.</strong> The red boxes on the roughs are the camera stops. If something in a box moves a little, that's fine and I'll adjust the stop. If the layout changes a lot, say so and I'll re-mark the page.</li>
+  <li><strong>No words in the pictures.</strong> The app adds all the text, including "SPLASH!" and "BOOM!".</li>
+  <li><strong>Paint right to the edges.</strong> No white border or torn-paper edge. The camera goes into the corners.</li>
+  <li><strong>Keep faces and anything the story names at least 8% in from every edge.</strong></li>
+</ul>
+<p class="legend">
+  <span><i style="border:2px solid #e33"></i>Camera stop, numbered in reading order</span>
+  <span><i style="border:2px dashed #e3c"></i>Where a gliding stop ends</span>
+  <span><i style="border:2px dotted #dc2"></i>Thing to find (page 12 only)</span>
+</p>
+
+<h2 id="style">Style: soft watercolour</h2>
+<p>Think of a picture book you'd read at bedtime: quiet, warm, a bit loose. The opposite of the bright flat placeholders.</p>
+<ul>
+  <li><strong>Paint.</strong> Real watercolour, or digital that would fool someone. Wet washes for sky, grass and the puddle, with blooms and soft edges left in. Tighter, drier brushwork on faces, paws and the boots.</li>
+  <li><strong>Paper.</strong> Cold-press texture visible throughout. Highlights are bare paper, not white paint.</li>
+  <li><strong>Line.</strong> Thin sepia or soft pencil, broken in places. No heavy black outline and no outline at all on distant things.</li>
+  <li><strong>Depth.</strong> Background paler and looser than the characters, so close-ups read clearly. Hills and far trees can be little more than a wash.</li>
+  <li><strong>Colour.</strong> A small, gentle palette. The boots are the strongest colour on every page; nothing else gets that red, so the eye always finds Moss.</li>
+  <li><strong>Mood.</strong> Kind. Even the storm page is exciting, not scary: no dark faces, no sharp shapes apart from the one lightning bolt.</li>
+  <li><strong>Avoid.</strong> Vector flatness, airbrushed gradients, 3D or plastic shine, photo textures, heavy outlines, huge glossy cartoon eyes.</li>
+</ul>
+<div class="chips">
+  <div class="chip"><i style="background:#b9793f"></i><b>Moss fur</b><span>#B9793F</span></div>
+  <div class="chip"><i style="background:#f2dfbd"></i><b>Muzzle and tummy</b><span>#F2DFBD</span></div>
+  <div class="chip"><i style="background:#d2382f"></i><b>Boots</b><span>#D2382F</span></div>
+  <div class="chip"><i style="background:#f5f1e8"></i><b>Dot</b><span>#F5F1E8</span></div>
+  <div class="chip"><i style="background:#e8962e"></i><b>Beak and feet</b><span>#E8962E</span></div>
+  <div class="chip"><i style="background:#f0d35a"></i><b>Ducklings</b><span>#F0D35A</span></div>
+  <div class="chip"><i style="background:#93b872"></i><b>Lawn</b><span>#93B872</span></div>
+  <div class="chip"><i style="background:#bfdcec"></i><b>Sky and puddle</b><span>#BFDCEC</span></div>
+  <div class="chip"><i style="background:#ead3a6"></i><b>House wall</b><span>#EAD3A6</span></div>
+  <div class="chip"><i style="background:#3f9a8d"></i><b>Door, watering can</b><span>#3F9A8D</span></div>
+  <div class="chip"><i style="background:#7d8792"></i><b>Storm sky</b><span>#7D8792</span></div>
+  <div class="chip"><i style="background:#f3b98b"></i><b>Evening sky</b><span>#F3B98B</span></div>
+</div>
+<p>The colours are starting points. Watercolour will shift them and that's fine, as long as the boots stay clearly red and Moss stays the same brown from page to page.</p>
+
+<h2 id="cast">Characters</h2>
+<figure>
+  <img width="1800" height="1250" src="img/characters.jpg" alt="Placeholder character sheet: Moss in twelve poses, Dot, a duckling, the dog, the bird and a boot" loading="lazy">
+  <figcaption>Placeholder sheet. It shows the poses and expressions the story needs. Please redraw it in the watercolour style before starting the pages and send it for a quick yes or no.</figcaption>
+</figure>
+
+<h3>Moss</h3>
+<ul>
+  <li>A bear cub who feels about four years old. Round body, short arms and legs, head about 40% of total height.</li>
+  <li>Honey-brown fur, cream muzzle and tummy patch, small round ears with pink insides, a little tuft on top of the head.</li>
+  <li>Small dark eyes with one highlight, eyebrows that do a lot of the acting, rosy cheeks.</li>
+  <li>No clothes, only the boots. Moss is never called he or she in the text, so nothing that signals either.</li>
+  <li><strong>The boots:</strong> red wellingtons, shiny, a little too big, with a paler band round the top and ridged dark-red soles. Barefoot on page 1. One boot off on page 11.</li>
+  <li>Size: standing, Moss comes up to the seat of the garden bench and can't reach the top of the bird bath.</li>
+</ul>
+<h3>Dot</h3>
+<ul>
+  <li>A white duck, grown up, about half Moss's height. Orange beak and feet, a small tuft on her head.</li>
+  <li>Calm and a little bossy. Scared of thunder, which is how the two meet.</li>
+  <li>White on a pale page is tricky: give her warm grey shadows and keep a darker wash behind her.</li>
+</ul>
+<h3>Everyone else</h3>
+<ul>
+  <li><strong>Three ducklings.</strong> Yellow, fluffy, identical, about a fifth of Dot's size. Page 12 only.</li>
+  <li><strong>The dog.</strong> Tan and cream, long body, floppy darker ears. Lying down in every picture, sleepy, one eye open over the bowl. Never growling or showing teeth.</li>
+  <li><strong>The bird.</strong> Small, blue-grey with an orange breast. Lives in the bird bath.</li>
+  <li><strong>Page 12 extras.</strong> Snail, frog, worm, butterfly, ladybird, a paper boat, two red-and-white mushrooms.</li>
+</ul>
+
+<h2 id="garden">The garden</h2>
+<p>The whole book happens in one back garden, and the last page shows all of it. Things must stay in the same places on every page, because children will go back and check.</p>
+<figure>
+  <div class="wide"><img width="2400" height="750" src="img/garden.jpg" alt="Placeholder drawing of the whole garden, left to right: house, watering can, bird bath, bench under a tree, big puddle, kennel" loading="lazy"></div>
+  <figcaption>The whole garden as it looks after the rain. Scroll sideways on a small screen.</figcaption>
+</figure>
+<p>From left to right:</p>
+<ol>
+  <li><strong>The house.</strong> Cream wall, teal back door with a round top, one window with a flower box, a step, two low bushes, stepping stones across the lawn.</li>
+  <li><strong>The watering can.</strong> Teal with a yellow star. It drips.</li>
+  <li><strong>A small tree, then the bird bath.</strong> Pale stone, taller than Moss.</li>
+  <li><strong>The bench under the big tree.</strong> Wooden slats, dark metal legs, room underneath for a bear cub and a duck.</li>
+  <li><strong>The dip in the lawn</strong> in front of and to the right of the bench. Dry grass before the storm, the big puddle after it.</li>
+  <li><strong>A second small tree, then the kennel.</strong> Wooden, red roof. The dog's blue bowl with a bone on it sits in front, and big leaves grow in the bottom right corner.</li>
+</ol>
+<p>Along the back runs a white picket fence with flowers in front of it, and soft rounded hills behind.</p>
+
+<h3>Weather and light</h3>
+<div class="scroll"><table>
+  <tr><th>Pages</th><th>Weather</th><th>How it looks</th></tr>
+  <tr><td>1 to 5</td><td>Sunny and dry</td><td>Clear pale-blue wash, warm light, short shadows. The lawn looks dry.</td></tr>
+  <tr><td>6</td><td>Turning</td><td>Still bright on the left. Grey clouds moving in from the right, sun half covered.</td></tr>
+  <tr><td>7</td><td>Storm</td><td>Grey sky, slanting rain, one lightning bolt, colours muted to grey-green. Rain rings on the grass.</td></tr>
+  <tr><td>8, 9, 10, 12</td><td>Fresh after rain</td><td>Sun back, rainbow, cleaner and brighter colours than the morning, small sparkles of light on wet things. The big puddle reflects the sky.</td></tr>
+  <tr><td>11</td><td>Evening</td><td>Peach and gold sky, low sun, long soft shadows, the puddle gone warm orange.</td></tr>
+</table></div>
+
+<h2 id="specs">Sizes and files</h2>
+<ul>
+  <li><strong>Story pages:</strong> 3200 x 2000 pixels. If painting on paper, A3 landscape scanned at 300 dpi is more than enough; crop to 16:10.</li>
+  <li><strong>Page 12:</strong> at least 6400 x 2000. Children zoom into this one, so bigger is better, up to 12800 x 4000. On paper, two A2 sheets side by side or one long strip.</li>
+  <li><strong>Cover:</strong> 1600 x 2400. Leave the top third calm (sky) for the title. No lettering in the painting.</li>
+  <li><strong>Format:</strong> PNG, or JPEG at high quality. sRGB colour. No signature or page number inside the picture.</li>
+  <li><strong>Nice to have:</strong> characters on a separate layer from the background (or painted on a separate sheet). It isn't needed now, but it would let the app move them later.</li>
+</ul>
+
+<h2 id="pages">Page by page</h2>
+<p>For each page: the words the app shows at each camera stop, what the picture needs, and a prompt to paste into an image tool if you go that way. An illustrator can ignore the prompts.</p>
+<div id="pagelist"></div>
+
+<h2 id="tool">If you use an image tool</h2>
+<p>It can work, but two things are hard for these tools and both matter here: keeping a character identical across twelve pictures, and making one very wide picture. This order gives the best odds.</p>
+<ol>
+  <li><strong>Make the character sheet first.</strong> Use the prompt below. Keep trying until Moss looks right, because every later picture copies this one.</li>
+  <li><strong>Make page 2 next.</strong> It's the widest view of the garden. Attach the character sheet as a reference image.</li>
+  <li><strong>Then the other pages</strong>, each time attaching both the character sheet and page 2, so Moss and the garden stay the same. Use a tool that accepts reference images; without that, Moss will drift.</li>
+  <li><strong>Page 12 last.</strong> Most tools won't make a 3.2:1 picture in one go. Make the middle third first, then extend it left and right (often called outpainting or expand), or make three overlapping pictures and I'll join them. If this page is going to be commissioned from a person, it's the one to pick.</li>
+  <li><strong>Make them big.</strong> Most tools give about 2000 pixels across. Run the tool's upscaler to reach the sizes above, or send what you have and I'll tell you if it's too soft.</li>
+</ol>
+<div class="label">Character sheet prompt</div>
+<div class="prompt" id="sheetprompt"></div>
+<h3>Check each picture before keeping it</h3>
+<ul>
+  <li>Two boots, both red, on the right pages. Barefoot on page 1, one boot off on page 11.</li>
+  <li>Moss has no clothes, scarf, hat or bow. Same brown, same face.</li>
+  <li>Dot is white with an orange beak. Exactly three ducklings on page 12.</li>
+  <li>Right weather for the page, and no rainbow before page 8.</li>
+  <li>No stray letters, signatures or frames. Right number of paws and legs.</li>
+  <li>Things in the garden are on the correct side: house left, kennel right.</li>
+</ul>
+<div class="note"><p><strong>Rights.</strong> The book will be sold, so check that the tool's terms allow commercial use of what it makes on your plan. If you commission an illustrator in South Africa, get the copyright assigned to you, or a licence covering the app, in a signed written agreement. Paying for the work doesn't transfer it by default for illustrations. This is my understanding of the Copyright Act, not legal advice.</p></div>
+
+<h2 id="back">Sending pictures back</h2>
+<ul>
+  <li>Name them <code>page1</code> to <code>page12</code>, <code>cover</code> and <code>characters</code>. Any names will do if that's a nuisance, as long as I can tell which is which.</li>
+  <li>Send the full-size files, not screenshots or pictures pasted into a chat app, which shrink them. A Google Drive folder works, or upload them to the project on GitHub.</li>
+  <li>Send the character sheet and one finished page first. It's cheaper to change direction after two pictures than after thirteen.</li>
+</ul>
+<p>Once they arrive I drop them into the book, check every camera stop against the new artwork, move any that no longer fit, and put the updated book in the playground for you to read through.</p>
+
+<footer>Placeholder drawings and story text from the working prototype. Brief written 13 November 2026.</footer>
+</main>
+
+<script>
+"use strict";
+const STYLE = "Soft watercolour children's picture book illustration on cold-press paper. Loose wet washes with soft edges, visible paper grain, thin broken sepia pencil line, bare paper for highlights. Gentle limited palette, background paler and looser than the characters. Warm and kind in mood. No text, no lettering, no border, no signature. Not vector, not 3D, not glossy.";
+const MOSS = "Moss is a small round bear cub with honey-brown fur, a cream muzzle and cream tummy patch, small round ears with pink insides, small dark eyes and rosy cheeks. Moss wears no clothes, only shiny red wellington boots that are a little too big.";
+const MOSS_BARE = "Moss is a small round bear cub with honey-brown fur, a cream muzzle and cream tummy patch, small round ears with pink insides, small dark eyes and rosy cheeks. Moss wears no clothes and is barefoot.";
+const DOT = "Dot is a white duck with an orange beak and orange feet and a small tuft on her head, about half as tall as Moss.";
+const GARDEN = "Setting: a small back garden with a cream house wall and teal door on the left, a white picket fence with flowers along the back, soft rounded green hills beyond.";
+const LAND = "Landscape, 16:10, painted to the edges.";
+
+const PAGES = [
+  { n: 1, img: "page1.jpg", title: "New boots", weather: "Sunny",
+    words: ["Moss had new boots.", "Big, red, shiny boots. Moss loved them."],
+    ask: "What do you love to wear?",
+    need: ["Open cardboard box with tissue paper by the back step, the boots standing next to it.", "Moss barefoot, hands to cheeks, thrilled. This is the only page without boots on.", "Watering can in view: it matters on page 3."],
+    cam: "Box and boots, then a glide from the boots up to Moss's face.",
+    scene: "A sunny morning. Beside the back step sits an open cardboard box with white tissue paper, and next to it stands a pair of shiny red wellington boots. To the right Moss stands barefoot on the grass, hands on cheeks, laughing with delight. A teal watering can with a yellow star stands nearby.", moss: MOSS_BARE },
+  { n: 2, img: "page2.jpg", title: "Not one puddle", weather: "Sunny",
+    words: ["Boots are for puddles. Everybody knows that.", "But the sun was shining. There was not one puddle anywhere."],
+    ask: "Where could Moss look for a puddle?",
+    need: ["The widest view so far: house, small tree, bird bath, edge of the bench.", "Moss small in the frame, hands on hips, proud.", "A big friendly sun, and an obviously dry lawn."],
+    cam: "Moss, then a glide across the dry lawn, then up to the sun.",
+    scene: "A wide view of the garden on a bright, dry day. Moss stands proudly near the back door in the red boots, hands on hips, eyes closed in a smile. A big yellow sun in a clear pale-blue sky above a small round tree. Dry green lawn with stepping stones, a stone bird bath and the end of a wooden bench further right. No water on the ground anywhere." },
+  { n: 3, img: "page3.jpg", title: "Too small", weather: "Sunny",
+    words: ["Drip. Drip. Drip.", "A puddle! Moss put in one toe.", "Too small."],
+    need: ["A closer view than pages 1 and 2.", "The watering can dripping from its spout into a puddle no bigger than a saucer.", "Moss with one boot toe in it, arms out for balance, mouth a flat line."],
+    cam: "The drip, the toe in the puddle, then Moss's unimpressed face.",
+    scene: "A close view. A teal watering can with a yellow star drips from its spout into a tiny puddle on the grass, no bigger than a saucer. Moss dips the toe of one red boot into it, arms out for balance, with a flat unimpressed mouth. A stone bird bath and picket fence behind." },
+  { n: 4, img: "page4.jpg", title: "Too high", weather: "Sunny",
+    words: ["The bird bath had water. Moss stretched up, up, up.", "Too high. And somebody was already in it."],
+    need: ["Moss on tiptoe by the bird bath, one arm stretched up, nowhere near the top.", "The little bird in the bath, looking down at Moss.", "The bench under the big tree to the right, so children have seen it before the storm."],
+    cam: "A glide from the boots on tiptoe up to the bird, then the bird.",
+    scene: "Moss stands on tiptoe in the red boots beside a tall stone bird bath, one arm stretched up as high as it will go, mouth a small 'oh'. A small blue-grey bird with an orange breast sits in the bird bath splashing, looking down at Moss. To the right, a wooden garden bench under a big leafy tree." },
+  { n: 5, img: "page5.jpg", title: "Not mine", weather: "Sunny",
+    words: ["The dog’s bowl had water.", "The dog looked at Moss. Moss looked at the dog.", "Too... not mine."],
+    ask: "Why didn’t Moss jump in the dog’s bowl?",
+    need: ["Right-hand end of the garden: kennel, blue bowl, big leaves in the corner.", "The dog lying down with one eye on Moss. Unbothered, not cross.", "Moss with both paws up, backing away politely, a wobbly smile."],
+    cam: "The bowl, a glide from the dog's face across to Moss, then Moss.",
+    scene: "Moss stands in the red boots with both paws raised, backing away politely with wide eyes and a wobbly smile. To the right a tan and cream dog with floppy ears lies in front of a wooden kennel with a red roof, sleepy, one eye on Moss. In front of the dog is a blue bowl of water with a bone painted on it. Big green leaves in the bottom right corner." },
+  { n: 6, img: "page6.jpg", title: "Just shoes", weather: "Turning grey",
+    words: ["Moss sat down. Boots with no puddle are just shoes.", "Then the sky went grey.", "Plip."],
+    ask: "How is Moss feeling now?",
+    need: ["Wide view again, from the house end.", "Moss slumped on the back step, boots sticking out, properly sad. The low point of the story.", "Clouds coming in from the right over the sun. One single raindrop above Moss's head."],
+    cam: "Sad Moss, a glide across the sky from blue to grey, then the one raindrop.",
+    scene: "A wide view of the garden. Moss sits slumped on the back doorstep, sad, the red boots sticking out in front, paws in lap. The sky is still blue on the left, but on the right heavy grey clouds are rolling in and half covering the sun. One single raindrop falls just above Moss's head." },
+  { n: 7, img: "page7.jpg", title: "Boom", weather: "Storm",
+    words: ["Plip, plop, plip, plop... BOOM!", "That was a LOT of rain. Moss hid under the bench.", "Somebody else was hiding there too. “I’m Dot,” said the duck. “I don’t like the boom either.”"],
+    ask: "What do you do when it thunders?",
+    need: ["The bench in the middle with Moss and Dot underneath, side by side.", "Lightning in the top right, well away from the two of them.", "Rain everywhere but faces still easy to read. Exciting, not frightening."],
+    cam: "The lightning, Moss under the bench, then Dot.",
+    scene: "A thunderstorm in the garden. Dark grey sky, heavy slanting rain, one bolt of lightning in the top right corner. In the middle a wooden garden bench under a big tree. Moss crouches underneath it in the red boots, eyes wide, paws by ears. Beside Moss under the bench sits Dot the duck, sheltering too. Rain rings on the wet grass. Muted grey-green colours. Exciting but gentle, not frightening.", dot: true },
+  { n: 8, img: "page8.jpg", title: "The biggest puddle", weather: "Fresh after rain",
+    words: ["When the rain stopped, they peeped out.", "And there it was. The biggest puddle in the whole world."],
+    ask: "What do you think Moss will do?",
+    need: ["The reveal. Wide view, sun out, rainbow, everything washed clean.", "Moss and Dot stepping out from under the bench on the left, amazed.", "The puddle huge, filling the lawn in front of them, reflecting sky and rainbow."],
+    cam: "Moss and Dot peeping out, then a slow glide across the whole puddle.",
+    scene: "Just after the rain. The sun is out, a rainbow arcs across a fresh blue sky, and everything glistens. On the left Moss and Dot step out from under a wooden bench, Moss with a paw to the mouth in amazement. In front of them, filling the lawn, lies one huge shining puddle reflecting the sky and the rainbow. A kennel with a red roof in the distance on the right.", dot: true },
+  { n: 9, img: "page9.jpg", title: "Jump", weather: "Fresh after rain",
+    words: ["One... two... three...", "JUMP!"],
+    need: ["Moss high in the air above the middle of the puddle, arms up, boots together.", "Dot at the puddle's edge on the right, wings half out, counting.", "Still water below, so page 10 is a real change."],
+    cam: "Dot counting, then Moss in mid-air.",
+    scene: "Moss leaps high in the air above the middle of a huge puddle, arms up, laughing, red boots together. The water below is still calm and reflects the sky. Dot the duck stands at the right edge of the puddle with wings half open, watching. Rainbow in the sky, bench on the left, kennel with a red roof on the right.", dot: true },
+  { n: 10, img: "page10.jpg", title: "Splash", weather: "Fresh after rain",
+    words: ["SPLASH!", "It was a very, very good puddle.", "“Again!” said Dot."],
+    need: ["Same view as page 9, so the two pages read as before and after.", "Moss landed in the middle, water going up in big sheets on both sides.", "Dot flapping on the right, getting splashed and loving it."],
+    cam: "The whole splash, Moss's face, then Dot.",
+    scene: "Moss lands in the middle of a huge puddle with an enormous splash. Sheets of water and droplets fly up on both sides. Moss stands in the red boots with arms flung wide, laughing. At the right edge Dot the duck flaps her wings in the spray, delighted. Rainbow in the sky, bench on the left, kennel with a red roof on the right.", dot: true },
+  { n: 11, img: "page11.jpg", title: "A very good boat", weather: "Evening",
+    words: ["Moss’s boots were full of water.", "And one boot made a very good boat.", "It was the best puddle day ever."],
+    ask: "What was your favourite part?",
+    need: ["Same view as pages 9 and 10, now in evening light.", "Moss sitting at the puddle's edge, laughing, one boot off and a bare paw showing.", "The other boot floating upright on the puddle with Dot riding in it."],
+    cam: "Moss, a glide across to the boot boat, then the whole picture.",
+    scene: "Golden evening. Peach and gold sky with a low sun, long soft shadows, the puddle glowing warm orange. Moss sits at the edge of the puddle laughing, wearing one red boot, the other foot bare. The second red boot floats upright on the puddle like a little boat, with Dot the duck sitting in it. Bench on the left, kennel with a red roof on the right.", dot: true },
+  { n: 12, img: "page12.jpg", title: "The whole garden", weather: "Fresh after rain", wide: true,
+    words: ["After the rain, the garden was full of surprises. But Dot has lost her three ducklings! Can you find them?"],
+    need: ["The whole garden, house to kennel, after the rain. This is the page children explore by dragging and zooming, so it should be full of small things worth finding.", "Moss and Dot standing at the left end of the big puddle.", "Duckling 1 paddling in the top of the watering can. Duckling 2 in the dog's bowl. Duckling 3 under the big leaves, bottom right.", "Ten more to find: the bird in its bath, a snail, a frog by the puddle, a worm in a small puddle, a paper boat on the big puddle, two mushrooms, a butterfly, a ladybird on a flower, the dog, the rainbow.", "Nothing to find should be smaller than the ladybird in the rough, and none should overlap another, or small fingers hit the wrong one.", "Feel free to add more small surprises. Tell me what and where and I'll make them tappable."],
+    cam: "Opens on Moss and Dot, then the child takes over.",
+    scene: "A very wide panorama of a whole back garden just after rain, bright and fresh, with a rainbow and the sun out. From left to right: a cream house wall with a teal door and stepping stones; a teal watering can with a yellow star, with a yellow duckling paddling in the top of it; a small tree; a stone bird bath with a small blue-grey bird in it; a wooden bench under a big tree; a huge shining puddle with Moss and Dot the duck standing at its left edge and a paper boat sailing on it; a second small tree; a wooden kennel with a red roof and a tan dog lying in front; a blue dog bowl with a second duckling splashing in it; big green leaves in the bottom right corner with a third duckling hiding underneath. Also tucked in: a snail, a frog, a worm, a butterfly, a ladybird on a flower and two red and white mushrooms. White picket fence with flowers along the back.", dot: true, shape: "Very wide panorama, about 3.2:1, painted to the edges." },
+  { n: 0, img: "cover.jpg", title: "Cover", weather: "Fresh after rain", portrait: true,
+    words: [],
+    need: ["Moss mid-splash in the puddle, facing us, arms wide.", "Dot off to one side. Rainbow behind.", "Top third calm sky for the title, which is added afterwards. No lettering in the painting."],
+    cam: "Shown small in the library, so it must read at thumbnail size: one clear shape, red boots obvious.",
+    scene: "Book cover. Moss stands in the middle of a big puddle in the red boots, arms wide, laughing, water splashing up on both sides. Dot the duck stands on the grass to the right. A rainbow arcs behind them. The top third of the picture is calm open sky.", dot: true, shape: "Portrait, 2:3, painted to the edges." },
+];
+
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const promptFor = p => [STYLE, p.scene, p.moss || MOSS, p.dot ? DOT : "", p.wide || p.portrait ? "" : GARDEN, p.shape || LAND].filter(Boolean).join("\n\n");
+
+document.getElementById("pagelist").innerHTML = PAGES.map(p => `
+  <section class="page${p.portrait ? " portrait" : ""}" id="${p.n ? "p" + p.n : "cover"}">
+    <h3>${p.n ? "Page " + p.n + ": " : ""}${esc(p.title)}</h3>
+    <div class="meta">${esc(p.weather)} · ${p.wide ? "6400 x 2000 or bigger" : p.portrait ? "1600 x 2400" : "3200 x 2000"}</div>
+    <figure>${p.wide ? '<div class="wide">' : ""}<img ${p.wide ? 'width="2400" height="750"' : p.portrait ? 'width="600" height="900"' : 'width="1200" height="750"'} src="img/${p.img}" alt="Layout rough for ${p.n ? "page " + p.n : "the cover"}" loading="lazy">${p.wide ? "</div>" : ""}</figure>
+    ${p.words.length ? `<div class="label">Words</div><div class="words">${p.words.map((w, i) => `<div>${p.words.length > 1 ? `<small>${i + 1}.</small> ` : ""}${esc(w)}</div>`).join("")}</div>` : ""}
+    ${p.ask ? `<p><small>Question the app suggests to the adult: ${esc(p.ask)}</small></p>` : ""}
+    <div class="label">In the picture</div>
+    <ul>${p.need.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    <p><small><strong>Camera:</strong> ${esc(p.cam)}</small></p>
+    <details><summary>Prompt for an image tool</summary>
+      <div class="prompt"><button class="copy" type="button">Copy</button>${esc(promptFor(p))}</div>
+    </details>
+  </section>`).join("");
+
+const SHEET = [STYLE, "A character reference sheet on plain off-white paper. " + MOSS, "Show Moss six times, full body, same size, in a row: standing and smiling; hands on hips and proud; on tiptoe reaching up; sitting down sad; crouching with wide scared eyes; jumping with arms up and laughing. Underneath, in a second row: " + DOT + " Then one small yellow duckling, a tan and cream dog with floppy ears lying down, a small blue-grey bird with an orange breast, and one red wellington boot by itself.", "Landscape, 3:2."].join("\n\n");
+document.getElementById("sheetprompt").innerHTML = '<button class="copy" type="button">Copy</button>' + esc(SHEET);
+
+document.addEventListener("click", e => {
+  const b = e.target.closest(".copy");
+  if (!b) return;
+  const text = b.parentElement.textContent.replace(/^Cop(y|ied)/, "");
+  const done = ok => { b.textContent = ok ? "Copied" : "Select and copy"; setTimeout(() => (b.textContent = "Copy"), 1600); };
+  try { navigator.clipboard.writeText(text).then(() => done(true), () => done(false)); } catch (err) { done(false); }
+});
+</script>
+</body>
+</html>

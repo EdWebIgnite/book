@@ -44,7 +44,7 @@ The reader follows what the research says about young children and touchscreens 
 
 ## Sample books
 
-All are original placeholder books drawn in code, there to exercise every feature:
+All are original placeholder books drawn in code, there to exercise every feature. Moss and the Biggest Puddle is the one going to proper artwork: the brief for the illustrator is in `docs/art-brief/`.
 
 - **Moss and the Biggest Puddle.** A picture book written for ages 4 to 5. Moss the bear cub has new red boots and no puddle. Eleven guided pages with short sentences, a repeating "too..." pattern, pans, weather that changes the whole garden, and questions for the adult. It ends on the whole garden to explore, where Dot the duck has lost her three ducklings. Every page is a window onto one wide drawing of the garden, so the place stays the same throughout.
 - **Who's at the Waterhole?** A picture book. Seven guided pages using focus areas, pans and captions, then a wide evening scene to explore with ten things to find.
@@ -91,7 +91,9 @@ web/editor.html, editor.js       Book editor
 web/reader.js                    Reader engine shared by the playground and editor preview
 web/reader-ui.js, reader.css     The reader screen (buttons, captions, hints), also shared
 docs/movement-ideas.md           Research on comparable apps and on children and touchscreens, and the ideas list
+docs/art-brief/                  Brief for the illustrator of Moss and the Biggest Puddle (open index.html)
 tools/make_books.js              Draws the sample books (node tools/make_books.js)
+tools/make_brief_images.js       Draws the character sheet used in the art brief
 tools/art/                       The drawings: garden.js and puddle.js (Moss and the Biggest Puddle), kit.js and waterhole.js
                                  (waterhole book), comic.js and megawatt.js (comic), sea.js and deep.js (underwater scene)
 tools/art/fonts/                 Open-licence fonts used in the art (Baloo 2, Bangers, Comic Neue), with their licences
