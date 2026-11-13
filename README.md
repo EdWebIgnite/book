@@ -63,15 +63,19 @@ Original books, there to exercise every feature. Moss and the Biggest Puddle has
 
 `web/editor.html` is where books are put together. It is for the people making the books, so the playground has no link to it: open it directly, hold the "My Books" title for three seconds, or press Shift+E on the shelf.
 
+**Layout.** Pages run down the left, the page you're working on is in the middle, and the settings for whatever is selected are on the right. Along the bottom is the page's timeline: how it opens, then each stop as a card with a small picture, its words and its timing, joined by "tap" or "after 2s". Drag a card to change the order. On explore pages the things to find follow as chips.
+
+**Two ways to work.** *Everything* shows every tool at once. *Step by step* takes one job at a time: Pages, Camera, Words (every stop's words in one list), Effects, Play. Switch between them at the top whenever you like.
+
 - **Open a book** from the library, **Open folder** (a folder of page images, with or without a `book.json`), or **New book** and add page images (button, or drag the files onto the page area).
 - **Drag on a page** to draw a stop. Click to select, drag to move, drag a white corner to resize. Hold Shift to draw a new stop on top of an existing one.
-- Stops play in the order listed on the right. Change the order with Earlier and Later.
+- Stops play in the order shown along the bottom. Drag a card there to move it, or use Earlier and Later.
 - **Show the whole page first** can be switched off per page.
 - For the selected stop: the time the camera takes to get there, whether it goes on by itself, the focus style (including Spotlight), **Pan to a second box** (then drag the dashed box to where the camera should end), glide time, and caption.
 - **Page type** switches a page between guided and explore. On an explore page you choose whether dragging draws intro stops or **things to find**, give each thing its name, caption and (if it's part of the story) its story step number, and switch hints, the Show me button and the corner map on or off.
 - **Moving effects** for the page: rain (how heavy, which stop it starts at, splashes, dry areas you draw on the page) and a lightning flash on a chosen stop.
 - **Show screen size** draws what a phone, tablet or computer screen will actually show around the selected stop, since the screen shape rarely matches the box.
-- **Preview** (or `P`) plays the book from the selected stop using the playground's movement settings.
+- **Play** (or `P`) plays the book from the selected stop using the playground's movement settings.
 - **Save** writes `book.json` (and any new images) into a folder in Chrome or Edge. In other browsers it shows the `book.json` text to copy.
 - Undo with Ctrl+Z. Delete removes a stop, arrow keys nudge it.
 

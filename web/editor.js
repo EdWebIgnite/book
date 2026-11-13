@@ -17,6 +17,22 @@
   let dirHandle = null;      // folder from "Open folder" or the first "Save", when the browser allows it
   let dirty = false;
   let settings = CR.loadSettings();
+
+  // "Everything" shows every tool at once. "Step by step" takes one job at a time.
+  const UI_KEY = "book-editor-ui";
+  const STEPS = {
+    pages: ["Pages", "Add your page pictures and put them in order. For each page, choose whether the camera guides it or the child explores it."],
+    camera: ["Camera", "Drag on the page to draw where the camera stops. Stops play left to right along the bottom. Click one to set its timing and its look."],
+    words: ["Words", "Type what is read at each stop. Leave a stop empty if it needs no words."],
+    effects: ["Effects", "Add weather that moves over the picture. Skip this if the page doesn't need any."],
+    play: ["Play", "Watch the page the way a child will see it, then save."],
+  };
+  let uiMode = "free", step = "pages";
+  try {
+    const u = JSON.parse(localStorage.getItem(UI_KEY) || "{}");
+    if (u.mode === "guided") uiMode = "guided";
+    if (STEPS[u.step]) step = u.step;
+  } catch (_) { /* storage blocked: start with everything */ }
   const undoStack = [];
 
   const page = () => (book && book.pages[pageIndex]) || null;
@@ -638,7 +654,7 @@
     root.innerHTML = "";
     const p = page();
     $("stopsTitle").textContent = p ? `Page ${pageIndex + 1}` : "Page";
-    if (!p) return;
+    if (!p) { $("fxPanel").innerHTML = ""; $("fxTag").textContent = ""; renderTimeline(); return; }
     const el = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
 
     // Page type and guidance
@@ -658,7 +674,7 @@
       if (p.openWhole === false) root.append(el('<p class="help">This page opens on its first stop, so nothing on it is given away early. Use Spotlight stops to keep the rest dark.</p>'));
     }
     if (p.mode === "explore") {
-      root.append(el('<p class="help">Any stops below play first as a guided intro. Then the page is handed to the child to drag, pinch and discover.</p>'));
+      root.append(el('<p class="help">Any stops play first as a guided intro. Then the page is handed to the child to drag, pinch and discover.</p>'));
       for (const [key, text] of [["hints", "Hint at things not found when the child is idle"], ["showMe", "Show a \"Show me\" button"], ["map", "Show a small map in the corner (for big scenes)"]]) {
         const row = el(`<label class="check"><input type="checkbox"> ${text}</label>`);
         const box = row.querySelector("input");
@@ -675,61 +691,108 @@
       root.append(kind);
     }
 
-    renderEffects(root, p, el);
+    const fx = $("fxPanel");
+    fx.innerHTML = "";
+    renderEffects(fx, p, el);
+    const kinds = (p.effects || []).map(e => e.type === "rain" ? "Rain" : "Lightning");
+    $("fxTag").textContent = kinds.length ? kinds.join(", ") : "None";
+    renderTimeline();
+  }
 
-    root.append(el(`<h2>${p.mode === "explore" ? "Intro stops" : "Stops"}</h2>`));
-    if (!p.stops.length) {
-      const h = document.createElement("p");
-      h.className = "help";
-      h.textContent = p.mode === "explore"
-        ? "No intro. The page starts in explore mode straight away."
-        : "No stops yet. Drag on the page to draw one. Stops play in the order listed here.";
-      root.append(h);
-    }
-    p.stops.forEach((s, i) => {
-      const row = document.createElement("div");
-      row.className = "stop-row" + (i === selected ? " active" : "");
-      const num = document.createElement("span");
-      num.className = "num";
-      num.style.background = stopColor(i);
-      num.textContent = i + 1;
-      const txt = document.createElement("span");
-      txt.className = "txt";
-      txt.textContent = stopSummary(s);
-      row.append(num, txt);
-      row.onclick = () => { select("stop", i); renderAll(); };
-      root.append(row);
-    });
-    const add = document.createElement("div");
-    add.className = "inline";
-    const whole = document.createElement("button");
-    whole.className = "btn small";
-    whole.textContent = "+ Whole page stop";
-    whole.title = "A stop that shows the whole page, e.g. to end on the full picture";
+
+  /**
+   * The camera's journey for this page, left to right: how the page opens, each stop as a card
+   * (drag one to change the order), what joins them, and on explore pages the things to find.
+   */
+  function renderTimeline() {
+    const root = $("timeline");
+    root.innerHTML = "";
+    const p = page();
+    if (!p) return;
+    const el = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+    const explore = p.mode === "explore";
+
+    const head = el(`<div class="tl-head"><b>Page ${pageIndex + 1}</b><span class="sub"></span><span class="spacer"></span></div>`);
+    const n = p.stops.length;
+    head.querySelector(".sub").textContent = (n ? `${n} stop${n === 1 ? "" : "s"}` : "No stops yet: drag on the page to draw one")
+      + (explore ? ` · ${p.hotspots.length} to find` : "");
+    for (const e of p.effects || []) head.append(el(`<span class="tl-fx">${e.type === "rain" ? "Rain" : "Lightning on stop " + (e.stop || 1)}</span>`));
+    const whole = el('<button class="btn small" title="A stop that shows the whole page, for example to end on the full picture">+ Whole page stop</button>');
     whole.onclick = () => change(() => {
       const at = selected >= 0 ? selected + 1 : p.stops.length;
       p.stops.splice(at, 0, { box: { x: 0, y: 0, w: 1, h: 1 } });
       select("stop", at);
     });
-    add.append(whole);
-    root.append(add);
+    const play = el(`<button class="btn small">▶ Play ${explore ? "exploring" : "this page"}</button>`);
+    play.onclick = () => openPreview(explore ? -2 : undefined);
+    head.append(whole, play);
+    root.append(head);
 
-    if (p.mode === "explore") {
-      root.append(el("<h2>Things to find</h2>"));
-      if (!p.hotspots.length) {
-        root.append(el('<p class="help">None yet, so this page is free looking only. To add some, set "Dragging on the page draws" to Things to find and drag a box around each one.</p>'));
-      }
-      p.hotspots.forEach((h, i) => {
-        const row = el(`<div class="stop-row${i === selHot ? " active" : ""}"><span class="num" style="background:#b8860b">★</span><span class="txt"></span></div>`);
-        row.querySelector(".txt").textContent = (i + 1) + ". " + (h.story ? "Story " + h.story + " · " : "") + (h.name ? h.name + " · " : "")
-          + (h.caption ? "“" + h.caption + "”" : "No caption") + (h.effect === "none" ? " · no sparkle" : "");
-        row.onclick = () => { select("hot", i); renderAll(); };
-        root.append(row);
-      });
-      const pv = el('<div class="inline"><button class="btn small">▶ Preview exploring</button></div>');
-      pv.firstChild.onclick = () => openPreview(-2);
-      root.append(pv);
+    const track = el('<div class="tl-track"></div>');
+    const link = (auto, text) => el(`<div class="tl-link${auto ? " auto" : ""}">${text}</div>`);
+    if (p.openWhole !== false && (n || !explore)) {
+      track.append(el('<div class="tl-ghost">Opens on the whole page</div>'));
+      if (n) track.append(link(false, "tap"));
     }
+    p.stops.forEach((s, i) => {
+      const card = el(`<div class="tl-card${i === selected ? " active" : ""}" draggable="true" style="--c:${stopColor(i)}">
+        <canvas width="268" height="124"></canvas><span class="dot" style="background:${stopColor(i)}">${i + 1}</span>
+        <span class="tl-badges"></span><span class="cap"></span></div>`);
+      const cap = card.querySelector(".cap");
+      cap.textContent = s.caption || "No words";
+      if (!s.caption) cap.classList.add("none");
+      const badges = card.querySelector(".tl-badges");
+      const badge = (text, title) => { const b = el("<span></span>"); b.textContent = text; b.title = title; badges.append(b); };
+      if (s.moveSeconds !== undefined) badge(+s.moveSeconds === 0 ? "cut" : s.moveSeconds + "s", "Time the camera takes to get here");
+      if (s.to) badge("glide " + (s.panSeconds || 4) + "s", "Glides to a second box");
+      if (s.style === "spotlight") badge("spot", "Spotlight");
+      drawThumb(card.querySelector("canvas"), p._img, s.box);
+      card.title = stopSummary(s);
+      card.onclick = () => { select("stop", i); renderAll(); };
+      card.ondragstart = ev => { ev.dataTransfer.setData("text/plain", String(i)); ev.dataTransfer.effectAllowed = "move"; };
+      card.ondragover = ev => { ev.preventDefault(); card.classList.add("dragover"); };
+      card.ondragleave = () => card.classList.remove("dragover");
+      card.ondrop = ev => {
+        ev.preventDefault();
+        const from = parseInt(ev.dataTransfer.getData("text/plain"), 10);
+        if (!(from >= 0) || from === i || from >= p.stops.length) { card.classList.remove("dragover"); return; }
+        change(() => { const [moved] = p.stops.splice(from, 1); p.stops.splice(i, 0, moved); select("stop", i); });
+      };
+      track.append(card);
+      if (i < n - 1) track.append(link(s.auto, s.auto ? `after ${s.holdSeconds || 1.5}s` : "tap"));
+    });
+    if (explore) {
+      if (n) track.append(link(false, "tap"));
+      track.append(el('<div class="tl-ghost" style="margin-right:10px">The child explores</div>'));
+      p.hotspots.forEach((h, i) => {
+        const chip = el(`<div class="tl-chip${i === selHot ? " active" : ""}"><span class="dot">${h.story ? h.story : "★"}</span><span></span></div>`);
+        chip.lastChild.textContent = h.name || h.caption || "Thing " + (i + 1);
+        chip.title = (h.story ? "Story step " + h.story + ". " : "Extra to find. ") + (h.caption || "");
+        chip.onclick = () => { select("hot", i); renderAll(); };
+        track.append(chip);
+      });
+      if (!p.hotspots.length) track.append(el('<span class="help" style="align-self:center">Nothing to find yet. In the Page settings, set dragging to draw things to find.</span>'));
+    }
+    root.append(track);
+    const active = track.querySelector(".active");
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  /** A small picture of what a stop frames, for its card: the box, widened to fill the card. */
+  function drawThumb(canvas, img, box) {
+    const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+    ctx.fillStyle = "#0e0f13";
+    ctx.fillRect(0, 0, W, H);
+    if (!img || !img.naturalWidth) return;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    let sw = box.w * iw, sh = box.h * ih;
+    if (sw / sh < W / H) sw = sh * W / H; else sh = sw * H / W;
+    const k = Math.min(1, iw / sw, ih / sh);            // never ask for more than the picture has
+    sw *= k; sh *= k;
+    const sx = clamp((box.x + box.w / 2) * iw - sw / 2, 0, iw - sw), sy = clamp((box.y + box.h / 2) * ih - sh / 2, 0, ih - sh);
+    const fit = Math.min(W / sw, H / sh), dw = sw * fit, dh = sh * fit;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, sx, sy, sw, sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
   }
 
   function renderInspector() {
@@ -741,37 +804,45 @@
       root.innerHTML = '<p class="help">Add page images to start.</p>';
       return;
     }
-    if (selHot >= 0 && p.hotspots[selHot]) { renderHotspotInspector(root, p, p.hotspots[selHot]); return; }
     const s = selected >= 0 ? p.stops[selected] : null;
+    const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+    $("right").classList.toggle("has-sel", !!(s || (selHot >= 0 && p.hotspots[selHot])));
+    if (uiMode === "guided" && step === "words") { renderWords(root, p, el); return; }
+    if (uiMode === "guided" && step === "play") { renderPlay(root, el); return; }
+    if (uiMode === "guided" && step !== "camera") return;
+    if (selHot >= 0 && p.hotspots[selHot]) { renderHotspotInspector(root, p, p.hotspots[selHot]); return; }
     if (!s) {
-      root.innerHTML = `<h2>How to</h2><p class="help">
-        Drag on the page to draw a stop. Click a stop to select it, drag it to move, drag a white corner to resize.
-        Hold Shift to draw a new stop on top of an existing one.<br><br>
-        Keys: Delete removes a stop, arrow keys nudge it (Shift for bigger steps), P previews, Ctrl+Z undoes,
-        Page Up/Down change page.</p>`;
+      root.append(el(`<div class="card" data-g="camera"><h2>Nothing selected</h2><p class="help">
+        Drag on the page to draw a stop. Click a stop, on the page or in the strip along the bottom, to change it.
+        Drag it to move it, drag a white corner to resize it. Hold Shift to draw a new stop on top of another.</p>
+        <p class="help">Delete removes it. Arrow keys nudge it. P plays. Ctrl+Z undoes. Page Up and Page Down change page.</p></div>`));
       return;
     }
     const color = stopColor(selected);
-    const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
-
-    root.append(el(`<h2 style="color:${color}">Stop ${selected + 1}</h2>`));
+    const card = el('<div class="card"></div>');
+    root.append(card);
+    card.append(el(`<h2><span class="dot" style="background:${color}">${selected + 1}</span>Stop ${selected + 1}</h2>`));
 
     const actions = el('<div class="inline"></div>');
     const act = (text, fn, title) => { const b = el(`<button class="btn small">${text}</button>`); if (title) b.title = title; b.onclick = fn; actions.append(b); };
     act("Earlier", () => selected > 0 && change(() => { swap(p.stops, selected, selected - 1); selected--; }));
     act("Later", () => selected < p.stops.length - 1 && change(() => { swap(p.stops, selected, selected + 1); selected++; }));
     act("Delete", () => change(() => { p.stops.splice(selected, 1); select(null); }));
-    act("▶ Preview", () => openPreview(selected), "Play the move into this stop");
-    root.append(actions);
+    act("▶ Play", () => openPreview(selected), "Play the move into this stop");
+    card.append(actions);
+    const wordsSec = el('<div data-g="words"><h3>Words</h3></div>'), camSec = el('<div data-g="camera"></div>');
+    card.append(wordsSec, camSec);
+    let tgt = camSec;
 
     // Focus style
-    root.append(el('<label class="field">What happens around it</label>'));
+    tgt.append(el('<h3>Look</h3>'));
+    tgt.append(el('<label class="field">What happens around it</label>'));
     const style = document.createElement("select");
     style.add(new Option(`Book default (${STYLE_NAMES[book.focusStyle] || book.focusStyle})`, ""));
     for (const [v, t] of Object.entries(STYLE_NAMES)) style.add(new Option(t, v));
     style.value = s.style || "";
     style.onchange = () => change(() => { if (style.value) s.style = style.value; else delete s.style; });
-    root.append(style);
+    tgt.append(style);
 
     // Pan
     const panRow = el('<label class="check"><input type="checkbox"> Pan to a second box</label>');
@@ -789,63 +860,66 @@
         delete s.panSeconds;
       }
     });
-    root.append(panRow);
+    tgt.append(panRow);
     if (s.to) {
-      root.append(el('<p class="help">The camera arrives at the solid box, then glides to the dashed box. Drag the dashed box to where it should end.</p>'));
+      tgt.append(el('<p class="help">The camera arrives at the solid box, then glides to the dashed box. Drag the dashed box to where it should end.</p>'));
       const lab = el(`<label class="field">Glide time <output>${s.panSeconds || 4} s</output></label>`);
       const range = el('<input type="range" min="1" max="15" step="0.5" style="width:100%">');
       range.value = s.panSeconds || 4;
       range.onpointerdown = () => pushUndo();
       range.oninput = () => { s.panSeconds = +range.value; lab.querySelector("output").textContent = range.value + " s"; setDirty(); renderStopList(); };
-      root.append(lab, range);
+      tgt.append(lab, range);
     }
 
     // Timing
-    root.append(el('<label class="field">Time the camera takes to get here</label>'));
+    tgt.append(el('<h3>Timing</h3>'));
+    tgt.append(el('<label class="field">Time the camera takes to get here</label>'));
     const timeRow = el('<div class="inline"><input type="number" min="0" max="20" step="0.1" placeholder="automatic" style="width:110px"> <span class="help" style="margin:0">seconds. Empty: the reader decides. 0: cut straight to it.</span></div>');
     const time = timeRow.querySelector("input");
     time.value = s.moveSeconds === undefined ? "" : s.moveSeconds;
     time.onfocus = () => pushUndo();
     time.oninput = () => { if (time.value === "") delete s.moveSeconds; else s.moveSeconds = clamp(+time.value, 0, 20); setDirty(); renderStopList(); };
-    root.append(timeRow);
+    tgt.append(timeRow);
     const autoRow = el('<label class="check"><input type="checkbox"> Go on to the next stop by itself (no tap)</label>');
     const autoBox = autoRow.querySelector("input");
     autoBox.checked = !!s.auto;
     autoBox.onchange = () => change(() => { if (autoBox.checked) { s.auto = true; s.holdSeconds = s.holdSeconds || 1.5; } else { delete s.auto; delete s.holdSeconds; } });
-    root.append(autoRow);
+    tgt.append(autoRow);
     if (s.auto) {
       const lab = el(`<label class="field">It rests here for <output>${s.holdSeconds || 1.5} s</output> first</label>`);
       const range = el('<input type="range" min="0.5" max="10" step="0.5" style="width:100%">');
       range.value = s.holdSeconds || 1.5;
       range.onpointerdown = () => pushUndo();
       range.oninput = () => { s.holdSeconds = +range.value; lab.querySelector("output").textContent = range.value + " s"; setDirty(); renderStopList(); };
-      root.append(lab, range);
-      root.append(el('<p class="help">Use this to chain several camera moves into one tap. Keep the words short: a child cannot stop it to read.</p>'));
+      tgt.append(lab, range);
+      tgt.append(el('<p class="help">Use this to chain several camera moves into one tap. Keep the words short: a child cannot stop it to read.</p>'));
     }
 
     // Caption
-    root.append(el('<label class="field">Caption (leave empty if the text is in the picture)</label>'));
+    tgt = wordsSec;
+    tgt.append(el('<label class="field">What is read here (leave empty if the words are in the picture)</label>'));
     const cap = document.createElement("textarea");
     cap.rows = 3;
     cap.value = s.caption || "";
     cap.onfocus = () => pushUndo();
     cap.oninput = () => { if (cap.value) s.caption = cap.value; else delete s.caption; setDirty(); renderStopList(); };
-    root.append(cap);
+    tgt.append(cap);
 
-    root.append(el('<label class="field">Question for the grown-up (optional)</label>'));
+    tgt.append(el('<label class="field">Question for the grown-up (optional)</label>'));
     const ask = document.createElement("input");
     ask.type = "text";
     ask.placeholder = "e.g. How do you think she feels?";
     ask.value = s.ask || "";
     ask.onfocus = () => pushUndo();
     ask.oninput = () => { if (ask.value) s.ask = ask.value; else delete s.ask; setDirty(); };
-    root.append(ask);
+    tgt.append(ask);
 
+    tgt = camSec;
     const sizeRow = el('<div class="inline"></div>');
     const full = el('<button class="btn small">Make it the whole page</button>');
     full.onclick = () => change(() => { s.box = { x: 0, y: 0, w: 1, h: 1 }; });
     sizeRow.append(full);
-    root.append(sizeRow);
+    tgt.append(sizeRow);
   }
 
   /** Weather the reader draws moving over the page: rain, and a lightning flash on one stop. */
@@ -870,7 +944,6 @@
       root.append(input);
     };
 
-    root.append(el("<h2>Moving effects</h2>"));
     check("Rain falls on this page", !!rain, on => {
       if (on) p.effects.push({ type: "rain", amount: 0.6 }); else p.effects = p.effects.filter(e => e.type !== "rain");
       if (drawKind === "dry") drawKind = "stop";
@@ -911,48 +984,138 @@
 
   function renderHotspotInspector(root, p, h) {
     const el = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
-    root.append(el(`<h2 style="color:#b8860b">Thing to find ${selHot + 1}</h2>`));
+    const card = el('<div class="card"></div>');
+    root.append(card);
+    card.append(el(`<h2><span class="dot" style="background:#a37a00">★</span>Thing to find ${selHot + 1}</h2>`));
     const actions = el('<div class="inline"><button class="btn small">Delete</button></div>');
     actions.firstChild.onclick = () => change(() => { p.hotspots.splice(selHot, 1); select(null); });
-    root.append(actions);
-    root.append(el('<label class="field">Name (e.g. Old Turtle)</label>'));
+    card.append(actions);
+    const wordsSec = el('<div data-g="words"><h3>Words</h3></div>'), camSec = el('<div data-g="camera"><h3>How it behaves</h3></div>');
+    card.append(wordsSec, camSec);
+    let tgt = wordsSec;
+    tgt.append(el('<label class="field">Name (e.g. Old Turtle)</label>'));
     const name = document.createElement("input");
     name.type = "text";
     name.value = h.name || "";
     name.onfocus = () => pushUndo();
     name.oninput = () => { if (name.value) h.name = name.value; else delete h.name; setDirty(); renderStopList(); };
-    root.append(name);
-    root.append(el('<label class="field">What it says when found</label>'));
+    tgt.append(name);
+    tgt.append(el('<label class="field">What it says when found</label>'));
     const cap = document.createElement("textarea");
     cap.rows = 4;
     cap.value = h.caption || "";
     cap.onfocus = () => pushUndo();
     cap.oninput = () => { if (cap.value) h.caption = cap.value; else delete h.caption; setDirty(); renderStopList(); };
-    root.append(cap);
-    root.append(el('<label class="field">Question for the grown-up (optional)</label>'));
+    tgt.append(cap);
+    tgt.append(el('<label class="field">Question for the grown-up (optional)</label>'));
     const ask = document.createElement("input");
     ask.type = "text";
     ask.placeholder = "e.g. What else lives in the sea?";
     ask.value = h.ask || "";
     ask.onfocus = () => pushUndo();
     ask.oninput = () => { if (ask.value) h.ask = ask.value; else delete h.ask; setDirty(); };
-    root.append(ask);
-    root.append(el('<label class="field">Story step (leave empty for an extra thing to find)</label>'));
+    tgt.append(ask);
+    tgt = camSec;
+    tgt.append(el('<label class="field">Story step (leave empty for an extra thing to find)</label>'));
     const story = document.createElement("input");
     story.type = "number";
     story.min = "1";
     story.value = h.story || "";
     story.onchange = () => change(() => { const n = parseInt(story.value, 10); if (n > 0) h.story = n; else delete h.story; });
-    root.append(story);
-    root.append(el('<p class="help">Story steps open in order: 1, then 2, and so on. The next one always shows a beacon, and tapping a later one too early says "First find" and the name of the next one.</p>'));
-    root.append(el('<label class="field">When found</label>'));
+    tgt.append(story);
+    tgt.append(el('<p class="help">Story steps open in order: 1, then 2, and so on. The next one always shows a beacon, and tapping a later one too early says "First find" and the name of the next one.</p>'));
+    tgt.append(el('<label class="field">When found</label>'));
     const fx = document.createElement("select");
     fx.add(new Option("Sparkle", "sparkle"));
     fx.add(new Option("No effect, just the words", "none"));
     fx.value = h.effect === "none" ? "none" : "sparkle";
     fx.onchange = () => change(() => { if (fx.value === "none") h.effect = "none"; else delete h.effect; });
-    root.append(fx);
-    root.append(el('<p class="help">Hints and Show me lead to the next story step first, then to the extras in the order listed.</p>'));
+    tgt.append(fx);
+    tgt.append(el('<p class="help">Hints and Show me lead to the next story step first, then to the extras in the order listed.</p>'));
+  }
+
+
+  /** Step by step, Words: every stop on the page with its words, so they can be written in one go. */
+  function renderWords(root, p, el) {
+    const card = el(`<div class="card"><h2>Words on page ${pageIndex + 1}</h2></div>`);
+    root.append(card);
+    if (!p.stops.length && !p.hotspots.length) card.append(el('<p class="help">This page has no stops yet. Go back to Camera and draw some.</p>'));
+    const focusOn = (kind, i) => { select(kind, i); draw(); renderTimeline(); };
+    const grow = t => { t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; };
+    p.stops.forEach((s, i) => {
+      const row = el(`<div class="word-row"><span class="dot" style="background:${stopColor(i)}">${i + 1}</span><div><textarea rows="2" placeholder="What is read at this stop"></textarea><input type="text" placeholder="Question for the grown-up (optional)"></div></div>`);
+      const cap = row.querySelector("textarea"), ask = row.querySelector("input");
+      cap.value = s.caption || "";
+      ask.value = s.ask || "";
+      cap.onfocus = ask.onfocus = () => { pushUndo(); focusOn("stop", i); };
+      cap.oninput = () => { if (cap.value) s.caption = cap.value; else delete s.caption; setDirty(); renderTimeline(); grow(cap); };
+      ask.oninput = () => { if (ask.value) s.ask = ask.value; else delete s.ask; setDirty(); };
+      card.append(row);
+      grow(cap);
+    });
+    if (p.mode === "explore" && p.hotspots.length) {
+      card.append(el("<h3>Things to find</h3>"));
+      p.hotspots.forEach((h, i) => {
+        const row = el(`<div class="word-row"><span class="dot" style="background:#a37a00">${h.story || "★"}</span><div><input type="text" placeholder="Its name, e.g. Old Turtle" style="margin:0 0 5px"><textarea rows="2" placeholder="What it says when found"></textarea></div></div>`);
+        const name = row.querySelector("input"), cap = row.querySelector("textarea");
+        name.value = h.name || "";
+        cap.value = h.caption || "";
+        name.onfocus = cap.onfocus = () => { pushUndo(); focusOn("hot", i); };
+        name.oninput = () => { if (name.value) h.name = name.value; else delete h.name; setDirty(); renderTimeline(); };
+        cap.oninput = () => { if (cap.value) h.caption = cap.value; else delete h.caption; setDirty(); renderTimeline(); grow(cap); };
+        card.append(row);
+        grow(cap);
+      });
+    }
+  }
+
+  /** Step by step, Play. */
+  function renderPlay(root, el) {
+    const card = el(`<div class="card"><h2>Watch it</h2><p class="help">It plays with the playground's settings, the way a child will see it. Press Esc to come back.</p>
+      <div class="inline"><button class="btn primary">▶ Play this page</button><button class="btn">▶ Play the whole book</button></div>
+      <p class="help">Happy with it? Save writes the book file. If something is off, go back to the step it belongs to.</p>
+      <div class="inline"><button class="btn">Save</button></div></div>`);
+    const [one, all, saveBtn] = card.querySelectorAll("button");
+    one.onclick = () => openPreview(page() && page().mode === "explore" && !page().stops.length ? -2 : undefined);
+    all.onclick = () => { const keep = pageIndex; pageIndex = 0; openPreview(); pageIndex = keep; };
+    saveBtn.onclick = save;
+    root.append(card);
+  }
+
+  /** The mode switch, the step bar and the note that says what this step is for. */
+  function renderChrome() {
+    document.body.dataset.mode = uiMode;
+    document.body.dataset.step = step;
+    for (const b of $("modeSwitch").children) b.classList.toggle("on", b.dataset.mode === uiMode);
+    for (const b of $("steps").querySelectorAll("button")) b.classList.toggle("on", b.dataset.step === step);
+    const intro = $("stepIntro");
+    intro.innerHTML = "";
+    if (uiMode !== "guided") return;
+    const names = Object.keys(STEPS), at = names.indexOf(step), next = names[at + 1];
+    const title = document.createElement("b"), text = document.createElement("p");
+    title.textContent = `${at + 1}. ${STEPS[step][0]}`;
+    text.textContent = STEPS[step][1];
+    intro.append(title, text);
+    if (next) {
+      const go = document.createElement("button");
+      go.className = "btn small primary";
+      go.textContent = `Next: ${STEPS[next][0]}`;
+      go.onclick = () => setUi("guided", next);
+      intro.append(go);
+    }
+  }
+
+  function setUi(mode, st) {
+    uiMode = mode;
+    if (st) step = st;
+    try { localStorage.setItem(UI_KEY, JSON.stringify({ mode: uiMode, step })); } catch (_) { /* storage blocked */ }
+    if (uiMode === "guided") {
+      // Open the group this step is about.
+      if (step === "pages") $("pageGroup").open = $("bookGroup").open = true;
+      if (step === "camera") $("pageGroup").open = true;
+      if (step === "effects") $("fxGroup").open = true;
+    }
+    renderAll();
   }
 
   function renderSide() {
@@ -961,6 +1124,7 @@
   }
 
   function renderAll() {
+    renderChrome();
     renderBookFields();
     renderPages();
     renderSide();
@@ -1029,6 +1193,8 @@
   $("fileInput").onchange = () => { addFiles($("fileInput").files); $("fileInput").value = ""; };
   $("save").onclick = save;
   $("undo").onclick = undo;
+  for (const b of $("modeSwitch").children) b.onclick = () => setUi(b.dataset.mode);
+  for (const b of $("steps").querySelectorAll("button")) b.onclick = () => setUi("guided", b.dataset.step);
   $("previewBtn").onclick = () => openPreview(selected >= 0 ? selected : undefined);
   $("showJson").onclick = showJson;
   $("closeJson").onclick = () => $("jsonBox").classList.add("hidden");
