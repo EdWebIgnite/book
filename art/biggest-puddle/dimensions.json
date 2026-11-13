@@ -1,0 +1,184 @@
+﻿[
+    {
+        "file":  "page1.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page2.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page3.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page4.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page5.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page6.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page7.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1585,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.6875,
+                            1585,
+                            990.625
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page8.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page9.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page10.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1585,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.6875,
+                            1585,
+                            990.625
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page11.png",
+        "width":  3200,
+        "height":  2000,
+        "source_width":  1586,
+        "source_height":  992,
+        "source_crop":  [
+                            0,
+                            0.375,
+                            1586,
+                            991.25
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "page12.png",
+        "width":  6400,
+        "height":  2000,
+        "source_width":  2172,
+        "source_height":  724,
+        "source_crop":  [
+                            0,
+                            22.625,
+                            2172,
+                            678.75
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    },
+    {
+        "file":  "cover.png",
+        "width":  1600,
+        "height":  2400,
+        "source_width":  1024,
+        "source_height":  1536,
+        "source_crop":  [
+                            0,
+                            0,
+                            1024,
+                            1536
+                        ],
+        "method":  "Proportional bicubic resize with centre crop"
+    }
+]

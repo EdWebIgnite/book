@@ -44,9 +44,9 @@ The reader follows what the research says about young children and touchscreens 
 
 ## Sample books
 
-All are original placeholder books drawn in code, there to exercise every feature. Moss and the Biggest Puddle is the one going to proper artwork: the brief for the illustrator is in `docs/art-brief/`.
+Original books, there to exercise every feature. Moss and the Biggest Puddle has painted artwork (made with an image tool from the brief in `docs/art-brief/`); the other three are placeholders drawn in code.
 
-- **Moss and the Biggest Puddle.** A picture book written for ages 4 to 5. Moss the bear cub has new red boots and no puddle. Eleven guided pages with short sentences, a repeating "too..." pattern, pans, weather that changes the whole garden, and questions for the adult. It ends on the whole garden to explore, where Dot the duck has lost her three ducklings. Every page is a window onto one wide drawing of the garden, so the place stays the same throughout.
+- **Moss and the Biggest Puddle.** A picture book written for ages 4 to 5. Moss the bear cub has new red boots and no puddle. Eleven guided pages with short sentences, a repeating "too..." pattern, pans, weather that changes the whole garden, and questions for the adult. It ends on the whole garden to explore, where Dot the duck has lost her three ducklings. The paintings are in `art/biggest-puddle/`; `python3 tools/make_puddle_pages.py` turns them into the page images, and the camera stops are in the book's `book.json`.
 - **Who's at the Waterhole?** A picture book. Seven guided pages using focus areas, pans and captions, then a wide evening scene to explore with ten things to find.
 - **Captain Megawatt and the Runaway Robot.** A three-page comic with the words lettered into the art. Every stop is one panel, using the dim style.
 - **The Light in the Deep.** One big underwater scene (8192 x 6144), from the sunny surface down to the dark sea floor. A six-step story leads from Finn the clownfish to the light at the bottom, with twenty extras to find along the way.
@@ -92,9 +92,11 @@ web/reader.js                    Reader engine shared by the playground and edit
 web/reader-ui.js, reader.css     The reader screen (buttons, captions, hints), also shared
 docs/movement-ideas.md           Research on comparable apps and on children and touchscreens, and the ideas list
 docs/art-brief/                  Brief for the illustrator of Moss and the Biggest Puddle (open index.html)
-tools/make_books.js              Draws the sample books (node tools/make_books.js)
+art/biggest-puddle/              Painted artwork for Moss and the Biggest Puddle, with notes on how it was exported
+tools/make_books.js              Draws the three placeholder books (node tools/make_books.js)
+tools/make_puddle_pages.py       Turns the Moss paintings into page images and letters the cover
 tools/make_brief_images.js       Draws the character sheet used in the art brief
-tools/art/                       The drawings: garden.js and puddle.js (Moss and the Biggest Puddle), kit.js and waterhole.js
+tools/art/                       The drawings: garden.js and puddle.js (the old drawn Moss book, now only layout roughs), kit.js and waterhole.js
                                  (waterhole book), comic.js and megawatt.js (comic), sea.js and deep.js (underwater scene)
 tools/art/fonts/                 Open-licence fonts used in the art (Baloo 2, Bangers, Comic Neue), with their licences
 android/                         Android app, parked for now

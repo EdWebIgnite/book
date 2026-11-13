@@ -13,7 +13,10 @@ const path = require("path");
 const { renderAll } = require("./art/render");
 
 const CONTENT = path.join(__dirname, "..", "content");
-const BOOKS = { waterhole: "./art/waterhole", "captain-megawatt": "./art/megawatt", "deep-sea": "./art/deep", "biggest-puddle": "./art/puddle" };
+// Moss and the Biggest Puddle is not here any more: it uses painted artwork (tools/make_puddle_pages.py)
+// and its book.json is edited by hand in the editor. tools/art/puddle.js is the old drawn version,
+// kept because the art brief's layout roughs came from it.
+const BOOKS = { waterhole: "./art/waterhole", "captain-megawatt": "./art/megawatt", "deep-sea": "./art/deep" };
 const TILE = 1024;        // tile size for big scenes
 const TILE_LEVELS = 2;    // full size, and half size; the overview image covers anything smaller
 const OVERVIEW = 2048;    // width of a big scene's overview image
