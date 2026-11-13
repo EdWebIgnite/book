@@ -28,7 +28,7 @@ public sealed class ReaderEngine
     /// <summary>The closest zoom on an explore page shows this much of the page's height.</summary>
     public const double ClosestZoom = 0.12;
 
-    enum AnimKind { Move, Fly, Pan }
+    enum AnimKind { Move, Fly, Pan, Flip }
 
     sealed class Anim
     {
@@ -40,7 +40,17 @@ public sealed class ReaderEngine
         public double ArcK;
         public bool Fade;
         public Action? Then;
+        /// <summary>The page the camera leaves and the page it ends on (the same page for most moves).</summary>
+        public int FromPage, ToPage;
+        /// <summary>Flip only: true when going on through the book.</summary>
+        public bool Forward = true;
+        /// <summary>What plays straight after this, as part of the same journey (pull back, flip, go in).</summary>
+        public Anim? After;
     }
+
+    /// <summary>How long a page takes to flip at the standard move speed, in milliseconds.</summary>
+    public const double FlipMs = 900;
+    const double StandardMoveMs = 1400;
 
     sealed record Note(string Text, string Ask, double Until);
     sealed class LayerState { public double Vis = -1, T = -1; }
@@ -69,6 +79,7 @@ public sealed class ReaderEngine
     (double Start, double Strength)? _shake;
     double? _flash;
     double _rainLoud;
+    double _insetSpeedTop, _insetSpeedBottom;      // how fast each inset is changing, in units per millisecond
     List<RectD> _pageRects = new();
     List<Step> _steps = new();
 
@@ -136,6 +147,7 @@ public sealed class ReaderEngine
     {
         Insets.Top = InsetGoal.Top = top;
         Insets.Bottom = InsetGoal.Bottom = bottom;
+        _insetSpeedTop = _insetSpeedBottom = 0;
     }
 
     /// <summary>Tell the engine what time it is without moving anything on. Call before passing on input.</summary>
@@ -251,7 +263,10 @@ public sealed class ReaderEngine
             if (n == 0) { steps.Add(new Step(p, Step.WholePage)); continue; }
             if (s.WholePageFirst && page.OpenWhole) steps.Add(new Step(p, Step.WholePage));
             for (int i = 0; i < n; i++) steps.Add(new Step(p, i));
-            if (s.WholePageLast) steps.Add(new Step(p, Step.WholePage));
+            // The whole page again at the end, unless the last stop already shows all of it.
+            Stop last = page.Stops[n - 1];
+            bool full = last.To is null && last.Box.W > 0.95 && last.Box.H > 0.95;
+            if (s.WholePageLast && !full) steps.Add(new Step(p, Step.WholePage, Closing: true));
         }
         return steps;
     }
@@ -361,33 +376,58 @@ public sealed class ReaderEngine
         return Inflate(pr, 0.03);
     }
 
-    /// <summary>Camera, focus box and effect strengths for the current step (start box, or end box of a pan).</summary>
-    public Shot Target(bool end = false)
+    Shot Styled(RectD cam, RectD focus, string? style, double k)
     {
         var s = Settings;
-        Step step = CurrentStep;
-        RectD pr = _pageRects[step.Page];
-        Shot Styled(RectD cam, RectD focus, string? style, double k) => new(cam, focus,
+        return new Shot(cam, focus,
             style == FocusStyles.Dim ? s.Dim * k : 0,
             style == FocusStyles.Vignette ? s.Vignette * k : 0,
             style == FocusStyles.Spotlight ? s.Spotlight * k : 0);
-
-        if (step.Explore) return Styled(ExploreStart(), pr, FocusStyles.None, 0);
-        Stop? stop = CurrentStop;
-        // The whole page never gets a spotlight: a book set to spotlight shows soft edges here instead.
-        string wholeStyle = Book!.FocusStyle == FocusStyles.Spotlight ? FocusStyles.Vignette : Book.FocusStyle;
-        if (Overview || stop is null) return Styled(Inflate(pr, 0.03), pr, wholeStyle, 0.6);
-        RectD box = BoxRect(step.Page, end && stop.To is RectD to ? to : stop.Box);
-        return Styled(Inflate(box, s.Padding), box, string.IsNullOrEmpty(stop.Style) ? Book.FocusStyle : stop.Style, 1);
     }
 
+    /// <summary>The camera that shows a page whole, with a little air around it.</summary>
+    public RectD WholeCam(int page) => Inflate(_pageRects[page], 0.03);
+
+    /// <summary>A page seen whole, with the book's focus style at a gentler strength.</summary>
+    Shot WholeShot(int page)
+    {
+        // The whole page never gets a spotlight: a book set to spotlight shows soft edges here instead.
+        string wholeStyle = Book!.FocusStyle == FocusStyles.Spotlight ? FocusStyles.Vignette : Book.FocusStyle;
+        return Styled(WholeCam(page), _pageRects[page], wholeStyle, 0.6);
+    }
+
+    /// <summary>Camera, focus box and effect strengths for the current step (start box, or end box of a pan).</summary>
+    public Shot Target(bool end = false)
+    {
+        Step step = CurrentStep;
+        RectD pr = _pageRects[step.Page];
+        if (step.Explore) return Styled(ExploreStart(), pr, FocusStyles.None, 0);
+        Stop? stop = CurrentStop;
+        if (Overview || stop is null) return WholeShot(step.Page);
+        RectD box = BoxRect(step.Page, end && stop.To is RectD to ? to : stop.Box);
+        return Styled(Inflate(box, Settings.Padding), box, string.IsNullOrEmpty(stop.Style) ? Book!.FocusStyle : stop.Style, 1);
+    }
+
+    /// <summary>What the reader was showing when it was asked to move on: needed to decide how a page should change.</summary>
+    readonly record struct Leaving(Step Step, bool Whole, int Direction);
+
+    bool IsTiled(int page) => Book!.Pages[page].Tiles is not null;
+
+    /// <summary>
+    /// True when pages are shown one at a time as pages of a book, rather than side by side. That is when
+    /// the book look is switched on, except while a page is being explored and on tiled big scenes.
+    /// </summary>
+    public bool BookMode => HasBook && Settings.BookLook && !CurrentStep.Explore && !IsTiled(CurrentStep.Page);
+
     /// <summary>Move from wherever the camera is now (drift included) to the current step.</summary>
-    void MoveTo(int? previousPage, bool instant = false)
+    void MoveTo(int? previousPage, bool instant = false, Leaving? leaving = null)
     {
         var s = Settings;
         double now = _now;
         _party = null;
-        bool pageChanged = previousPage is int before && before != CurrentStep.Page;
+        Step step = CurrentStep;
+        int fromPage = previousPage ?? step.Page;
+        bool pageChanged = fromPage != step.Page;
         Shot from = _shown with { Cam = DisplayedCam() };
         Shot to = Target();
         bool reduced = Reduced;
@@ -400,21 +440,102 @@ public sealed class ReaderEngine
         if (instant || (pageChanged && s.PageTurn == "cut" && own is null)) ms = 0;
         // Pull back mid-flight on page changes (if chosen) and on any long journey, so the child sees where they are going.
         double arcK = reduced ? 0 : pageChanged && s.PageTurn == "zoomOut" ? s.ArcAmount : timing.Far ? 0.45 : 0;
+        bool fade = reduced;
         _fling = null;
         _note = null;
         StopClip();
+        _lastTouch = now;
+
+        // With the book look, a page change is a page turning over where it can be, and a dip to dark where
+        // it can't. Explore pages and tiled scenes are not shown as books, so they keep the flight.
+        if (pageChanged && ms > 0 && !reduced && leaving is Leaving left && s.BookLook && s.PageTurn == "flip"
+            && !left.Step.Explore && !step.Explore && !IsTiled(fromPage) && !IsTiled(step.Page))
+        {
+            if (CanFlip(fromPage, left, step))
+            {
+                StartFlip(fromPage, left, from, to, own);
+                RaiseChanged();
+                return;
+            }
+            fade = true;
+            ms = 340;
+            arcK = 0;
+        }
+
         _anim = new Anim
         {
             Kind = AnimKind.Move, From = from, To = to,
             Start = now, Ms = ms + (arcK != 0 ? 220 : 0),
             Easing = s.Easing,
             Smooth = s.ZoomPath == "smooth",
-            ArcK = arcK, Fade = reduced,
+            ArcK = arcK, Fade = fade,
+            FromPage = fromPage, ToPage = step.Page,
         };
-        _lastTouch = now;
         if (ms == 0) Finish();
         else if (SoundOn) Sound.Whoosh(_anim.Ms);
         RaiseChanged();
+    }
+
+    /// <summary>
+    /// Can this page change be shown as a page turning? A flip shows both pages whole, so it must never
+    /// show the whole of a page that opens on a close-up to keep something hidden, unless the reader is
+    /// already looking at that page whole or has seen it through to its last stop.
+    /// </summary>
+    bool CanFlip(int fromPage, Leaving left, Step to)
+    {
+        Page leave = Book!.Pages[fromPage], arrive = Book.Pages[to.Page];
+        bool lastStopGoingOn = left.Direction > 0 && left.Step.Stop >= 0 && left.Step.Stop == leave.Stops.Count - 1;
+        bool canLeave = left.Whole || leave.OpenWhole || lastStopGoingOn;
+        bool canArrive = to.Stop == Step.WholePage || arrive.OpenWhole;
+        // The two pages lie on top of each other during the turn, so they have to be the same shape.
+        double a = _pageRects[fromPage].W / _pageRects[fromPage].H, b = _pageRects[to.Page].W / _pageRects[to.Page].H;
+        return canLeave && canArrive && Math.Abs(a / b - 1) < 0.03;
+    }
+
+    /// <summary>
+    /// A page turn in up to three parts: pull back to the whole page if the camera is in close, turn
+    /// the page, then go in to the stop if the new page does not open whole.
+    /// </summary>
+    void StartFlip(int fromPage, Leaving left, Shot from, Shot to, double? ownSeconds)
+    {
+        var s = Settings;
+        Step step = CurrentStep;
+        bool smooth = s.ZoomPath == "smooth";
+        Shot wholeFrom = WholeShot(fromPage), wholeTo = WholeShot(step.Page);
+        var flip = new Anim
+        {
+            Kind = AnimKind.Flip, From = wholeTo, To = wholeTo, Start = _now,
+            Ms = Math.Max(1, FlipMs * s.MoveMs / StandardMoveMs),
+            FromPage = fromPage, ToPage = step.Page, Forward = left.Direction >= 0,
+        };
+        if (step.Stop != Step.WholePage)
+        {
+            double goIn = ownSeconds is double seconds ? Math.Max(1, seconds * 1000) : MoveTime(wholeTo.Cam, to.Cam, s.MoveMs).Ms;
+            flip.After = new Anim
+            {
+                Kind = AnimKind.Move, From = wholeTo, To = to, Ms = goIn, Easing = s.Easing, Smooth = smooth,
+                FromPage = step.Page, ToPage = step.Page,
+            };
+        }
+        // Already on the whole page, or so nearly (a last stop that covers the page) that pulling back
+        // would only be a pause: turn straight away.
+        RectD a = from.Cam, b = wholeFrom.Cam;
+        bool alreadyWhole = Math.Abs(Math.Log(a.W / b.W)) < 0.05 && Math.Abs(Math.Log(a.H / b.H)) < 0.05
+                         && Math.Abs(a.CenterX - b.CenterX) < b.W * 0.03 && Math.Abs(a.CenterY - b.CenterY) < b.H * 0.03;
+        if (alreadyWhole)
+        {
+            flip.From = wholeTo with { Dim = from.Dim, Vig = from.Vig, Spot = from.Spot };
+            _anim = flip;
+            if (SoundOn) Sound.PageTurn();
+            return;
+        }
+        _anim = new Anim
+        {
+            Kind = AnimKind.Move, From = from, To = wholeFrom, Start = _now,
+            Ms = MoveTime(from.Cam, wholeFrom.Cam, s.MoveMs).Ms, Easing = s.Easing, Smooth = smooth,
+            FromPage = fromPage, ToPage = fromPage, After = flip,
+        };
+        if (SoundOn) Sound.Whoosh(_anim.Ms);
     }
 
     /// <summary>Explore: animate the camera to a box, then optionally run something.</summary>
@@ -440,11 +561,29 @@ public sealed class ReaderEngine
     {
         Anim done = _anim!;
         _shown = done.To with { Fade = 0 };
+        if (done.After is Anim next)
+        {
+            // The next part of the same journey starts exactly where this one ended, not a frame late.
+            next.Start = Math.Min(_now, done.Start + done.Ms);
+            _anim = next;
+            if (next.Kind == AnimKind.Flip && SoundOn) Sound.PageTurn();
+            return;
+        }
         _anim = null;
         _restSince = _now;
-        if (done.Kind == AnimKind.Move) { Arrive(); AfterArrive(); }
+        if (done.Kind is AnimKind.Move or AnimKind.Flip) { Arrive(); AfterArrive(); }
         done.Then?.Invoke();
     }
+
+    /// <summary>Skip to the end of a journey, however many parts of it are still to come.</summary>
+    void FinishJourney()
+    {
+        while (_anim?.After is Anim next) _anim = next;
+        Finish();
+    }
+
+    /// <summary>True while the camera is on its way to a step: flying, turning a page, or fading across.</summary>
+    bool Travelling => _anim is { Kind: AnimKind.Move or AnimKind.Flip };
 
     /// <summary>A stop with an end box glides there once the camera has arrived.</summary>
     void AfterArrive()
@@ -463,6 +602,7 @@ public sealed class ReaderEngine
             Easing = Easings.EaseInOutSine,
             Smooth = true,
             ArcK = 0, Fade = reduced,
+            FromPage = CurrentStep.Page, ToPage = CurrentStep.Page,
         };
     }
 
@@ -498,23 +638,26 @@ public sealed class ReaderEngine
         // Young children often tap twice without meaning to: ignore a second one that comes straight away.
         if (now - _lastGo < 300) return;
         _lastGo = now;
-        // A tap while the camera is still travelling just finishes that move. The next tap goes on.
-        if (delta > 0 && _anim is { Kind: AnimKind.Move } a && now - a.Start < a.Ms)
+        // A tap while the camera is still travelling (or a page is still turning) just finishes that move.
+        // The next tap goes on.
+        if (delta > 0 && Travelling)
         {
-            Finish();
+            FinishJourney();
             RaiseChanged();
             return;
         }
         _moved = true;
-        int before = CurrentStep.Page;
+        Step fromStep = CurrentStep;
+        int before = fromStep.Page;
         bool wasOverview = Overview;
+        var leaving = new Leaving(fromStep, wasOverview || fromStep.Stop == Step.WholePage, delta);
         Overview = false;
         int next = StepIndex + delta;
         _arrivedForward = delta > 0;
         if (next >= _steps.Count) { Finished = true; RaiseChanged(); return; }
         if (next < 0) { if (wasOverview) MoveTo(before); return; }
         StepIndex = next;
-        MoveTo(before);
+        MoveTo(before, false, leaving);
     }
 
     public void Next() => Go(1);
@@ -550,9 +693,10 @@ public sealed class ReaderEngine
         Finished = false;
         Overview = false;
         _found.Clear();
-        int before = CurrentStep.Page;
+        Step fromStep = CurrentStep;
+        var leaving = new Leaving(fromStep, fromStep.Stop == Step.WholePage, -1);
         StepIndex = 0;
-        MoveTo(before);
+        MoveTo(fromStep.Page, false, leaving);
     }
 
     /// <summary>Replays the move into the current step from the one before it.</summary>
@@ -759,7 +903,7 @@ public sealed class ReaderEngine
     public RectD TakeCamera()
     {
         RectD cam = VisibleCam();
-        if (_anim is { Kind: AnimKind.Move }) Finish();
+        if (Travelling) FinishJourney();
         _anim = null;
         _fling = null;
         _shown = _shown with { Cam = cam, Dim = 0, Vig = 0, Spot = 0, Fade = 0 };
@@ -865,16 +1009,27 @@ public sealed class ReaderEngine
         double now = _now;
 
         // The picture eases towards the room the screen has asked for.
-        double ease = 1 - Math.Exp(-dt / 100);
-        Insets.Top = EaseInset(Insets.Top, InsetGoal.Top, ease);
-        Insets.Bottom = EaseInset(Insets.Bottom, InsetGoal.Bottom, ease);
+        Insets.Top = EaseInset(Insets.Top, InsetGoal.Top, ref _insetSpeedTop, dt);
+        Insets.Bottom = EaseInset(Insets.Bottom, InsetGoal.Bottom, ref _insetSpeedBottom, dt);
 
         if (_anim is Anim a)
         {
             double raw = a.Ms == 0 ? 1 : Clamp((now - a.Start) / a.Ms, 0, 1);
-            if (a.Fade)
+            if (a.Kind == AnimKind.Flip)
             {
-                // Reduced motion: no travelling. Dip to dark, switch, and come back.
+                // The camera holds still on the whole page while the leaf turns (see GetFlip). Only the
+                // strength of the focus effect eases, from what it was to what the whole page has.
+                _shown = a.To with
+                {
+                    Dim = Lerp(a.From.Dim, a.To.Dim, raw),
+                    Vig = Lerp(a.From.Vig, a.To.Vig, raw),
+                    Spot = Lerp(a.From.Spot, a.To.Spot, raw),
+                };
+            }
+            else if (a.Fade)
+            {
+                // No travelling (reduced motion, or a page that must not be seen whole on the way in):
+                // dip to dark, switch, and come back.
                 Shot side = raw < 0.5 ? a.From : a.To;
                 _shown = side with { Fade = 1 - Math.Abs(1 - raw * 2) };
             }
@@ -980,10 +1135,23 @@ public sealed class ReaderEngine
         return false;
     }
 
-    static double EaseInset(double have, double goal, double ease)
+    /// <summary>
+    /// Move an inset towards its goal the way a well-damped spring would: it starts gently, covers most of
+    /// the way in about a quarter of a second and settles without overshooting. (The browser reader takes
+    /// a fixed share of the gap every frame, which starts with a jolt: the whole picture jumps a centimetre
+    /// in the first frame whenever a caption appears.) Worked out exactly for the time passed, so it is the
+    /// same at any frame rate.
+    /// </summary>
+    static double EaseInset(double have, double goal, ref double speed, double dt)
     {
-        double gap = goal - have;
-        return Math.Abs(gap) < 0.5 ? goal : have + gap * ease;
+        const double stiffness = 0.016;                       // per millisecond: higher is quicker
+        double gap = have - goal;
+        if (Math.Abs(gap) < 0.5 && Math.Abs(speed) < 0.01) { speed = 0; return goal; }
+        if (dt <= 0) return have;
+        double b = speed + stiffness * gap, fade = Math.Exp(-stiffness * dt);
+        double next = (gap + b * dt) * fade;
+        speed = (b - stiffness * (gap + b * dt)) * fade;
+        return goal + next;
     }
 
     void RaiseChanged() => Changed?.Invoke(State);
@@ -1038,7 +1206,9 @@ public sealed class ReaderEngine
         if (!HasBook || Reduced) return 0;
         Step step = CurrentStep;
         if (step.Page != page) return 0;
-        int at = step.Stop;                                   // -1 is the whole page, -2 is exploring
+        // -1 is the whole page as it opens, -2 is exploring. The whole page shown again after the stops
+        // counts as being past the last stop, so what started during the page is still there.
+        int at = step.Closing ? Book!.Pages[page].Stops.Count : step.Stop;
         if (e.From is > 1 && at >= -1 && at < e.From - 1) return 0;
         if (e.To is >= 1 && (at == Step.Exploring || at > e.To - 1)) return 0;
         return 1;
@@ -1054,7 +1224,7 @@ public sealed class ReaderEngine
         if (!HasBook || CurrentStep.Page < page) return (!(l.From is > 1), 0);
         Step step = CurrentStep;
         if (step.Page > page) return (!(l.To is >= 1), 1);
-        int at = step.Stop;
+        int at = step.Closing ? Book!.Pages[page].Stops.Count : step.Stop;
         bool show = !(l.From is > 1 && at >= -1 && at < l.From - 1) && !(l.To is >= 1 && (at == Step.Exploring || at > l.To - 1));
         int moved = l.MoveTo is not null && (at == Step.Exploring || at >= l.MoveAtOrFirst - 1) ? 1 : 0;
         return (show, moved);
@@ -1142,19 +1312,53 @@ public sealed class ReaderEngine
     /// </summary>
     public ViewTransform GetView(bool withShake = true)
     {
+        ViewTransform v = ViewFor(DisplayedCam());
+        if (!withShake) return v;
+        PointD shake = ShakeOffset();
+        return v with { OffsetX = v.OffsetX + shake.X, OffsetY = v.OffsetY + shake.Y };
+    }
+
+    /// <summary>How the world would map to the screen if the camera were at <paramref name="cam"/>.</summary>
+    public ViewTransform ViewFor(RectD cam)
+    {
         double w = ViewWidth, h = ViewHeight;
         double viewH = Math.Max(1, h - Insets.Top - Insets.Bottom);
-        RectD cam = DisplayedCam();
         double sc = Math.Min(w / cam.W, viewH / cam.H);
         double ox = w / 2 - cam.CenterX * sc;
         double oy = Insets.Top + viewH / 2 - cam.CenterY * sc;
-        if (withShake)
-        {
-            PointD shake = ShakeOffset();
-            ox += shake.X;
-            oy += shake.Y;
-        }
         return new ViewTransform(sc, ox, oy, w, h);
+    }
+
+    /// <summary>The page turn in progress, or null when no page is turning.</summary>
+    public FlipDraw? GetFlip()
+    {
+        if (_anim is not { Kind: AnimKind.Flip } a) return null;
+        double raw = a.Ms <= 0 ? 1 : Clamp((_now - a.Start) / a.Ms, 0, 1);
+        double eased = Easings.InOutSine(raw);          // slow to lift, slow to settle
+        return a.Forward
+            ? new FlipDraw(a.FromPage, a.ToPage, eased, true, WholeCam(a.FromPage), WholeCam(a.ToPage))
+            : new FlipDraw(a.ToPage, a.FromPage, 1 - eased, false, WholeCam(a.ToPage), WholeCam(a.FromPage));
+    }
+
+    /// <summary>
+    /// With the book look, the pages to draw right now. Usually just the one being read. While the
+    /// camera flies from one page to another it is both, and during a dip to dark it is the old page
+    /// until the darkest moment and the new one after.
+    /// </summary>
+    public List<int> BookPages()
+    {
+        var pages = new List<int>(2);
+        if (!HasBook) return pages;
+        if (_anim is not Anim a || a.Kind == AnimKind.Fly) { pages.Add(CurrentStep.Page); return pages; }
+        if (a.Fade)
+        {
+            double raw = a.Ms == 0 ? 1 : Clamp((_now - a.Start) / a.Ms, 0, 1);
+            pages.Add(raw < 0.5 ? a.FromPage : a.ToPage);
+            return pages;
+        }
+        pages.Add(a.FromPage);
+        if (a.ToPage != a.FromPage) pages.Add(a.ToPage);
+        return pages;
     }
 
     /// <summary>A short, fading shake of the whole view, in screen units. Zero when nothing is shaking.</summary>

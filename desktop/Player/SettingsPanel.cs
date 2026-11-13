@@ -69,8 +69,12 @@ sealed class SettingsPanel : UserControl
         new Choice("zoomPath", "Zoom math", new[] { ("smooth", "Even zoom speed"), ("straight", "Straight line between boxes") }, s => s.ZoomPath, (s, v) => s.ZoomPath = v),
 
         new Section("Between pages"),
-        new Choice("pageTurn", "Page change", new[] { ("fly", "Fly straight across"), ("zoomOut", "Zoom out, across, then in"), ("cut", "Jump cut") },
-            s => s.PageTurn, (s, v) => s.PageTurn = v),
+        new Check("bookLook", "Show pages as a book", s => s.BookLook, (s, v) => s.BookLook = v,
+            Help: "One page at a time, lying in an open book: a cover behind it and a spine on the left. Explore pages and very big scenes are shown as before."),
+        new Choice("pageTurn", "Page change",
+            new[] { ("flip", "Flip like a book page"), ("fly", "Fly straight across"), ("zoomOut", "Zoom out, across, then in"), ("cut", "Jump cut") },
+            s => s.PageTurn, (s, v) => s.PageTurn = v,
+            Help: "The flip needs the book look. Without it, pages fly across instead."),
         new Range("arcAmount", "How far to zoom out", 0, 1.5, 0.05, s => s.ArcAmount, (s, v) => s.ArcAmount = v, ShowIf: s => s.PageTurn == "zoomOut"),
 
         new Section("Focus"),
@@ -133,6 +137,7 @@ sealed class SettingsPanel : UserControl
         {
             FontSize = 12, Foreground = new ImmutableSolidColorBrush(Color.Parse("#555555")), LineHeight = 21, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
             Text = "→ or Space: next.  ←: back.  W: whole page.  S: this panel.  Esc: back to the books.\n" +
+                   "F: show how many frames a second are being drawn.\n" +
                    "Mouse wheel moves through stops. Trackpad pinch or Ctrl+wheel zooms out and in.\n" +
                    "On a touch screen: tap right or left, or swipe.\n" +
                    "Explore pages: drag to move, the + and − buttons (or the wheel) to zoom, tap things to find them.",

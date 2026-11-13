@@ -70,6 +70,34 @@ public sealed class Synth
         }
     }
 
+    /// <summary>
+    /// A page turning: a short, quiet, papery swish. Hiss through a filter that rises and falls, swelling
+    /// gently and trailing off, with nothing sharp at either end.
+    /// </summary>
+    sealed class PageSwish : Voice
+    {
+        const double Length = 0.34;
+        Biquad _band, _soften;
+        int _sinceTuned = 32;
+
+        public override float? Next(Synth s)
+        {
+            if (Age >= Length) return null;
+            double u = Age / Length;
+            if (++_sinceTuned >= 32)
+            {
+                double hz = u < 0.45 ? 1500 + (3400 - 1500) * (u / 0.45) : 3400 + (1900 - 3400) * ((u - 0.45) / 0.55);
+                _band.SetBandPass(hz, 0.7, s.SampleRate);
+                _soften.SetLowPass(5200, s.SampleRate);
+                _sinceTuned = 0;
+            }
+            // Rise over the first third and fall away over the rest, both along smooth curves.
+            double shape = u < 0.3 ? Math.Sin(u / 0.3 * Math.PI / 2) : Math.Pow(Math.Cos((u - 0.3) / 0.7 * Math.PI / 2), 2);
+            Age += 1.0 / s.SampleRate;
+            return (float)(_soften.Run(_band.Run(s.Noise())) * 0.03 * shape * shape);
+        }
+    }
+
     /// <summary>A low rumble, not a crack: this is for small children.</summary>
     sealed class Thunder : Voice
     {
@@ -213,6 +241,9 @@ public sealed class Synth
         if (milliseconds < 120) return;
         Add(new Whoosh { Length = Math.Min(1.2, milliseconds / 1000) * 0.9 });
     }
+
+    /// <summary>The swish of a page being turned.</summary>
+    public void PlayPageTurn() => Add(new PageSwish());
 
     public void PlayThunder(double delaySeconds) => Add(new Thunder { Delay = Math.Max(0, delaySeconds) });
 

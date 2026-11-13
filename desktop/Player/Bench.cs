@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -29,24 +28,15 @@ static class Bench
                 .SetupWithoutStarting();
 
             var settings = new ReaderSettings();
-            if (o.Set.Count > 0)
-            {
-                var json = new JsonObject();
-                foreach (var (key, value) in o.Set)
-                {
-                    if (value is "true" or "false") json[key] = value == "true";
-                    else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)) json[key] = number;
-                    else json[key] = value;
-                }
-                settings.ApplyJson(json);
-            }
+            if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());
 
             var window = new MainWindow(o, settings, new NoSound(), saveSettings: false) { Width = o.Width, Height = o.Height };
             ReaderView view = window.Screen.View;
             double clock = 100_000;
             view.Clock = () => clock;
             view.AutoFrames = false;
-            view.LoadPicturesAtOnce = true;
+            // Pictures load in the background here, as they do in real use, so that reading a file from
+            // disk is not counted as part of a frame.
             window.Show();
             Dispatcher.UIThread.RunJobs();
             window.LoadShelf(coversNow: true);
@@ -64,6 +54,7 @@ static class Bench
             const double frameMs = 1000.0 / 60;
             var all = new List<double>();
             var moving = new List<double>();
+            var record = new List<double>();      // the part of each frame spent before painting: engine, layout, recording the drawing
             var watch = new Stopwatch();
 
             void Frame()
@@ -74,20 +65,26 @@ static class Bench
                 watch.Restart();
                 view.Tick();
                 Dispatcher.UIThread.RunJobs();
+                double recorded = watch.Elapsed.TotalMilliseconds;
                 using (window.CaptureRenderedFrame()) { }
                 watch.Stop();
                 if (view.RenderCount == before) return;          // nothing changed: no frame was drawn
                 double ms = watch.Elapsed.TotalMilliseconds;
+                record.Add(recorded);
                 all.Add(ms);
                 if (wasMoving || engine.Animating) moving.Add(ms);
+                // Let pictures that finished loading in the background be handed over between frames.
+                Dispatcher.UIThread.RunJobs();
             }
 
             // Warm up: the first frames pay for things that only happen once (fonts, first use of each picture).
             for (int i = 0; i < 30; i++) Frame();
+            for (int i = 0; i < 100 && view.PicturesLoading > 0; i++) { Thread.Sleep(10); Dispatcher.UIThread.RunJobs(); }
             all.Clear();
             moving.Clear();
+            record.Clear();
 
-            int lastPage = Math.Min(o.Page > 1 ? o.Page : 3, engine.Book!.Pages.Count);
+            int lastPage = Math.Clamp(o.BenchPages, 1, engine.Book!.Pages.Count);
             var tapAt = new Point(o.Width * 0.75, o.Height * 0.5);
             int taps = 0;
             while (!engine.Finished && engine.CurrentStep.Page < lastPage && taps < 200)
@@ -106,9 +103,27 @@ static class Bench
                 }
             }
 
+            // What the bench itself costs: an empty frame painted and read back, which a real window never does.
+            view.ClearBook();
+            var empty = new List<double>();
+            for (int i = 0; i < 40; i++)
+            {
+                view.InvalidateVisual();
+                watch.Restart();
+                Dispatcher.UIThread.RunJobs();
+                using (window.CaptureRenderedFrame()) { }
+                watch.Stop();
+                if (i >= 10) empty.Add(watch.Elapsed.TotalMilliseconds);
+            }
+
+            double blank = empty.Count > 0 ? empty.Average() : 0;
             Console.WriteLine($"bench: {book}, pages 1 to {lastPage}, {taps} taps, window {o.Width}x{o.Height}");
-            Report("all frames drawn", all);
-            Report("frames while the camera moved", moving);
+            Report("frames drawn", all);
+            Report("  of each frame, the part before painting (engine, layout, recording the drawing)", record);
+            Report("a blank window, for comparison (what the bench itself costs: painting and reading back an empty frame)", empty);
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"  so the reader's own drawing took about {Math.Max(0, all.Average() - blank):0.0} ms a frame on average, " +
+                $"{Math.Max(0, all.Max() - blank):0.0} ms at worst, and {all.Count(x => x > blank + 20)} frames took more than 20 ms over a blank one"));
             return 0;
         }
         catch (Exception e)

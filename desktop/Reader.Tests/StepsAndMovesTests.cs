@@ -15,7 +15,8 @@ public class StepsAndMovesTests
         Assert.Equal(new Step(0, Step.WholePage), steps[0]);
         Assert.Equal(new Step(0, 0), steps[1]);
         Assert.Equal(new Step(0, 1), steps[2]);
-        Assert.Equal(new Step(1, Step.WholePage), steps[3]);
+        Assert.Equal(new Step(0, Step.WholePage, Closing: true), steps[3]);     // the whole page again before moving on
+        Assert.Equal(new Step(1, Step.WholePage), steps[4]);
     }
 
     [Theory]
@@ -28,7 +29,9 @@ public class StepsAndMovesTests
         Assert.False(rig.Engine.Book!.Pages[page].OpenWhole);
         Step first = rig.Engine.Steps.First(s => s.Page == page);
         Assert.Equal(0, first.Stop);
-        Assert.DoesNotContain(rig.Engine.Steps, s => s.Page == page && s.Stop == Step.WholePage);
+        // The only whole view of such a page is the closing one, after everything on it has been seen.
+        Assert.DoesNotContain(rig.Engine.Steps, s => s.Page == page && s.Stop == Step.WholePage && !s.Closing);
+        Assert.Equal(new Step(page, Step.WholePage, Closing: true), rig.Engine.Steps.Last(s => s.Page == page));
     }
 
     [Fact]
@@ -48,7 +51,7 @@ public class StepsAndMovesTests
     [Fact]
     public void Switching_off_whole_page_first_leaves_only_the_stops()
     {
-        Rig rig = Kit.Open(Puddle, s => s.WholePageFirst = false);
+        Rig rig = Kit.Open(Puddle, s => { s.WholePageFirst = false; s.WholePageLast = false; });
         Assert.DoesNotContain(rig.Engine.Steps, s => s.Stop == Step.WholePage);
         Assert.Equal(new Step(0, 0), rig.Engine.Steps[0]);
     }
@@ -232,7 +235,7 @@ public class StepsAndMovesTests
         rig.Prev();
         Assert.Equal(0, e.StepIndex);
 
-        rig.Jump(2, 3);
+        Assert.True(rig.JumpToClosing(2));
         rig.Next();
         Assert.True(e.State.Finished);
         rig.Next();                              // nothing more happens
@@ -322,10 +325,30 @@ public class StepsAndMovesTests
         ReaderEngine e = rig.Engine;
         e.SetInsets(64, 104);
         e.InsetGoal.Bottom = 180;
-        rig.Run(60);
-        Assert.InRange(e.Insets.Bottom, 105, 179);
-        rig.Run(1000);
+        rig.Run(16);
+        Assert.InRange(e.Insets.Bottom, 104.1, 108);             // a gentle start: no jolt in the first frame
+        rig.Run(44);
+        Assert.InRange(e.Insets.Bottom, 112, 150);
+        double last = e.Insets.Bottom;
+        for (int i = 0; i < 60; i++)
+        {
+            rig.Run(16);
+            Assert.InRange(e.Insets.Bottom, last, 180);          // always onwards, never past the goal
+            last = e.Insets.Bottom;
+        }
         Assert.Equal(180, e.Insets.Bottom);
+        Assert.False(e.Restless);
+
+        // The same journey in coarse frames ends up in the same place at the same time.
+        double at(double frameMs)
+        {
+            Rig r = Kit.Open(Puddle);
+            r.Engine.SetInsets(64, 104);
+            r.Engine.InsetGoal.Bottom = 180;
+            r.Run(200, frameMs);
+            return r.Engine.Insets.Bottom;
+        }
+        Assert.Equal(at(4), at(50), 6);
     }
 }
 

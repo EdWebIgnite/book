@@ -70,7 +70,7 @@ public class TimingTests
     {
         Rig rig = Kit.Open(Puddle);
         ReaderEngine e = rig.Engine;
-        rig.Jump(CountingPage, 1);
+        Assert.True(rig.JumpToClosing(CountingPage));
         int whooshes = rig.Sound.Count("whoosh");
         rig.Next();
         Assert.Equal(new Step(SplashPage, 0), e.CurrentStep);
@@ -154,7 +154,7 @@ public class TimingTests
     {
         Rig rig = Kit.Open(Puddle);
         ReaderEngine e = rig.Engine;
-        rig.Jump(CountingPage, 1);
+        Assert.True(rig.JumpToClosing(CountingPage));
         rig.Next();
         Assert.Equal(default, e.ShakeOffset());                  // starts 120 ms after arriving
         rig.Run(200);
@@ -195,7 +195,7 @@ public class TimingTests
         Assert.Contains("thunder 0.85", rig.Sound.Calls);
         for (int i = 0; i < 100; i++) { rig.Run(16); Assert.Equal(0, e.FlashAlpha); }
 
-        rig.Jump(CountingPage, 1);
+        Assert.True(rig.JumpToClosing(CountingPage));
         rig.NextAndArrive();
         Assert.Equal(new Step(SplashPage, 0), e.CurrentStep);
         for (int i = 0; i < 60; i++) { rig.Run(16); Assert.Equal(default, e.ShakeOffset()); }

@@ -106,6 +106,22 @@ public class SoundTests
     }
 
     [Fact]
+    public void A_page_turn_is_a_short_quiet_swish_with_nothing_sharp_at_either_end()
+    {
+        var synth = new Synth(Rate);
+        synth.PlayPageTurn();
+        float[] sound = Render(synth, 0.6);
+        Assert.InRange(Peak(sound), 0.004f, 0.05f);                       // quieter than a tap
+        Assert.True(Peak(Slice(sound, 0, 0.004)) < Peak(sound) / 8, "it swells in rather than starting with a click");
+        Assert.True(Peak(Slice(sound, 0.31, 0.34)) < Peak(sound) / 8, "and trails off");
+        Assert.True(Peak(Slice(sound, 0.05, 0.2)) > Peak(sound) / 2, "loudest early on");
+        Assert.Equal(0, Peak(Slice(sound, 0.36, 0.6)));                   // about a third of a second in all
+        Assert.True(synth.Silent);
+        // Paper, not a whistle or a thump: hiss in the middle of the range.
+        Assert.InRange(Pitch(Slice(sound, 0.05, 0.25)), 1200, 4500);
+    }
+
+    [Fact]
     public void Thunder_waits_for_its_delay_then_rumbles_low_and_dies_away()
     {
         var synth = new Synth(Rate);
@@ -182,6 +198,7 @@ public class SoundTests
         output.Locked();
         output.Party();
         output.Whoosh(900);
+        output.PageTurn();
         output.Rain(0.8);
         output.Thunder(0.85);
         output.Rain(0);
@@ -212,7 +229,7 @@ public class SoundTests
     public void A_stop_with_a_sound_asks_for_the_file_by_its_name_in_the_book()
     {
         Rig rig = Kit.Open("biggest-puddle");
-        rig.Jump(8, 1);
+        Assert.True(rig.JumpToClosing(8));
         rig.Next();
         Assert.Contains("clip splash.wav", rig.Sound.Calls);
         rig.Next();                                                       // moving on stops it

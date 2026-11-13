@@ -24,7 +24,9 @@ sealed class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var sound = new DesktopSound();
-            var window = new MainWindow(Options, SettingsStore.Load(), sound, saveSettings: true);
+            ReaderSettings settings = SettingsStore.Load();
+            if (Options.Set.Count > 0) settings.ApplyJson(Options.SetAsJson());
+            var window = new MainWindow(Options, settings, sound, saveSettings: true);
             desktop.MainWindow = window;
             desktop.Exit += (_, _) => sound.Dispose();
         }

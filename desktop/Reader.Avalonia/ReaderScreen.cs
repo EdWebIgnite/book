@@ -30,11 +30,10 @@ public sealed class ReaderScreen : UserControl
     readonly TextBlock _title, _pageNo, _caption, _askText, _askBadge;
     readonly Border _captionBox, _askBox, _gateTip, _end;
     readonly StackPanel _side, _words;
-    readonly HandHint _tapHand = new(HandHint.Motion.Tap), _dragHand = new(HandHint.Motion.Drag);
     readonly PillButton _again, _endBack;
 
-    bool _wasExploring, _showingCloseUp, _showGear = true;
-    double _dragHandUntil = double.NegativeInfinity, _gateTipUntil = double.NegativeInfinity;
+    bool _showingCloseUp, _showGear = true, _firstStep;
+    double _gateTipUntil = double.NegativeInfinity;
     double? _gearHeldSince;
     bool _gearOpened;
 
@@ -48,8 +47,6 @@ public sealed class ReaderScreen : UserControl
         View.Engine.SetInsets(TopInset, BaseBottom);
         View.Engine.Changed += Update;
         View.FrameTick += OnFrame;
-        // The drag hint goes away as soon as the child touches the picture.
-        View.PicturePressed += () => _dragHandUntil = double.NegativeInfinity;
 
         // Top bar: back, the book's title, and the gear for grown-ups.
         _back = Button("Back", Icons.Back, 28, () => CloseRequested?.Invoke());
@@ -128,10 +125,6 @@ public sealed class ReaderScreen : UserControl
             Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 3, Color = Colors.Black, Opacity = 0.8 },
         };
 
-        _tapHand.IsVisible = _dragHand.IsVisible = false;
-        _tapHand.HorizontalAlignment = _dragHand.HorizontalAlignment = HorizontalAlignment.Left;
-        _tapHand.VerticalAlignment = _dragHand.VerticalAlignment = VerticalAlignment.Top;
-
         // Grown-up lock on the gear.
         _gateTip = new Border
         {
@@ -171,7 +164,7 @@ public sealed class ReaderScreen : UserControl
         // A touch on the dark surround shouldn't fall through to the picture underneath.
         _end.PointerPressed += (_, e) => e.Handled = true;
 
-        _root.Children.AddRange(new Control[] { View, _title, _back, _gear, _side, _tapHand, _dragHand, _words, _prev, _pageNo, _next, _gateTip, _end });
+        _root.Children.AddRange(new Control[] { View, _title, _back, _gear, _side, _words, _prev, _pageNo, _next, _gateTip, _end });
         Content = _root;
         ApplyLayout(new Size(1000, 700));
     }
@@ -210,8 +203,6 @@ public sealed class ReaderScreen : UserControl
     public void SetBook(LoadedBook book, int startStep = 0)
     {
         Title = book.Book.Title;
-        _wasExploring = false;
-        _dragHandUntil = double.NegativeInfinity;
         View.SetBook(book, startStep);
         View.Focus();
     }
@@ -260,12 +251,10 @@ public sealed class ReaderScreen : UserControl
         if (st.Ask.Length > 0) _askText.Text = st.Ask;
         _askBox.IsVisible = st.Ask.Length > 0;
 
-        // Picture hints: tap to go on at the very start, drag to look around when exploring begins.
-        _tapHand.IsVisible = st.FirstStep && !st.Finished;
-        if (st.Exploring && !_wasExploring) _dragHandUntil = View.Now + 5000;
-        else if (!st.Exploring) _dragHandUntil = double.NegativeInfinity;
-        _wasExploring = st.Exploring;
-        _dragHand.IsVisible = View.Now < _dragHandUntil;
+        // At the very start the Next arrow pulses, to show where to tap. (On explore pages the idle hints
+        // already show a child what to do, so nothing more is needed there.)
+        _firstStep = st.FirstStep && !st.Finished;
+        if (!_firstStep) _next.Ring = null;
 
         _end.IsVisible = st.Finished;
         ApplyLayout(Bounds.Size);
@@ -294,11 +283,15 @@ public sealed class ReaderScreen : UserControl
     void OnFrame(double now)
     {
         bool still = View.Engine.Reduced;
-        _tapHand.Still = _dragHand.Still = still;
-        if (_tapHand.IsVisible) _tapHand.Time = now;
-        bool dragging = now < _dragHandUntil;
-        if (_dragHand.IsVisible != dragging) _dragHand.IsVisible = dragging;
-        if (dragging) _dragHand.Time = now;
+
+        // The Next arrow's pulse: a soft ring that grows out of the button and fades, every 1.8 seconds.
+        // With reduced motion it is a steady ring instead.
+        if (_firstStep)
+        {
+            double u = still ? 0.35 : now / 1800 % 1;
+            double grow = Easings.OutCubic(u);
+            _next.Ring = new BoxShadow { Spread = 2 + 14 * grow, Blur = 12, Color = Color.FromArgb((byte)(210 * (1 - u) * (still ? 0.8 : 1)), 255, 255, 255) };
+        }
 
         // Show me breathes gently so it catches the eye: a soft ring that swells and fades every 2.4 seconds.
         if (_showMe.IsVisible)
@@ -321,13 +314,19 @@ public sealed class ReaderScreen : UserControl
             }
         }
         if (_gateTip.IsVisible && now >= _gateTipUntil) _gateTip.IsVisible = false;
+
+        // Ask the picture to keep the frames coming while one of these little animations is running.
+        View.KeepAwake = (_firstStep && !still) || (_showMe.IsVisible && !still) || _gearHeldSince is not null || _gateTip.IsVisible;
     }
 
     // The gear is for grown-ups. With the lock on it needs a two-second hold.
     void GearPressed()
     {
         _gearOpened = false;
-        if (_settings.Gate) _gearHeldSince = View.Now;
+        if (!_settings.Gate) return;
+        _gearHeldSince = View.Now;
+        View.KeepAwake = true;      // the ring around the gear grows frame by frame
+        View.Wake();
     }
 
     void GearClicked()
@@ -336,6 +335,8 @@ public sealed class ReaderScreen : UserControl
         if (_gearOpened) return;
         _gateTip.IsVisible = true;
         _gateTipUntil = View.Now + 1800;
+        View.KeepAwake = true;
+        View.Wake();
     }
 
     // ---------------------------------------------------------------- sizes and places
@@ -382,11 +383,5 @@ public sealed class ReaderScreen : UserControl
         _words.Spacing = low ? 4 : 8;
         _words.Width = Math.Max(120, low ? w - 210 : narrow ? w - 24 : Math.Min(720, w - 150));
         _words.Margin = new Thickness(0, 0, 0, low ? 12 : narrow ? 104 : 112);
-
-        // The hands: "tap" hovers over the right-hand side, where a tap goes on; "drag" sweeps across the middle.
-        double hand = narrow ? 52 : 64;
-        _tapHand.Width = _tapHand.Height = _dragHand.Width = _dragHand.Height = hand;
-        _tapHand.Margin = new Thickness(w * (1 - 0.22) - hand, h * 0.52, 0, 0);
-        _dragHand.Margin = new Thickness(w / 2 - 32, h * 0.46, 0, 0);
     }
 }

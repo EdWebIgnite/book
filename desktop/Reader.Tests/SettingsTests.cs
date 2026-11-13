@@ -28,7 +28,7 @@ public class SettingsTests
     {
         JsonObject ours = new ReaderSettings().ToJson();
         var theirs = Regex.Matches(JsBlock("DEFAULT_SETTINGS"), @"(\w+):\s*(""[^""]*""|[\w.\-]+)\s*,");
-        Assert.Equal(28, theirs.Count);
+        Assert.Equal(30, theirs.Count);
         Assert.Equal(theirs.Select(m => m.Groups[1].Value), ours.Select(p => p.Key));
         foreach (Match m in theirs)
         {

@@ -14,7 +14,11 @@ public sealed class ReaderSettings
     public double MoveMs { get; set; } = 1400;
     public string Easing { get; set; } = Easings.EaseInOutSine;
     public string ZoomPath { get; set; } = "smooth";          // smooth | straight
-    public string PageTurn { get; set; } = "fly";             // fly | zoomOut | cut
+    /// <summary>
+    /// How one page gives way to the next: flip (like a book page) | fly | zoomOut | cut.
+    /// The flip needs the book look; without it, flip behaves like fly.
+    /// </summary>
+    public string PageTurn { get; set; } = "flip";
     public double ArcAmount { get; set; } = 0.6;
     public double Padding { get; set; } = 0.025;
     public double Dim { get; set; } = 0.72;
@@ -22,7 +26,15 @@ public sealed class ReaderSettings
     /// <summary>How dark it gets outside the light on a "spotlight" stop.</summary>
     public double Spotlight { get; set; } = 0.97;
     public bool WholePageFirst { get; set; } = true;
-    public bool WholePageLast { get; set; }
+    /// <summary>After a page's stops, show the whole page again before moving on.</summary>
+    public bool WholePageLast { get; set; } = true;
+    /// <summary>Draw the whole page as a page in a book: a cover behind it, a spine on the left, one page at a time.</summary>
+    public bool BookLook { get; set; } = true;
+    /// <summary>Raised when defaults change in a way saved settings should pick up.</summary>
+    public int SettingsVersion { get; set; } = CurrentVersion;
+
+    /// <summary>The settings version this program writes.</summary>
+    public const int CurrentVersion = 2;
     public string Drift { get; set; } = "off";                // off | zoomIn | pan
     public double DriftAmount { get; set; } = 0.06;
     public double DriftSeconds { get; set; } = 6;
@@ -100,6 +112,8 @@ public sealed class ReaderSettings
         ["spotlight"] = Spotlight,
         ["wholePageFirst"] = WholePageFirst,
         ["wholePageLast"] = WholePageLast,
+        ["bookLook"] = BookLook,
+        ["settingsVersion"] = SettingsVersion,
         ["drift"] = Drift,
         ["driftAmount"] = DriftAmount,
         ["driftSeconds"] = DriftSeconds,
@@ -147,6 +161,8 @@ public sealed class ReaderSettings
         Spotlight = Num(saved["spotlight"], Spotlight);
         WholePageFirst = Flag(saved["wholePageFirst"], WholePageFirst);
         WholePageLast = Flag(saved["wholePageLast"], WholePageLast);
+        BookLook = Flag(saved["bookLook"], BookLook);
+        SettingsVersion = (int)Math.Round(Num(saved["settingsVersion"], SettingsVersion));
         Drift = Text(saved["drift"], Drift);
         DriftAmount = Num(saved["driftAmount"], DriftAmount);
         DriftSeconds = Num(saved["driftSeconds"], DriftSeconds);
@@ -166,17 +182,37 @@ public sealed class ReaderSettings
         DoubleTapZoom = Flag(saved["doubleTapZoom"], DoubleTapZoom);
     }
 
-    /// <summary>Defaults with the values from a JSON text laid over them. Text that isn't JSON gives the defaults.</summary>
+    /// <summary>
+    /// Saved settings as they should be used today: the defaults with the saved values laid over them,
+    /// brought up to the current version. Text that isn't JSON gives the defaults.
+    /// </summary>
     public static ReaderSettings FromJsonString(string? json)
     {
         var s = new ReaderSettings();
         if (string.IsNullOrWhiteSpace(json)) return s;
         try
         {
-            if (JsonNode.Parse(json) is JsonObject o) s.ApplyJson(o);
+            if (JsonNode.Parse(json) is JsonObject o) s.ApplySaved(o);
         }
         catch (JsonException) { /* damaged file: use defaults */ }
         return s;
+    }
+
+    /// <summary>
+    /// Take values that were saved by this or an earlier version of the program. Settings saved before
+    /// version 2 pick up the book behaviour: the whole page after the stops, the book look and the flip.
+    /// </summary>
+    public void ApplySaved(JsonObject saved)
+    {
+        ApplyJson(saved);
+        bool old = !(saved["settingsVersion"] is JsonValue v && v.TryGetValue(out double version) && version >= 2);
+        if (saved.Count > 0 && old)
+        {
+            WholePageLast = true;
+            PageTurn = "flip";
+            BookLook = true;
+        }
+        SettingsVersion = CurrentVersion;
     }
 
     static double Num(JsonNode? n, double fallback)

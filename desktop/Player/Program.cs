@@ -23,5 +23,10 @@ static class Program
     }
 
     /// <summary>Also used by the previewer in an editor, which is why it is its own method.</summary>
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UsePlatformDetect();
+    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
+        .UsePlatformDetect()
+        // Room on the graphics card for a book's worth of page pictures. The usual allowance (about 28 MB)
+        // is less than two big pages, and going over it means pictures are sent to the card again and
+        // again while the camera moves between them, which shows as stutter.
+        .With(new SkiaOptions { MaxGpuResourceSizeBytes = 512L * 1024 * 1024 });
 }

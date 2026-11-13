@@ -4,7 +4,11 @@ namespace Reader.Core;
 /// One thing the reader shows: a page whole, one of its stops, or the page handed over for exploring.
 /// A book is played as a list of these, in order.
 /// </summary>
-public readonly record struct Step(int Page, int Stop, bool Explore = false)
+/// <param name="Closing">
+/// The whole page shown again after its stops, before moving on. It counts as being past the last
+/// stop, so whatever started during the page is still there.
+/// </param>
+public readonly record struct Step(int Page, int Stop, bool Explore = false, bool Closing = false)
 {
     /// <summary>Stop number meaning "the whole page".</summary>
     public const int WholePage = -1;
@@ -116,6 +120,22 @@ public sealed record PartyDraw(double Alpha, PartyStar[] Stars)
 {
     public static readonly string[] Tints = { "#ffd23f", "#ff6b6b", "#74c0fc", "#8ce99a", "#fff6c2", "#b197fc" };
 }
+
+/// <summary>
+/// A page being turned like the page of a book. Both pages are seen whole. The turning page folds
+/// over towards the spine on its left, showing the page underneath.
+/// </summary>
+/// <param name="TurningPage">The page whose leaf is in the air.</param>
+/// <param name="UnderPage">The page lying underneath it.</param>
+/// <param name="Fold">
+/// How far the turn has got: 0 is the leaf lying flat and covering the page underneath (the fold is at
+/// its right edge), 1 is the leaf gone over the spine (the fold has reached the left edge). Going on
+/// through the book it runs from 0 to 1; going back, from 1 to 0.
+/// </param>
+/// <param name="Forward">True when going on through the book.</param>
+/// <param name="TurningCam">The camera that shows the turning page whole, in world units.</param>
+/// <param name="UnderCam">The camera that shows the page underneath whole.</param>
+public readonly record struct FlipDraw(int TurningPage, int UnderPage, double Fold, bool Forward, RectD TurningCam, RectD UnderCam);
 
 /// <summary>One sharp tile to draw over a big scene's overview picture.</summary>
 /// <param name="Level">0 is full size, each level after is half the one before.</param>

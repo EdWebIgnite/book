@@ -114,6 +114,17 @@ sealed class Rig
         RunUntilStill();
     }
 
+    /// <summary>
+    /// Go to the whole page shown again after a page's stops, the way a reader gets there: from its last
+    /// stop. Returns false if the page has no such step.
+    /// </summary>
+    public bool JumpToClosing(int page)
+    {
+        Jump(page, Engine.Book!.Pages[page].Stops.Count - 1);
+        NextAndArrive();
+        return Engine.CurrentStep is { Closing: true } step && step.Page == page;
+    }
+
     public void Jump(int page, int stop)
     {
         Engine.SetTime(Now);
@@ -136,6 +147,7 @@ sealed class FakeSound : ISoundOutput
     public void Locked() => Calls.Add("locked");
     public void Party() => Calls.Add("party");
     public void Whoosh(double milliseconds) => Calls.Add("whoosh");
+    public void PageTurn() => Calls.Add("page turn");
     public void Rain(double level) => RainLevels.Add(level);
     public void Thunder(double delaySeconds) => Calls.Add("thunder " + delaySeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
     public void PlayClip(string fileName) { Clip = fileName; Calls.Add("clip " + fileName); }

@@ -105,6 +105,7 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
     public void Locked() { if (Available) _synth.Locked(); }
     public void Party() { if (Available) _synth.Party(); }
     public void Whoosh(double milliseconds) { if (Available) _synth.PlayWhoosh(milliseconds); }
+    public void PageTurn() { if (Available) _synth.PlayPageTurn(); }
     public void Rain(double level) { if (Available) _synth.SetRain(level); }
     public void Thunder(double delaySeconds) { if (Available) _synth.PlayThunder(delaySeconds); }
 

@@ -45,6 +45,7 @@ sealed class MainWindow : Window
 
         _screen = new ReaderScreen(settings, sound) { IsVisible = false };
         _screen.Engine.DeviceReducedMotion = DeviceMotion.Reduced();
+        _screen.View.ShowFrameRate = options.ShowFrameRate;
         _screen.CloseRequested += CloseBook;
         _screen.GearRequested += () => ToggleSettings();
 
@@ -257,6 +258,7 @@ sealed class MainWindow : Window
         bool plain = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Meta)) == 0;
 
         if (e.Key == Key.S && plain) { ToggleSettings(); e.Handled = true; return; }
+        if (e.Key == Key.F && plain) { _screen.View.ShowFrameRate = !_screen.View.ShowFrameRate; e.Handled = true; return; }
         if (e.Key == Key.O && e.KeyModifiers.HasFlag(KeyModifiers.Control) && !ReaderShowing) { _ = PickFolder(); e.Handled = true; return; }
         if (e.Key == Key.Escape)
         {

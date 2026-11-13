@@ -28,6 +28,7 @@ files the browser version uses.
 
 Keys: Right or Space goes on. Left goes back. W shows the whole page.
 + and - zoom on explore pages. S opens the settings. Esc goes back to the books.
+F shows how many frames a second the program is drawing (top left).
 TXT
 (cd "$out" && zip -qr BookReader-windows.zip BookReader)
 echo "Made $out/BookReader-windows.zip"

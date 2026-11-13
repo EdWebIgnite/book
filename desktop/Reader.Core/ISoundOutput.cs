@@ -25,6 +25,9 @@ public interface ISoundOutput
     /// <summary>Soft rush of air for a camera move that takes this many milliseconds.</summary>
     void Whoosh(double milliseconds);
 
+    /// <summary>A soft, papery swish as a page is turned.</summary>
+    void PageTurn();
+
     /// <summary>Steady rain, as loud as <paramref name="level"/> (0 to 1). Call again to change or stop it.</summary>
     void Rain(double level);
 
@@ -49,6 +52,7 @@ public sealed class NoSound : ISoundOutput
     public void Locked() { }
     public void Party() { }
     public void Whoosh(double milliseconds) { }
+    public void PageTurn() { }
     public void Rain(double level) { }
     public void Thunder(double delaySeconds) { }
     public void PlayClip(string fileName) { }

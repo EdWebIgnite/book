@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -26,7 +25,7 @@ static class Screenshot
                 .SetupWithoutStarting();
 
             var settings = new ReaderSettings();
-            if (o.Set.Count > 0) settings.ApplyJson(AsJson(o.Set));
+            if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());
 
             var window = new MainWindow(o, settings, new NoSound(), saveSettings: false) { Width = o.Width, Height = o.Height };
             ReaderView view = window.Screen.View;
@@ -215,18 +214,5 @@ static class Screenshot
             }
         }
         return null;
-    }
-
-    /// <summary>"key=value" pairs as the JSON the settings understand: true and false, numbers, and anything else as text.</summary>
-    static JsonObject AsJson(IEnumerable<(string Key, string Value)> pairs)
-    {
-        var json = new JsonObject();
-        foreach (var (key, value) in pairs)
-        {
-            if (value is "true" or "false") json[key] = value == "true";
-            else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)) json[key] = number;
-            else json[key] = value;
-        }
-        return json;
     }
 }

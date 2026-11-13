@@ -20,6 +20,8 @@ sealed class Options
     public int Width = 1280, Height = 800;
     public double Scale = 1;
     public bool ShowSettings, Finish;
+    /// <summary>Start with the frame-rate readout showing (the F key toggles it).</summary>
+    public bool ShowFrameRate;
     public double Zoom = 1;
     public (double X, double Y)? Look;
     public List<int> Find = new();
@@ -28,6 +30,8 @@ sealed class Options
     public string? Do;
     /// <summary>Play a fixed sequence with no window and print how long the frames took.</summary>
     public bool Bench;
+    /// <summary>The bench plays pages 1 to this one.</summary>
+    public int BenchPages = 3;
 
     public string? Problem;
     public bool Help;
@@ -35,12 +39,14 @@ sealed class Options
     public const string Usage = """
         Book Reader
 
-          BookReader [--content <folder>] [--book <id or folder>] [--page <n>] [--stop <n>]
+          BookReader [--content <folder>] [--book <id or folder>] [--page <n>] [--stop <n>] [--fps] [--set <key>=<value>]
 
             --content <folder>   where library.json and books/ are (found automatically when left out)
             --book <id|folder>   open this book straight away
             --page <n>           start on this page (1 is the first)
             --stop <n>           start on this stop (1 is the first; -1 the whole page; -2 exploring)
+            --fps                start with the frame-rate readout showing (the F key switches it on and off)
+            --set <key>=<value>  use this setting for this run, for example --set autoPlay=true
 
         Draw one screen to a picture file and exit, with no window:
 
@@ -65,7 +71,28 @@ sealed class Options
                                    settle               wait for a book that is still loading
 
           Screenshots always start from the default settings and never change the saved ones.
+
+        Time how long frames take to draw, with no window, and print the numbers:
+
+          BookReader --bench [--book <id>] [--pages <n>] [--size WxH] [--set <key>=<value>]
+
+            Plays the book from page 1 to the end of page n (3 when left out), tapping whenever the camera
+            has come to rest, and times every frame that is drawn. Reader time is made up, sixty frames a
+            second, so two builds draw the same frames and their numbers can be compared.
         """;
+
+    /// <summary>The --set pairs as the JSON the settings understand: true and false, numbers, and anything else as text.</summary>
+    public System.Text.Json.Nodes.JsonObject SetAsJson()
+    {
+        var json = new System.Text.Json.Nodes.JsonObject();
+        foreach (var (key, value) in Set)
+        {
+            if (value is "true" or "false") json[key] = value == "true";
+            else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)) json[key] = number;
+            else json[key] = value;
+        }
+        return json;
+    }
 
     public static Options Parse(string[] args)
     {
@@ -91,9 +118,11 @@ sealed class Options
                 case "--scale": o.Scale = Num(Value(), a, o) ?? 1; break;
                 case "--zoom": o.Zoom = Num(Value(), a, o) ?? 1; break;
                 case "--settings": o.ShowSettings = true; break;
+                case "--fps": o.ShowFrameRate = true; break;
                 case "--finish": o.Finish = true; break;
                 case "--do": o.Do = Value(); break;
                 case "--bench": o.Bench = true; break;
+                case "--pages": o.BenchPages = Int(Value(), a, o) ?? 3; break;
                 case "--find": if (Int(Value(), a, o) is int n) o.Find.Add(n); break;
                 case "--size":
                 {
