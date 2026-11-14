@@ -70,6 +70,7 @@ sealed class Options
                                    wheel 640,400 -1     turn the wheel one notch (negative is towards you)
                                    key Right            press a key (the names Avalonia uses: Right, Space, S, Escape, ...)
                                    wait 1500            let this many milliseconds of reader time pass
+                                   record 1500 <folder> save every frame for that long, sixty a second
                                    settle               wait for a book that is still loading
 
           Screenshots always start from the default settings and never change the saved ones.

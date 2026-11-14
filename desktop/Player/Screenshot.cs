@@ -203,6 +203,23 @@ static class Screenshot
                 case "wait" when words.Length == 2 && double.TryParse(words[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double ms):
                     pass(ms);
                     break;
+                case "record" when words.Length == 3 && double.TryParse(words[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double span):
+                {
+                    // Every frame for this long, at sixty frames a second, saved as numbered pictures: for
+                    // checking that motion is smooth frame by frame.
+                    string folder = Path.GetFullPath(words[2]);
+                    Directory.CreateDirectory(folder);
+                    int frames = (int)Math.Round(span / (1000.0 / 60));
+                    for (int f = 0; f < frames; f++)
+                    {
+                        skip(1000.0 / 60);
+                        window.Screen.View.Tick();
+                        Dispatcher.UIThread.RunJobs();
+                        using var frame = window.CaptureRenderedFrame();
+                        frame?.Save(Path.Combine(folder, $"frame{f:D4}.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                    }
+                    break;
+                }
                 case "settle":
                     // A book opened from the shelf loads on another thread: give it real time, up to ten seconds.
                     for (int i = 0; i < 500 && window.Busy; i++)

@@ -85,14 +85,15 @@ public sealed partial class ReaderView
             _boardRing = ring;
             _shadowArea = outer.Inflate(0.12);
 
-            // The edges of the pages underneath: each one a little further out, and a little lower, than
-            // the one above it, so they show as thin lines beside the top page.
+            // The edges of the pages underneath: each one a little further out than the one above it, so they
+            // show as thin lines beside the top page. Only the strip that shows beside the page is painted, so
+            // the frame can be blended over the pages without veiling them.
             Color[] paper = { Color.Parse("#e9e2d3"), Color.Parse("#d8cfbd"), Color.Parse("#efe9dd") };
-            double half = width / 2, step = BookLayout.StackStep;
+            double step = BookLayout.StackStep;
             for (int k = rightLines; k >= 1; k--)
-                _stacks.Add((new Rect(half, 0.0015 * k, half + k * step, 1 - 0.003 * k), new ImmutableSolidColorBrush(paper[k % 3])));
+                _stacks.Add((new Rect(width, 0.0015 * k, k * step, 1 - 0.003 * k), new ImmutableSolidColorBrush(paper[k % 3])));
             for (int k = leftLines; k >= 1; k--)
-                _stacks.Add((new Rect(-k * step, 0.0015 * k, half + k * step, 1 - 0.003 * k), new ImmutableSolidColorBrush(paper[k % 3])));
+                _stacks.Add((new Rect(-k * step, 0.0015 * k, k * step, 1 - 0.003 * k), new ImmutableSolidColorBrush(paper[k % 3])));
             _stackLine = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(70, 120, 100, 80)), 0.0007);
 
             // Near the middle: the pages darkening a little as they curve down into the binding, a faint
@@ -126,10 +127,10 @@ public sealed partial class ReaderView
             (byte)Math.Clamp(c.R * by + lift, 0, 255), (byte)Math.Clamp(c.G * by + lift, 0, 255), (byte)Math.Clamp(c.B * by + lift, 0, 255));
 
         /// <summary>The shadow under the book, board, and the edges of the pages underneath.</summary>
-        public void DrawUnder(DrawingContext ctx)
+        public void DrawUnder(DrawingContext ctx, bool shadow = true)
         {
             _shadow ??= MakeShadow(_shadowArea, _board);
-            using (ctx.PushRenderOptions(Quick)) DrawAround(ctx, _shadow, _shadowArea, _board.Rect.Deflate(0.006));
+            if (shadow) using (ctx.PushRenderOptions(Quick)) DrawAround(ctx, _shadow, _shadowArea, _board.Rect.Deflate(0.006));
             // Only the ring of board round the pages is painted: the pages hide the rest, and filling it
             // with a gradient cost more than everything else in the frame put together on a computer that
             // draws without a graphics card.
@@ -391,28 +392,50 @@ public sealed partial class ReaderView
         ReaderEngine e = Engine;
         int earlier = flip.TurningPage, later = flip.UnderPage;
         RectD spread = e.ViewFor(flip.UnderCam).ToScreen(BookLayout.Spread(e.PageRects[later]));
+        RectD earlierPage = e.ViewFor(flip.TurningCam).ToScreen(e.PageRects[earlier]);
+        RectD laterPage = e.ViewFor(flip.UnderCam).ToScreen(e.PageRects[later]);
         double pixels = spread.W * scaling;
         double half = spread.W / 2, spine = spread.X + half;
+        var leftHalf = new Rect(spread.X, spread.Y, half, spread.H);
+        var rightHalf = new Rect(spine, spread.Y, half, spread.H);
 
-        // The book itself, and the two pages lying underneath.
-        BookFrame frame = FrameFor(book, flip.Forward ? later : earlier);
+        // How far over the sheet is, 0 to 1, counted from the side it starts on.
+        int direction = flip.Forward ? 1 : -1;
+        double turned = Math.Clamp(flip.Forward ? flip.Fold : 1 - flip.Fold, 0, 1);
+        double lift = Curl.Lift(turned), radius = Curl.MostRadius * lift;
+
+        // The book itself. The page edges move from one side to the other while the leaf is in the air:
+        // the stack the turn starts from fades into the stack it ends on, so nothing jumps at either end.
+        BookFrame from = FrameFor(book, flip.Forward ? earlier : later), to = FrameFor(book, flip.Forward ? later : earlier);
         Matrix space = SpreadSpace(spread);
-        using (ctx.PushTransform(space)) frame.DrawUnder(ctx);
+        double across = SmoothStep(0.3, 0.7, turned);
+        using (ctx.PushTransform(space))
+        {
+            // Each is drawn alone at its own end of the turn: drawn twice, the board's rim came out darker
+            // than at rest and flickered as the leaf landed.
+            if (ReferenceEquals(from, to) || across < 0.005) from.DrawUnder(ctx);
+            else if (across > 0.995) to.DrawUnder(ctx);
+            else
+            {
+                from.DrawUnder(ctx);
+                using (ctx.PushOpacity(across)) to.DrawUnder(ctx, shadow: false);
+            }
+        }
+
+        // The two pages lying underneath, with their pictures on top and their weather, just as they are
+        // drawn once the book lies open, so that nothing about them changes when the leaf lands.
         Half earlierLeft = HalfOf(book, earlier, right: false, pixels), earlierRight = HalfOf(book, earlier, right: true, pixels);
         Half laterLeft = HalfOf(book, later, right: false, pixels), laterRight = HalfOf(book, later, right: true, pixels);
         using (ctx.PushRenderOptions(Quick))
         {
-            DrawHalf(ctx, earlierLeft, new Rect(spread.X, spread.Y, half, spread.H));
-            DrawHalf(ctx, laterRight, new Rect(spine, spread.Y, half, spread.H));
+            DrawHalf(ctx, earlierLeft, leftHalf);
+            DrawHalf(ctx, laterRight, rightHalf);
         }
-        using (ctx.PushTransform(space)) frame.DrawCrease(ctx, 1);
+        DrawOnTop(ctx, book, earlier, earlierPage, leftHalf, 1);
+        DrawOnTop(ctx, book, later, laterPage, rightHalf, 1);
+        using (ctx.PushTransform(space)) to.DrawCrease(ctx, 1);
 
-        // How far over the sheet is, 0 to 1, counted from the side it starts on.
-        int direction = flip.Forward ? 1 : -1;
-        double turned = flip.Forward ? flip.Fold : 1 - flip.Fold;
-        if (turned >= 0.999) return;
         Face front = Face.Of(flip.Forward ? earlierRight : laterLeft), back = Face.Of(flip.Forward ? laterLeft : earlierRight);
-        double lift = Curl.Lift(turned), radius = Curl.MostRadius * lift;
 
         // The roll throws a soft shadow on the page it uncovers, just beyond its outermost point.
         double outermost = 0;
@@ -427,6 +450,7 @@ public sealed partial class ReaderView
             DrawShadowBand(ctx, spine + direction * outermost * half, direction * half * (0.05 + 0.9 * radius), spread.Y, spread.H, 0.5 * lift);
 
         // The sheet is not clipped to the pages: lifted off them, it is nearer the eye and looks a little bigger.
+        // It is drawn right to the end, lying flat as it lands, so it never vanishes before the open book takes over.
         var place = new SheetPlace(spine, half, spread.Y, spread.H, direction, LeafEye * spread.H);
         using (ctx.PushRenderOptions(Quick))
         {
@@ -436,7 +460,58 @@ public sealed partial class ReaderView
                 if (edgeZ > 1e-4)
                     using (ctx.PushClip(pages))
                         DrawShadowBand(ctx, spine + direction * edgeX * half, -direction * half * (0.02 + 1.4 * edgeZ), spread.Y, spread.H, 0.38 * lift);
-            });
+            }, backDarker: 0.05 * lift);
+        }
+
+        // Things that belong on top of the leaf when it lies flat: the pictures-on-top and weather of the page
+        // it carries, and the crease. They fade out as the leaf lifts and back in as it lands, so the first
+        // and last frames of the turn match the open book exactly.
+        double flatAtStart = 1 - SmoothStep(0, 0.12, turned), flatAtEnd = SmoothStep(0.88, 1, turned);
+        if (flip.Forward)
+        {
+            DrawOnTop(ctx, book, earlier, earlierPage, rightHalf, flatAtStart);
+            DrawOnTop(ctx, book, later, laterPage, leftHalf, flatAtEnd);
+        }
+        else
+        {
+            DrawOnTop(ctx, book, later, laterPage, leftHalf, flatAtStart);
+            DrawOnTop(ctx, book, earlier, earlierPage, rightHalf, flatAtEnd);
+        }
+        // The crease goes back over the leaf only on the half the leaf covers: the other half already has it,
+        // from underneath, and doubling it there made the spine darker for the last frames of the turn.
+        Rect departing = flip.Forward ? rightHalf : leftHalf, landing = flip.Forward ? leftHalf : rightHalf;
+        if (flatAtStart > 0.005)
+            using (ctx.PushClip(departing.Inflate(new Thickness(0, spread.H, 0, spread.H))))
+            using (ctx.PushTransform(space)) to.DrawCrease(ctx, flatAtStart);
+        if (flatAtEnd > 0.005)
+            using (ctx.PushClip(landing.Inflate(new Thickness(0, spread.H, 0, spread.H))))
+            using (ctx.PushTransform(space)) to.DrawCrease(ctx, flatAtEnd);
+    }
+
+    /// <summary>Goes smoothly from 0 at <paramref name="from"/> to 1 at <paramref name="to"/>.</summary>
+    static double SmoothStep(double from, double to, double x)
+    {
+        double u = Math.Clamp((x - from) / (to - from), 0, 1);
+        return u * u * (3 - 2 * u);
+    }
+
+    /// <summary>
+    /// A page's pictures-on-top and weather, only where they fall inside <paramref name="area"/>, as
+    /// strongly as <paramref name="opacity"/>. A portrait page has none on its left-hand side (that side
+    /// shows the page before).
+    /// </summary>
+    void DrawOnTop(DrawingContext ctx, LoadedBook book, int page, RectD pageOnScreen, Rect area, double opacity)
+    {
+        if (opacity < 0.005) return;
+        Page p = book.Book.Pages[page];
+        if (p.Layers.Count == 0 && p.Effects.Count == 0) return;
+        Rect inside = area.Intersect(ToRect(pageOnScreen));
+        if (inside.Width <= 0.5) return;
+        using (ctx.PushClip(inside))
+        using (ctx.PushOpacity(opacity))
+        {
+            DrawLayers(ctx, book, page, pageOnScreen, Quick);
+            DrawWeather(ctx, book, page, pageOnScreen);
         }
     }
 
@@ -590,5 +665,24 @@ public sealed partial class ReaderView
         using (ctx.PushRenderOptions(Quick))
             DrawSheet(ctx, place, Face.Whole(face, spineAtLeft: true), Face.Whole(inside, spineAtLeft: false), CoverStrips,
                 (t, _) => Curl.Board(cover.Open, t), backDarker: 0);
+
+        // As the cover settles, the open book it is turning into fades in over it, so that the last frame of
+        // the swing is the open book exactly and nothing jumps when the swing ends.
+        // Only the left half is blended (the right half underneath is already the open book's). Part strength
+        // applies to each thing drawn separately, so nothing drawn here may lie under the page picture:
+        // page-edge strips that reached under the page showed through it and washed it out.
+        double settled = SmoothStep(0.94, 1, cover.Open);
+        if (settled > 0.005)
+        {
+            var leftHalf = new Rect(spread.X, spread.Y, half, spread.H);
+            using (ctx.PushClip(new Rect(-1e5, -1e5, spine + 1e5, 2e5)))
+            using (ctx.PushOpacity(settled))
+            {
+                using (ctx.PushTransform(space)) frame.DrawUnder(ctx, shadow: false);
+                using (ctx.PushRenderOptions(Quick)) DrawHalf(ctx, HalfOf(book, cover.Page, right: false, spread.W * scaling), leftHalf);
+                DrawOnTop(ctx, book, cover.Page, v.ToScreen(pr), leftHalf, 1);
+                using (ctx.PushTransform(space)) frame.DrawCrease(ctx, 1);
+            }
+        }
     }
 }

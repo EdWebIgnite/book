@@ -373,3 +373,75 @@ public class CoverTests
         Assert.Equal(new Step(0, Step.WholePage), rig.Engine.CurrentStep);
     }
 }
+
+/// <summary>The end of a page turn joins the open book without a jump.</summary>
+public class LandingTests
+{
+    [Fact]
+    public void A_nearly_landed_page_is_within_a_hair_of_lying_flat()
+    {
+        foreach (double left in new[] { 0.01, 0.003, 0.001 })
+        {
+            double worstX = 0, worstZ = 0;
+            for (int i = 0; i <= 100; i++)
+            {
+                double t = i / 100.0;
+                foreach (double row in new[] { 0.0, 1.0 })
+                {
+                    var p = Curl.Sheet(Curl.Leaning(1 - left, row), t);
+                    worstX = Math.Max(worstX, Math.Abs(p.X + t));
+                    worstZ = Math.Max(worstZ, p.Z);
+                }
+            }
+            // How far from flat, in half-page widths: shrinking with what is left of the turn, so the last
+            // frame of the turn and the open book differ by less than a pixel.
+            Assert.True(worstX < 4 * left, $"{left} left: {worstX} across");
+            Assert.True(worstZ < 2 * left, $"{left} left: {worstZ} high");
+        }
+    }
+
+    [Fact]
+    public void The_turn_slows_to_a_stop_and_the_camera_and_focus_do_not_change_when_it_lands()
+    {
+        Rig rig = Kit.Open("biggest-puddle");
+        ReaderEngine e = rig.Engine;
+        Assert.True(rig.JumpToClosing(1));
+        rig.Next();
+        var folds = new List<double>();
+        Shot lastDuring = e.Shown;
+        while (e.GetFlip() is FlipDraw f)
+        {
+            folds.Add(f.Fold);
+            lastDuring = e.Shown;
+            rig.Run(1000.0 / 60, 1000.0 / 60);
+        }
+        // The last steps of the fold get smaller and smaller: the ease arrives gently.
+        var steps = folds.Zip(folds.Skip(1), (a, b) => b - a).ToList();
+        Assert.True(steps[^1] < steps[^3] && steps[^3] < steps[^6], string.Join(" ", steps.TakeLast(6)));
+        Assert.True(steps[^1] < 0.01);
+        Assert.True(folds[^1] > 0.99);
+        // Landing changes nothing about where the camera is or what is in focus.
+        rig.Run(200);
+        Assert.Equal(lastDuring.Cam, e.Shown.Cam);
+        Assert.Equal(lastDuring.Focus, e.Shown.Focus);
+        Assert.Equal(lastDuring.Vig, e.Shown.Vig, 6);
+        Assert.Equal(lastDuring.Dim, e.Shown.Dim, 6);
+        Assert.Equal(0, e.Shown.Fade);
+    }
+
+    [Fact]
+    public void The_cover_slows_to_a_stop_and_lands_on_the_open_book_view()
+    {
+        Rig rig = Kit.OpenWithCover("biggest-puddle");
+        ReaderEngine e = rig.Engine;
+        rig.Next();
+        var opens = new List<double>();
+        RectD lastCam = e.Shown.Cam;
+        while (e.GetCover() is CoverDraw c && c.Opening) { opens.Add(c.Open); lastCam = e.Shown.Cam; rig.Run(1000.0 / 60, 1000.0 / 60); }
+        var steps = opens.Zip(opens.Skip(1), (a, b) => b - a).ToList();
+        Assert.True(steps[^1] < 0.01 && steps[^1] < steps[^4]);
+        RectD whole = e.WholeCam(0);
+        Assert.True(Math.Abs(lastCam.W - whole.W) < whole.W * 0.002, "the camera has all but arrived when the cover lands");
+        Assert.Equal(whole, e.Shown.Cam);
+    }
+}
