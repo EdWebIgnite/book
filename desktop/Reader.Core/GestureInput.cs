@@ -30,6 +30,14 @@ public sealed class GestureInput
 
     public GestureInput(ReaderEngine reader) => _reader = reader;
 
+    /// <summary>
+    /// A tap anywhere goes on, as on a phone, where small hands tap wherever they like; going back is a
+    /// swipe to the right. When false (a computer), a tap on the left edge goes back. (A second tap that
+    /// comes straight after the first is ignored either way: see <see cref="ReaderEngine.Go"/>.)
+    /// </summary>
+    public bool TapAnywhereGoesOn { get; set; }
+
+
     /// <summary>True while a finger or the mouse button is down on the picture.</summary>
     public bool Active => _gesture is not null;
 
@@ -150,7 +158,7 @@ public sealed class GestureInput
         else if (isTap)
         {
             _reader.Ripple(x, y);
-            _reader.Go(g.Start.X < _reader.ViewWidth * 0.3 ? -1 : 1);
+            _reader.Go(!TapAnywhereGoesOn && g.Start.X < _reader.ViewWidth * 0.3 ? -1 : 1);
         }
     }
 

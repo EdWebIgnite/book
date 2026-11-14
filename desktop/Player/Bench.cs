@@ -47,6 +47,8 @@ static class Bench
                 Console.Error.WriteLine($"Couldn't find the book \"{book}\".");
                 return 1;
             }
+            // What the program holds before any book is open: the runtime, the drawing library, the window.
+            long before = CurrentProcessMemory();
             window.OpenBookNow(folder);
             Dispatcher.UIThread.RunJobs();
             ReaderEngine engine = window.Screen.Engine;
@@ -133,6 +135,10 @@ static class Bench
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                 $"  so the reader's own drawing took about {Math.Max(0, all.Average() - blank):0.0} ms a frame on average, " +
                 $"{Math.Max(0, all.Max() - blank):0.0} ms at worst, and {all.Count(x => x > blank + 20)} frames took more than 20 ms over a blank one"));
+            long peak = System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64;
+            string limits = Reader.Ui.LoadedBook.MaxPictureSide > 0 ? $"none over {Reader.Ui.LoadedBook.MaxPictureSide} pixels" : "at their own size";
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"  memory: {before / 1048576.0:0} MB before the book opened, {peak / 1048576.0:0} MB at the most while it was read, so the book took up to {(peak - before) / 1048576.0:0} MB (keeping {Reader.Ui.LoadedBook.FullPicturesKept} full-size pictures, {limits})"));
             return 0;
         }
         catch (Exception e)
@@ -140,6 +146,13 @@ static class Bench
             Console.Error.WriteLine("The bench failed: " + e.Message);
             return 1;
         }
+    }
+
+    static long CurrentProcessMemory()
+    {
+        GC.Collect();
+        using var me = System.Diagnostics.Process.GetCurrentProcess();
+        return me.WorkingSet64;
     }
 
     static void Report(string what, List<double> ms)

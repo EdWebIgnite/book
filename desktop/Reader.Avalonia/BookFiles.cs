@@ -30,7 +30,20 @@ public sealed class LoadedBook : IDisposable
     public static readonly Color PlainBoard = Color.Parse("#27323f");
 
     readonly PagePictures[] _pages;
-    readonly PictureCache _full = new(keep: 4, drop: 1, atOnce: 2);
+    readonly PictureCache _full = new(keep: FullPicturesKept, drop: 1, atOnce: 2) { MaxSide = MaxPictureSide };
+
+    /// <summary>
+    /// The widest or tallest a picture is ever held in memory, in pixels; bigger ones are shrunk to this as
+    /// they load. 0 means no limit. Phones set 4096, the biggest picture most phone graphics chips can draw
+    /// in one go (and plenty for any phone screen). Set it before loading a book.
+    /// </summary>
+    public static int MaxPictureSide { get; set; }
+
+    /// <summary>
+    /// How many full-size page pictures are kept at once (the page being read and those either side of
+    /// it). Four on a computer; a phone with little memory keeps fewer. Set it before loading a book.
+    /// </summary>
+    public static int FullPicturesKept { get; set; } = 4;
 
     LoadedBook(Book book, string folder, PagePictures[] pages, Color board)
     {
@@ -101,6 +114,12 @@ public sealed class LoadedBook : IDisposable
         if (page >= 0 && page < _pages.Length) _full.Get(_pages[page].Path);
     }
 
+    /// <summary>
+    /// Let go of the full-size pictures (the phone is short of memory). The smaller copies stay, so the
+    /// page still shows straight away, and the sharp picture loads again when it is wanted.
+    /// </summary>
+    public void ReleaseMemory() => _full.Clear();
+
     static Bitmap? _placeholder;
     static Bitmap Placeholder => _placeholder ??= new WriteableBitmap(new PixelSize(2, 2), new Vector(96, 96), Avalonia.Platform.PixelFormats.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
 
@@ -121,7 +140,22 @@ public sealed class LoadedBook : IDisposable
             {
                 string? path = BookLibrary.SafePath(folder, book.Pages[i].Image);
                 if (path is null || !File.Exists(path)) throw new FileNotFoundException($"Page {i + 1}'s picture is missing: {book.Pages[i].Image}");
-                var full = new Bitmap(path);
+                // With a picture limit (a phone), pages other than the first are read straight at half size, so the
+                // full-size picture never sits in memory while the book opens. The full one loads when wanted.
+                if (i > 0 && MaxPictureSide > 0 && ImageHeader.Size(path) is (int pw, int ph) && Math.Max(pw, ph) >= 1000)
+                {
+                    Bitmap half;
+                    using (FileStream file = File.OpenRead(path)) half = Bitmap.DecodeToWidth(file, (pw + 1) / 2, BitmapInterpolationMode.HighQuality);
+                    double fit = Math.Min(1, (double)MaxPictureSide / Math.Max(pw, ph));
+                    pages[i] = new PagePictures
+                    {
+                        Path = path, Size = new PixelSize((int)Math.Round(pw * fit), (int)Math.Round(ph * fit)),
+                        Opaque = half.AlphaFormat == Avalonia.Platform.AlphaFormat.Opaque,
+                        Smaller = SmallerCopies(half).Prepend(half).ToArray(),
+                    };
+                    continue;
+                }
+                Bitmap full = PictureCache.LoadPicture(path, MaxPictureSide) ?? throw new InvalidDataException($"Page {i + 1}'s picture can't be read: {book.Pages[i].Image}");
                 pages[i] = new PagePictures
                 {
                     Path = path, Size = full.PixelSize, Opaque = full.AlphaFormat == Avalonia.Platform.AlphaFormat.Opaque,
@@ -301,6 +335,9 @@ public sealed class PictureCache : IDisposable
     /// <summary>Load on the calling thread instead of in the background. For taking screenshots.</summary>
     public bool Synchronous { get; set; }
 
+    /// <summary>Pictures wider or taller than this many pixels are shrunk to fit as they load. 0 is no limit.</summary>
+    public int MaxSide { get; init; }
+
     /// <summary>The picture at this path if it has loaded. Starts loading it otherwise.</summary>
     public Bitmap? Get(string? path)
     {
@@ -312,13 +349,14 @@ public sealed class PictureCache : IDisposable
             _entries[path] = entry;
             if (Synchronous)
             {
-                entry.Image = TryLoad(path);
+                entry.Image = TryLoad(path, MaxSide);
                 entry.Ready = true;
             }
             else
             {
                 _loading++;
-                Task.Run(() => TryLoad(path)).ContinueWith(t => Dispatcher.UIThread.Post(() => Finish(entry, t.Result)));
+                int max = MaxSide;
+                Task.Run(() => TryLoad(path, max)).ContinueWith(t => Dispatcher.UIThread.Post(() => Finish(entry, t.Result)));
             }
             if (_entries.Count > _keep) Trim();
         }
@@ -333,10 +371,26 @@ public sealed class PictureCache : IDisposable
         _entries[path] = new Entry { Image = image, Ready = true, Used = ++_tick };
     }
 
-    static Bitmap? TryLoad(string path)
+    static Bitmap? TryLoad(string path, int maxSide)
     {
-        try { return File.Exists(path) ? new Bitmap(path) : null; }
+        try { return File.Exists(path) ? LoadPicture(path, maxSide) : null; }
         catch (Exception) { return null; }   // a missing or damaged file: that picture just doesn't show
+    }
+
+    /// <summary>
+    /// Read a picture, shrinking it as it is read when it is bigger than <paramref name="maxSide"/> pixels
+    /// either way (0 is no limit), so the full-size picture never has to sit in memory at once.
+    /// </summary>
+    public static Bitmap? LoadPicture(string path, int maxSide)
+    {
+        if (maxSide > 0 && ImageHeader.Size(path) is (int w, int h) && (w > maxSide || h > maxSide))
+        {
+            using FileStream file = File.OpenRead(path);
+            return w >= h
+                ? Bitmap.DecodeToWidth(file, maxSide, BitmapInterpolationMode.HighQuality)
+                : Bitmap.DecodeToHeight(file, maxSide, BitmapInterpolationMode.HighQuality);
+        }
+        return new Bitmap(path);
     }
 
     void Finish(Entry entry, Bitmap? image)
@@ -353,8 +407,11 @@ public sealed class PictureCache : IDisposable
     {
         foreach (var old in _entries.Where(e => e.Value.Ready).OrderBy(e => e.Value.Used).Take(_drop).ToList())
         {
-            old.Value.Image?.Dispose();
             _entries.Remove(old.Key);
+            // Not straight away: the picture may already be part of the frame being drawn right now (with
+            // only two kept, as on a cheap phone, a page turn asks for both pages in one frame). Once that
+            // frame is finished it is safe to let go.
+            if (old.Value.Image is Bitmap image) Dispatcher.UIThread.Post(image.Dispose, DispatcherPriority.Background);
         }
     }
 
@@ -401,4 +458,45 @@ public sealed class BookFolderSound : ISoundOutput
         string? path = Folder is null ? null : BookLibrary.SafePath(Folder, fileName);
         if (path is not null && File.Exists(path)) _inner.PlayClip(path);
     }
+}
+
+/// <summary>Reads a PNG's or JPEG's size from the start of the file, without decoding the picture.</summary>
+public static class ImageHeader
+{
+    public static (int Width, int Height)? Size(string path)
+    {
+        try
+        {
+            using FileStream f = File.OpenRead(path);
+            Span<byte> head = stackalloc byte[24];
+            if (f.Read(head) < 24) return null;
+            // PNG: the signature, then the IHDR chunk holding width and height.
+            if (head[0] == 0x89 && head[1] == (byte)'P' && head[2] == (byte)'N' && head[3] == (byte)'G')
+                return (BigEndian(head[16..20]), BigEndian(head[20..24]));
+            if (head[0] != 0xFF || head[1] != 0xD8) return null;
+            // JPEG: walk the markers to the start-of-frame, which holds height then width.
+            f.Position = 2;
+            Span<byte> m = stackalloc byte[9];
+            while (f.Read(m[..4]) == 4)
+            {
+                if (m[0] != 0xFF) return null;
+                byte kind = m[1];
+                int length = (m[2] << 8) | m[3];
+                bool frame = kind is >= 0xC0 and <= 0xCF and not 0xC4 and not 0xC8 and not 0xCC;
+                if (frame)
+                {
+                    if (f.Read(m[..5]) < 5) return null;
+                    return ((m[3] << 8) | m[4], (m[1] << 8) | m[2]);
+                }
+                f.Position += length - 2;
+            }
+            return null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    static int BigEndian(ReadOnlySpan<byte> b) => (b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3];
 }

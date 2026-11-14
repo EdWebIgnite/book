@@ -8,14 +8,14 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Reader.Core;
 
-namespace Player;
+namespace Reader.App;
 
 /// <summary>
 /// The settings panel: a port of the one in web/index.html, built from the same table of controls.
 /// The top part is what parents would see in the app; the fine tuning below is for trying things out.
 /// Changes apply straight away.
 /// </summary>
-sealed class SettingsPanel : UserControl
+public sealed class SettingsPanel : UserControl
 {
     // What the panel shows. Each entry becomes one control.
     abstract record Row;
@@ -107,9 +107,17 @@ sealed class SettingsPanel : UserControl
     readonly TextBlock _copied;
     bool _building;
 
-    public SettingsPanel(ReaderSettings settings)
+    readonly bool _parentsOnly;
+    readonly StackPanel _body;
+
+    /// <param name="parentsOnly">
+    /// The phone and tablet app: only the part for parents, none of the playground's fine tuning, no
+    /// keyboard help and no copying.
+    /// </param>
+    public SettingsPanel(ReaderSettings settings, bool parentsOnly = false)
     {
         _settings = settings;
+        _parentsOnly = parentsOnly;
         HorizontalAlignment = HorizontalAlignment.Right;
 
         var close = new Button { Content = "Close ✕", FontSize = 14, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Focusable = false };
@@ -119,7 +127,8 @@ sealed class SettingsPanel : UserControl
         var heading = new TextBlock { Text = "Settings", FontSize = 22, FontWeight = FontWeight.Bold, Foreground = Ink, Margin = new Thickness(0, 0, 0, 4) };
         var sub = new TextBlock
         {
-            Text = "Changes apply straight away. The top part is what parents would see in the app. The fine tuning below is only for this playground.",
+            Text = parentsOnly ? "Changes apply straight away."
+                : "Changes apply straight away. The top part is what parents would see in the app. The fine tuning below is only for this playground.",
             FontSize = 13, Foreground = Grey, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14),
         };
 
@@ -143,7 +152,13 @@ sealed class SettingsPanel : UserControl
                    "Explore pages: drag to move, the + and − buttons (or the wheel) to zoom, tap things to find them.",
         };
 
-        var body = new StackPanel { Margin = new Thickness(18, 16, 18, 24), Children = { new Panel { Children = { heading, close } }, sub, _rows, actions, keys } };
+        if (parentsOnly)
+        {
+            actions.Children.Remove(replay);
+            actions.Children.Remove(copy);
+            keys.IsVisible = false;
+        }
+        var body = _body = new StackPanel { Margin = new Thickness(18, 16, 18, 24), Children = { new Panel { Children = { heading, close } }, sub, _rows, actions, keys } };
         Content = new Border
         {
             Background = Brushes.White,
@@ -154,6 +169,12 @@ sealed class SettingsPanel : UserControl
         PointerPressed += (_, e) => e.Handled = true;
         PointerWheelChanged += (_, e) => e.Handled = true;
         Build();
+    }
+
+    /// <summary>Room kept clear for a notch, rounded corners or the system bars.</summary>
+    public Thickness SafeArea
+    {
+        set => _body.Margin = new Thickness(18, 16 + value.Top, 18 + value.Right, 24 + value.Bottom);
     }
 
     /// <summary>A setting changed. The key is the browser's name for it, or "*" after a reset.</summary>
@@ -177,6 +198,9 @@ sealed class SettingsPanel : UserControl
         {
             switch (row)
             {
+                case Group g when _parentsOnly && g.Title != "For parents":
+                    _building = false;
+                    return;
                 case Group g:
                     _rows.Children.Add(new Border
                     {

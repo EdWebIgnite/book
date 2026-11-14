@@ -15,6 +15,12 @@ static class Program
             Console.Error.WriteLine("Run with --help to see what can be asked for.");
             return 2;
         }
+        if (options.Touch)
+        {
+            // The limits the phone app uses on a phone with little memory, so screenshots and the bench show what it would.
+            Reader.Ui.LoadedBook.MaxPictureSide = 4096;
+            Reader.Ui.LoadedBook.FullPicturesKept = 2;
+        }
         if (options.Bench) return Bench.Run(options);
         if (options.Shot is not null) return Screenshot.Take(options);
 

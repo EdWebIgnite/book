@@ -35,6 +35,13 @@ sealed class Options
     /// <summary>The bench plays pages 1 to this one.</summary>
     public int BenchPages = 3;
 
+    /// <summary>Behave as the phone and tablet app does: touch only, one page at a time held upright, phone memory limits.</summary>
+    public bool Touch;
+    /// <summary>Screen units in a centimetre, as a phone reports from its real screen density.</summary>
+    public double? UnitsPerCm;
+    /// <summary>The parts of a phone screen kept for the notch and the gesture bar: left, top, right, bottom.</summary>
+    public Avalonia.Thickness? SafeArea;
+
     public string? Problem;
     public bool Help;
 
@@ -58,6 +65,9 @@ sealed class Options
             --size WxH           window size (1280x800 when left out)
             --scale <n>          display scaling, for example 2 for a high-density screen
             --settings           with the settings panel open
+            --phone              as the phone and tablet app: touch only, one page at a time when upright
+            --units-per-cm <n>   screen units in a centimetre (a phone's real density; 37.8 when left out)
+            --safe l,t,r,b       room kept clear for a phone's notch and gesture bar, in screen units
             --zoom <n>           exploring: zoom in by this much first
             --look <x,y>         exploring: centre the view here (fractions of the page, like book.json)
             --find <n>           exploring: tap the nth thing to find (may be given more than once)
@@ -126,6 +136,19 @@ sealed class Options
                 case "--do": o.Do = Value(); break;
                 case "--bench": o.Bench = true; break;
                 case "--pages": o.BenchPages = Int(Value(), a, o) ?? 3; break;
+                case "--phone": o.Touch = true; break;
+                case "--units-per-cm": o.UnitsPerCm = Num(Value(), a, o); break;
+                case "--safe":
+                {
+                    string[] parts = (Value() ?? "").Split(',');
+                    if (parts.Length == 4 && parts.All(p => TryNum(p, out _)))
+                    {
+                        double[] v = parts.Select(p => { TryNum(p, out double n); return n; }).ToArray();
+                        o.SafeArea = new Avalonia.Thickness(v[0], v[1], v[2], v[3]);
+                    }
+                    else o.Problem ??= "--safe should look like 0,40,0,24.";
+                    break;
+                }
                 case "--find": if (Int(Value(), a, o) is int n) o.Find.Add(n); break;
                 case "--size":
                 {

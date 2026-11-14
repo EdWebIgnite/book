@@ -48,6 +48,8 @@ public sealed class ReaderEngine
         public Anim? After;
         /// <summary>A dip to dark that leaves the closed book, or arrives at it: the cover shows on that side of the dip.</summary>
         public bool FromCover, ToCover;
+        /// <summary>Flip only, with one page at a time: which page of each spread it turns from and to.</summary>
+        public int FromHalf, ToHalf;
     }
 
     /// <summary>How long a page takes to flip at the standard move speed, in milliseconds.</summary>
@@ -232,12 +234,54 @@ public sealed class ReaderEngine
     public bool HasCover { get; private set; }
 
     /// <summary>
+    /// One page at a time, as on a phone held upright: a picture that fills a double-page spread is read
+    /// a page (half the picture) at a time when seen whole. Close-ups still move over the whole picture.
+    /// Call <see cref="Refresh"/> after changing it, to re-plan the steps and keep the place.
+    /// </summary>
+    public bool OnePage { get; set; }
+
+    /// <summary>True when this page is read one page at a time right now.</summary>
+    bool OnePageFor(int page) => OnePage && ShownAsBook(page);
+
+    /// <summary>Which page of the open book a box mostly lies on: the left-hand page or the right-hand one.</summary>
+    int HalfOfBox(int page, RectD box) =>
+        BookLayout.IsPortrait(_pageRects[page]) ? Step.RightPage : box.CenterX < 0.5 ? Step.LeftPage : Step.RightPage;
+
+    /// <summary>
+    /// With one page at a time, which page a step is seen on when the whole page shows: a whole-page step's
+    /// own half, or for a stop the page holding it. 0 when both pages show.
+    /// </summary>
+    int HalfFor(Step step)
+    {
+        if (!OnePageFor(step.Page) || step.Explore || step.Stop == Step.Cover) return Step.Both;
+        if (step.Half != Step.Both) return step.Half;
+        if (step.Stop >= 0) return HalfOfBox(step.Page, Book!.Pages[step.Page].Stops[step.Stop].Box);
+        return BookLayout.IsPortrait(_pageRects[step.Page]) ? Step.RightPage : Step.LeftPage;
+    }
+
+    /// <summary>
+    /// With one page at a time, the page the camera is on right now (by where its middle is), for drawing
+    /// the page on its own. 0 when both pages show.
+    /// </summary>
+    public int VisibleHalf()
+    {
+        if (!BookMode || !OnePageFor(CurrentStep.Page) || CurrentStep.Stop == Step.Cover) return Step.Both;
+        RectD pr = _pageRects[CurrentStep.Page];
+        if (BookLayout.IsPortrait(pr)) return Step.RightPage;
+        return DisplayedCam().CenterX < BookLayout.SpineX(pr) ? Step.LeftPage : Step.RightPage;
+    }
+
+    /// <summary>
     /// Index of the first step showing the given page and stop (-1 whole page, -2 explore, -3 the cover).
     /// When there is no such step, the first step of the page, not counting the cover.
     /// </summary>
-    public int FindStep(int page, int stop)
+    public int FindStep(int page, int stop) => FindStep(page, stop, closing: false);
+
+    /// <summary>The same, telling the whole page as it opens from the whole page again at the end.</summary>
+    public int FindStep(int page, int stop, bool closing)
     {
-        int i = _steps.FindIndex(s => s.Page == page && s.Stop == stop);
+        int i = _steps.FindIndex(s => s.Page == page && s.Stop == stop && s.Closing == closing);
+        if (i < 0) i = _steps.FindIndex(s => s.Page == page && s.Stop == stop);
         if (i < 0) i = _steps.FindIndex(s => s.Page == page && s.Stop != Step.Cover);
         return Math.Max(0, i);
     }
@@ -271,21 +315,36 @@ public sealed class ReaderEngine
         {
             Page page = Book.Pages[p];
             int n = page.Stops.Count;
+            bool one = OnePageFor(p);
+            // With one page at a time, the whole page as it opens is the page holding the first stop, and the
+            // whole page at the end is the page holding the last stop (where its pan ends, if it pans).
+            int openingHalf = !one ? Step.Both : n > 0 ? HalfOfBox(p, page.Stops[0].Box) : HalfFor(new Step(p, Step.WholePage));
+            int closingHalf = !one || n == 0 ? Step.Both : HalfOfBox(p, page.Stops[n - 1].To ?? page.Stops[n - 1].Box);
             if (page.Explore)
             {
                 // Guided intro (if any), then the page is handed over for exploring.
-                if (n > 0 && s.WholePageFirst && page.OpenWhole) steps.Add(new Step(p, Step.WholePage));
+                if (n > 0 && s.WholePageFirst && page.OpenWhole) steps.Add(new Step(p, Step.WholePage, Half: openingHalf));
                 for (int i = 0; i < n; i++) steps.Add(new Step(p, i));
                 steps.Add(new Step(p, Step.Exploring, true));
                 continue;
             }
-            if (n == 0) { steps.Add(new Step(p, Step.WholePage)); continue; }
-            if (s.WholePageFirst && page.OpenWhole) steps.Add(new Step(p, Step.WholePage));
+            if (n == 0)
+            {
+                // A page with nothing to stop at is shown whole; one page at a time, both of its pages in turn.
+                if (one && !BookLayout.IsPortrait(_pageRects[p]))
+                {
+                    steps.Add(new Step(p, Step.WholePage, Half: Step.LeftPage));
+                    steps.Add(new Step(p, Step.WholePage, Half: Step.RightPage));
+                }
+                else steps.Add(new Step(p, Step.WholePage, Half: one ? Step.RightPage : Step.Both));
+                continue;
+            }
+            if (s.WholePageFirst && page.OpenWhole) steps.Add(new Step(p, Step.WholePage, Half: openingHalf));
             for (int i = 0; i < n; i++) steps.Add(new Step(p, i));
             // The whole page again at the end, unless the last stop already shows all of it.
             Stop last = page.Stops[n - 1];
             bool full = last.To is null && last.Box.W > 0.95 && last.Box.H > 0.95;
-            if (s.WholePageLast && !full) steps.Add(new Step(p, Step.WholePage, Closing: true));
+            if (s.WholePageLast && !full) steps.Add(new Step(p, Step.WholePage, Closing: true, Half: closingHalf));
         }
         return steps;
     }
@@ -296,7 +355,7 @@ public sealed class ReaderEngine
         if (!HasBook) return;
         Step cur = CurrentStep;
         _steps = BuildSteps();
-        StepIndex = FindStep(cur.Page, cur.Stop);
+        StepIndex = FindStep(cur.Page, cur.Stop, cur.Closing);
         if (!Exploring) MoveTo(cur.Page);
         else RaiseChanged();
     }
@@ -411,20 +470,40 @@ public sealed class ReaderEngine
     /// The camera that shows a page whole, with a little air around it. With the book look it frames the
     /// whole open book, board and page edges included.
     /// </summary>
-    public RectD WholeCam(int page) =>
-        ShownAsBook(page) ? Inflate(BookLayout.Book(_pageRects[page]), BookLayout.Air) : Inflate(_pageRects[page], 0.03);
+    public RectD WholeCam(int page) => WholeCam(page, Step.Both);
+
+    /// <summary>
+    /// The same for one page of the open book (<paramref name="half"/> 1 left, 2 right): that page with its
+    /// board and page edges round it.
+    /// </summary>
+    public RectD WholeCam(int page, int half)
+    {
+        if (!ShownAsBook(page)) return Inflate(_pageRects[page], 0.03);
+        if (half == Step.Both) return Inflate(BookLayout.Book(_pageRects[page]), BookLayout.Air);
+        RectD one = HalfRect(page, half);
+        double side = BookLayout.StackRoom + BookLayout.Board + BookLayout.Air, edge = BookLayout.Board + BookLayout.Air;
+        return new RectD(one.X - side, one.Y - edge, one.W + 2 * side, one.H + 2 * edge);
+    }
+
+    /// <summary>One page of a picture's open spread, in world units.</summary>
+    public RectD HalfRect(int page, int half)
+    {
+        RectD spread = BookLayout.Spread(_pageRects[page]);
+        return half == Step.LeftPage ? spread with { W = spread.W / 2 } : half == Step.RightPage ? new RectD(spread.CenterX, spread.Y, spread.W / 2, spread.H) : spread;
+    }
 
     /// <summary>The camera on the closed book, centred on it.</summary>
     public RectD ClosedCam(int page) => Inflate(BookLayout.Closed(_pageRects[page]), BookLayout.Air);
 
     /// <summary>A page seen whole, with the book's focus style at a gentler strength.</summary>
-    Shot WholeShot(int page)
+    Shot WholeShot(int page, int half = Step.Both)
     {
         // The whole page never gets a spotlight: a book set to spotlight shows soft edges here instead.
         string wholeStyle = Book!.FocusStyle == FocusStyles.Spotlight ? FocusStyles.Vignette : Book.FocusStyle;
-        // In the open book the focus is both pages, so a portrait book's left-hand page isn't darkened.
-        RectD focus = ShownAsBook(page) ? BookLayout.Spread(_pageRects[page]) : _pageRects[page];
-        return Styled(WholeCam(page), focus, wholeStyle, 0.6);
+        // In the open book the focus is both pages (or the one page showing), so a portrait book's
+        // left-hand page isn't darkened.
+        RectD focus = ShownAsBook(page) ? HalfRect(page, half) : _pageRects[page];
+        return Styled(WholeCam(page, half), focus, wholeStyle, 0.6);
     }
 
     /// <summary>The closed book: nothing in focus and no effects, just the cover in the middle of the screen.</summary>
@@ -437,7 +516,7 @@ public sealed class ReaderEngine
     public double CreaseStrength()
     {
         if (!BookMode || ViewWidth <= 0) return 0;
-        double whole = ViewFor(WholeCam(CurrentStep.Page)).Scale, now = GetView(withShake: false).Scale;
+        double whole = ViewFor(WholeCam(CurrentStep.Page, VisibleHalf())).Scale, now = GetView(withShake: false).Scale;
         return whole <= 0 ? 0 : BookLayout.CreaseStrength(now / whole);
     }
 
@@ -449,7 +528,7 @@ public sealed class ReaderEngine
         if (step.Explore) return Styled(ExploreStart(), pr, FocusStyles.None, 0);
         if (step.Stop == Step.Cover) return CoverShot(step.Page);
         Stop? stop = CurrentStop;
-        if (Overview || stop is null) return WholeShot(step.Page);
+        if (Overview || stop is null) return WholeShot(step.Page, HalfFor(step));
         RectD box = BoxRect(step.Page, end && stop.To is RectD to ? to : stop.Box);
         return Styled(Inflate(box, Settings.Padding), box, string.IsNullOrEmpty(stop.Style) ? Book!.FocusStyle : stop.Style, 1);
     }
@@ -508,7 +587,8 @@ public sealed class ReaderEngine
         }
         // With the book look, a page change is a page turning over where it can be, and a dip to dark where
         // it can't. Explore pages and tiled scenes are not shown as books, so they keep the flight.
-        else if (pageChanged && ms > 0 && !reduced && leaving is Leaving left && s.BookLook && s.PageTurn == "flip"
+        // One page at a time, going from one whole page of a picture to its other page is a page turn too.
+        else if ((pageChanged || PageOfSpreadChanges(leaving, step)) && ms > 0 && !reduced && leaving is Leaving left && s.BookLook && s.PageTurn == "flip"
             && !left.Step.Explore && !step.Explore && !IsTiled(fromPage) && !IsTiled(step.Page))
         {
             if (CanFlip(fromPage, left, step))
@@ -542,6 +622,18 @@ public sealed class ReaderEngine
     /// show the whole of a page that opens on a close-up to keep something hidden, unless the reader is
     /// already looking at that page whole or has seen it through to its last stop.
     /// </summary>
+    /// <summary>One page at a time: the whole of one page of a picture gives way to the whole of its other page.</summary>
+    bool PageOfSpreadChanges(Leaving? leaving, Step to) =>
+        leaving is Leaving left && left.Step.Page == to.Page && left.Whole && to.Stop == Step.WholePage
+        && HalfFor(left.Step) != Step.Both && HalfFor(left.Step) != HalfFor(to);
+
+    /// <summary>The shape of what is seen whole: the spread, or one page of it.</summary>
+    double ShapeOf(int page, int half)
+    {
+        RectD r = ShownAsBook(page) ? HalfRect(page, half) : _pageRects[page];
+        return r.W / r.H;
+    }
+
     bool CanFlip(int fromPage, Leaving left, Step to)
     {
         Page leave = Book!.Pages[fromPage], arrive = Book.Pages[to.Page];
@@ -549,7 +641,7 @@ public sealed class ReaderEngine
         bool canLeave = left.Whole || leave.OpenWhole || lastStopGoingOn;
         bool canArrive = to.Stop == Step.WholePage || arrive.OpenWhole;
         // The two pages lie on top of each other during the turn, so they have to be the same shape.
-        double a = _pageRects[fromPage].W / _pageRects[fromPage].H, b = _pageRects[to.Page].W / _pageRects[to.Page].H;
+        double a = ShapeOf(fromPage, HalfFor(left.Step)), b = ShapeOf(to.Page, HalfFor(to));
         return canLeave && canArrive && Math.Abs(a / b - 1) < 0.03;
     }
 
@@ -575,7 +667,7 @@ public sealed class ReaderEngine
         var s = Settings;
         bool smooth = s.ZoomPath == "smooth";
         double ms = Math.Max(1, CoverMs * s.MoveMs / StandardMoveMs);
-        Shot whole = WholeShot(0), closed = CoverShot(0);
+        Shot whole = WholeShot(0, HalfFor(left.Step.Stop == Step.Cover ? CurrentStep : left.Step)), closed = CoverShot(0);
         if (left.Step.Stop == Step.Cover)
         {
             var open = new Anim
@@ -622,12 +714,14 @@ public sealed class ReaderEngine
         var s = Settings;
         Step step = CurrentStep;
         bool smooth = s.ZoomPath == "smooth";
-        Shot wholeFrom = WholeShot(fromPage), wholeTo = WholeShot(step.Page);
+        int fromHalf = HalfFor(left.Step), toHalf = HalfFor(step);
+        Shot wholeFrom = WholeShot(fromPage, fromHalf), wholeTo = WholeShot(step.Page, toHalf);
         var flip = new Anim
         {
             Kind = AnimKind.Flip, From = wholeTo, To = wholeTo, Start = _now,
             Ms = Math.Max(1, FlipMs * s.MoveMs / StandardMoveMs),
             FromPage = fromPage, ToPage = step.Page, Forward = left.Direction >= 0,
+            FromHalf = fromHalf, ToHalf = toHalf,
         };
         if (step.Stop != Step.WholePage)
         {
@@ -1459,8 +1553,8 @@ public sealed class ReaderEngine
         double raw = a.Ms <= 0 ? 1 : Clamp((_now - a.Start) / a.Ms, 0, 1);
         double eased = Easings.InOutSine(raw);          // slow to lift, slow to settle
         return a.Forward
-            ? new FlipDraw(a.FromPage, a.ToPage, eased, true, WholeCam(a.FromPage), WholeCam(a.ToPage))
-            : new FlipDraw(a.ToPage, a.FromPage, 1 - eased, false, WholeCam(a.ToPage), WholeCam(a.FromPage));
+            ? new FlipDraw(a.FromPage, a.ToPage, eased, true, WholeCam(a.FromPage, a.FromHalf), WholeCam(a.ToPage, a.ToHalf), a.FromHalf, a.ToHalf)
+            : new FlipDraw(a.ToPage, a.FromPage, 1 - eased, false, WholeCam(a.ToPage, a.ToHalf), WholeCam(a.FromPage, a.FromHalf), a.ToHalf, a.FromHalf);
     }
 
     /// <summary>

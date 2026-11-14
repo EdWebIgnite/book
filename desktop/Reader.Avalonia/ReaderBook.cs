@@ -139,6 +139,18 @@ public sealed partial class ReaderView
             foreach (var (rect, brush) in _stacks) ctx.DrawRectangle(brush, _stackLine, rect);
         }
 
+        /// <summary>
+        /// The board's edge along the spine, for one page shown on its own: a strip of board as wide as the
+        /// board round the other edges, on the right of the spine (<paramref name="right"/>) or the left.
+        /// </summary>
+        public void DrawSpineEdge(DrawingContext ctx, bool right)
+        {
+            double mid = _width / 2, b = BookLayout.Board, r = 0.012;
+            var strip = right ? new Rect(mid, -b, b, 1 + 2 * b) : new Rect(mid - b, -b, b, 1 + 2 * b);
+            var round = new RoundedRect(strip, right ? new CornerRadius(0, r, r, 0) : new CornerRadius(r, 0, 0, r));
+            ctx.DrawRectangle(_boardBrush, _rim, round);
+        }
+
         /// <summary>The crease and the curve of the pages, as strong as <paramref name="strength"/> (0 to 1).</summary>
         public void DrawCrease(DrawingContext ctx, double strength)
         {
@@ -222,6 +234,92 @@ public sealed partial class ReaderView
         }
         DrawPage(ctx, book, page, v.ToScreen(pr), null, w, h, scaling, quality, weather: true);
         using (ctx.PushTransform(space)) frame.DrawCrease(ctx, crease);
+    }
+
+    /// <summary>
+    /// One page at a time: hide the page of the spread that isn't being read (<paramref name="shown"/> is
+    /// the one that is), as strongly as <paramref name="strength"/>. The backdrop goes over it, and the
+    /// board's edge closes off the page being read along the spine, so it looks like a book of single pages.
+    /// </summary>
+    void CoverOtherPage(DrawingContext ctx, LoadedBook book, int page, ViewTransform v, int shown, double strength, double w, double h)
+    {
+        if (strength < 0.005) return;
+        RectD spread = v.ToScreen(BookLayout.Spread(Engine.PageRects[page]));
+        double spine = spread.CenterX;
+        bool hideRight = shown == Reader.Core.Step.LeftPage;
+        Rect hidden = hideRight ? new Rect(spine, 0, Math.Max(0, w - spine), h) : new Rect(0, 0, Math.Max(0, spine), h);
+        if (hidden.Width <= 0) return;
+        using (ctx.PushOpacity(Math.Clamp(strength, 0, 1)))
+        {
+            ctx.FillRectangle(BackdropBrush, hidden);
+            using (ctx.PushTransform(SpreadSpace(spread))) FrameFor(book, page).DrawSpineEdge(ctx, right: hideRight);
+        }
+    }
+
+    /// <summary>
+    /// One page at a time, a single page turning: the page being read lifts from its outer edge and rolls
+    /// away over its own inner edge, uncovering the next page lying in its place (going back, the same
+    /// backwards). Both pages are drawn exactly as they lie at rest, so nothing jumps at either end.
+    /// </summary>
+    void DrawOnePageCurl(DrawingContext ctx, LoadedBook book, FlipDraw flip, double w, double h, double scaling)
+    {
+        ReaderEngine e = Engine;
+        int earlier = flip.TurningPage, later = flip.UnderPage;
+        ViewTransform vTurn = e.ViewFor(flip.TurningCam), vUnder = e.ViewFor(flip.UnderCam);
+        RectD pageRect = vUnder.ToScreen(e.HalfRect(later, flip.UnderHalf));
+        RectD earlierSpread = vTurn.ToScreen(BookLayout.Spread(e.PageRects[earlier]));
+        double turned = Math.Clamp(flip.Fold, 0, 1);
+        double lift = Curl.Lift(turned), radius = Curl.MostRadius * lift;
+
+        // Underneath: the page that is uncovered, as it lies at rest. Round it, what was round the page being
+        // read fades into what is round the new one while the page is in the air.
+        DrawOpenBook(ctx, book, later, vUnder, w, h, scaling, Quick, 1);
+        CoverOtherPage(ctx, book, later, vUnder, flip.UnderHalf, 1, w, h);
+        double before = 1 - SmoothStep(0.3, 0.7, turned);
+        if (before > 0.005)
+        {
+            var outside = new StreamGeometry();
+            using (StreamGeometryContext g = outside.Open())
+            {
+                g.SetFillRule(FillRule.EvenOdd);
+                AddRect(g, new Rect(0, 0, w, h));
+                AddRect(g, ToRect(pageRect));
+            }
+            using (ctx.PushGeometryClip(outside))
+            using (ctx.PushOpacity(before))
+            {
+                using (ctx.PushTransform(SpreadSpace(earlierSpread))) FrameFor(book, earlier).DrawUnder(ctx, shadow: false);
+                CoverOtherPage(ctx, book, earlier, vTurn, flip.TurningHalf, 1, w, h);
+            }
+        }
+
+        // The turning page: the half of the earlier picture that was being read, hinged at the page's left edge.
+        Half turning = HalfOf(book, earlier, right: flip.TurningHalf == Reader.Core.Step.RightPage, earlierSpread.W * scaling);
+        var front = new Face(turning.Picture, turning.X0, turning.X1, 0, turning.Picture?.Size.Height ?? 0, SpineAtLeft: true);
+        var back = new Face(null, 0, 0, 0, 0, SpineAtLeft: false);
+        double hinge = pageRect.X, width = pageRect.W;
+        Rect page = ToRect(pageRect);
+
+        // The roll throws a soft shadow on the page it uncovers, just beyond its outermost point.
+        double outermost = 0;
+        for (int i = 0; i <= 24; i++)
+        {
+            var (x, z, _) = Curl.Sheet(turned, i / 24.0);
+            outermost = Math.Max(outermost, x * LeafEye * pageRect.H / (LeafEye * pageRect.H - z * width));
+        }
+        using (ctx.PushClip(page))
+            DrawShadowBand(ctx, hinge + outermost * width, width * (0.05 + 0.9 * radius), pageRect.Y, pageRect.H, 0.5 * lift);
+
+        // What rolls past the page's inner edge goes out of sight there, as if over the edge of the book.
+        var place = new SheetPlace(hinge, width, pageRect.Y, pageRect.H, 1, LeafEye * pageRect.H);
+        using (ctx.PushClip(new Rect(hinge, -1e5, 2e5, 2e5)))
+        using (ctx.PushRenderOptions(Quick))
+            DrawSheet(ctx, place, front, back, LeafStrips, (t, row) => Curl.Sheet(Curl.Leaning(turned, row), t), backDarker: 0.05 * lift);
+
+        // The pictures-on-top and weather of the page being turned stay on it while it lies flat.
+        double flatAtStart = 1 - SmoothStep(0, 0.12, turned);
+        RectD earlierPage = vTurn.ToScreen(e.PageRects[earlier]);
+        DrawOnTop(ctx, book, earlier, earlierPage, page, flatAtStart);
     }
 
     // ---------------------------------------------------------------- bending sheets

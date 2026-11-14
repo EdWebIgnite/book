@@ -36,6 +36,21 @@ public sealed class ReaderScreen : UserControl
     double _gateTipUntil = double.NegativeInfinity;
     double? _gearHeldSince;
     bool _gearOpened;
+    Thickness _safe;
+    bool _autoOnePage;
+
+    /// <summary>Room at the top for the back button, title and gear, below any notch or status bar.</summary>
+    double TopRoom => TopInset + _safe.Top;
+    /// <summary>Room at the bottom for the arrows, above any gesture bar.</summary>
+    double BottomRoom => (Compact ? CompactBottom : BaseBottom) + _safe.Bottom;
+
+    /// <summary>
+    /// A phone on its side: the screen is so short that the picture also uses the room between the arrows,
+    /// which sit in the bottom corners beside it, or the open book would be tiny.
+    /// </summary>
+    bool Compact => _autoOnePage && Bounds.Height > 0 && Bounds.Height <= 519;
+
+    const double CompactBottom = 16;
 
     public ReaderScreen(ReaderSettings settings, ISoundOutput? sound = null)
     {
@@ -121,6 +136,7 @@ public sealed class ReaderScreen : UserControl
         _pageNo = new TextBlock
         {
             Foreground = new ImmutableSolidColorBrush(Color.FromArgb(230, 255, 255, 255)), FontSize = 13,
+            TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false,
             Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 3, Color = Colors.Black, Opacity = 0.8 },
         };
@@ -197,12 +213,50 @@ public sealed class ReaderScreen : UserControl
     }
 
     /// <summary>The words on The End box's buttons, which the editor's preview changes.</summary>
+    /// <summary>
+    /// The parts of the screen a phone keeps for itself (a notch or camera hole, rounded corners, the
+    /// status bar and the gesture bar). Buttons and words stay clear of them; the picture fills the
+    /// screen behind the top and bottom bars and stays clear of the sides.
+    /// </summary>
+    public Thickness SafeArea
+    {
+        get => _safe;
+        set
+        {
+            if (_safe == value) return;
+            _safe = value;
+            View.Margin = new Thickness(value.Left, 0, value.Right, 0);
+            View.Engine.SetInsets(TopRoom, BottomRoom);
+            ApplyLayout(Bounds.Size);
+            if (View.Engine.Book is not null) MakeRoom(View.Engine.State);
+        }
+    }
+
+    /// <summary>
+    /// Read one page at a time whenever the screen is taller than it is wide (a phone or tablet held
+    /// upright), and the open spread when it is on its side. Off on a computer, which always shows the spread.
+    /// </summary>
+    public bool AutoOnePage
+    {
+        get => _autoOnePage;
+        set { _autoOnePage = value; UpdateOnePage(Bounds.Size); }
+    }
+
+    void UpdateOnePage(Size size)
+    {
+        bool one = _autoOnePage && size.Height > size.Width;
+        if (one == View.Engine.OnePage) return;
+        View.Engine.OnePage = one;
+        if (View.Engine.Book is not null) View.Do(e => e.Refresh());
+    }
+
     public string EndAgainText { get => _again.Label.Text ?? ""; set => _again.Label.Text = value; }
     public string EndBackText { get => _endBack.Label.Text ?? ""; set => _endBack.Label.Text = value; }
 
     public void SetBook(LoadedBook book, int startStep = 0)
     {
         Title = book.Book.Title;
+        View.Engine.OnePage = _autoOnePage && Bounds.Height > Bounds.Width;
         View.SetBook(book, startStep);
         View.Focus();
     }
@@ -276,8 +330,8 @@ public sealed class ReaderScreen : UserControl
             _words.Measure(new Size(_words.Width, double.PositiveInfinity));
             words = _words.DesiredSize.Height - _words.Margin.Top - _words.Margin.Bottom + 18;
         }
-        bool roomy = h >= 520 && h - TopInset - BaseBottom - words >= h * 0.45;
-        View.Engine.InsetGoal.Bottom = BaseBottom + (roomy ? words : 0);
+        bool roomy = h >= 520 && h - TopRoom - BottomRoom - words >= h * 0.45;
+        View.Engine.InsetGoal.Bottom = BottomRoom + (roomy ? words : 0);
     }
 
     void OnFrame(double now)
@@ -346,6 +400,7 @@ public sealed class ReaderScreen : UserControl
         base.OnSizeChanged(e);
         ApplyLayout(e.NewSize);
         if (View.Engine.Book is not null) MakeRoom(View.Engine.State);
+        UpdateOnePage(e.NewSize);
     }
 
     /// <summary>
@@ -361,15 +416,34 @@ public sealed class ReaderScreen : UserControl
         double round = narrow ? 52 : 56, arrow = narrow ? 66 : 76;
         foreach (RoundButton b in new[] { _back, _gear, _zoomIn, _zoomOut, _whole, _showMe }) b.Diameter = round;
         _prev.Diameter = _next.Diameter = arrow;
-        double edge = low ? 12 : 22;
-        _prev.Margin = new Thickness(14, 0, 0, edge);
-        _next.Margin = new Thickness(0, 0, 14, edge);
+        Thickness safe = _safe;
+        double edge = (low ? 12 : 22) + safe.Bottom;
+        _prev.Margin = new Thickness(14 + safe.Left, 0, 0, edge);
+        _next.Margin = new Thickness(0, 0, 14 + safe.Right, edge);
         _pageNo.IsVisible = !low;
-        _pageNo.Margin = new Thickness(arrow + 20, 0, arrow + 20, edge + 4);
-
+        _pageNo.Margin = new Thickness(arrow + 20 + safe.Left, 0, arrow + 20 + safe.Right, edge + 4);
+        _back.Margin = new Thickness(12 + safe.Left, 8 + safe.Top, 0, 0);
+        _gear.Margin = new Thickness(0, 8 + safe.Top, 12 + safe.Right, 0);
+        _gateTip.Margin = new Thickness(0, 72 + safe.Top, 12 + safe.Right, 0);
         // The title sits between the back button and the gear, level with their middles.
         double gearRoom = _showGear ? round + 12 + 12 : 12;
-        _title.Margin = new Thickness(12 + round + 12, 8 + (round - 27) / 2, gearRoom, 0);
+        double sideRoom = 0;
+        if (low)
+        {
+            // Too short for a column (a phone on its side): the zoom buttons go in a row along the top, beside the gear.
+            _side.Orientation = Orientation.Horizontal;
+            _side.VerticalAlignment = VerticalAlignment.Top;
+            _side.Margin = new Thickness(0, 8 + safe.Top, gearRoom + safe.Right, 0);
+            int shown = _side.Children.Count(c => c.IsVisible);
+            sideRoom = shown * (round + _side.Spacing);
+        }
+        else
+        {
+            _side.Orientation = Orientation.Vertical;
+            _side.VerticalAlignment = VerticalAlignment.Center;
+            _side.Margin = new Thickness(0, safe.Top, 12 + safe.Right, safe.Bottom);
+        }
+        _title.Margin = new Thickness(12 + round + 12 + safe.Left, 8 + safe.Top + (round - 27) / 2, gearRoom + sideRoom + safe.Right, 0);
 
         string size_ = _settings.CaptionSize;
         double cap = size_ == "small" ? 18 : size_ == "large" ? (narrow ? 23 : 28) : (narrow ? 18 : 22);
@@ -381,7 +455,8 @@ public sealed class ReaderScreen : UserControl
         _askText.LineHeight = (low ? 12 : 15) * 1.35;
         _askBox.Padding = low ? new Thickness(10, 4) : new Thickness(14, 7);
         _words.Spacing = low ? 4 : 8;
-        _words.Width = Math.Max(120, low ? w - 210 : narrow ? w - 24 : Math.Min(720, w - 150));
-        _words.Margin = new Thickness(0, 0, 0, low ? 12 : narrow ? 104 : 112);
+        double across = w - safe.Left - safe.Right;
+        _words.Width = Math.Max(120, low ? across - 210 : narrow ? across - 24 : Math.Min(720, across - 150));
+        _words.Margin = new Thickness(safe.Left, 0, safe.Right, (low ? 12 : narrow ? 104 : 112) + safe.Bottom);
     }
 }

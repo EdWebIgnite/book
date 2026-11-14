@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Dark from the very first frame, the same colour as the reader's backdrop, so nothing flashes white
+       while the app starts. No title bar: the reader has its own buttons. -->
+  <style name="ReaderTheme" parent="@style/Theme.AppCompat.NoActionBar">
+    <item name="android:windowBackground">@color/backdrop</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+  </style>
+  <color name="backdrop">#1c1b22</color>
+</resources>

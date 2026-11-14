@@ -8,8 +8,15 @@ namespace Reader.Core;
 /// The whole page shown again after its stops, before moving on. It counts as being past the last
 /// stop, so whatever started during the page is still there.
 /// </param>
-public readonly record struct Step(int Page, int Stop, bool Explore = false, bool Closing = false)
+/// <param name="Half">
+/// With one page at a time (a phone held upright), which page of the open book a whole-page step shows:
+/// 1 the left-hand page, 2 the right-hand page. 0 is both pages, or not a whole-page step.
+/// </param>
+public readonly record struct Step(int Page, int Stop, bool Explore = false, bool Closing = false, int Half = 0)
 {
+    /// <summary>The left-hand and right-hand pages of an open book, for <see cref="Half"/>.</summary>
+    public const int Both = 0, LeftPage = 1, RightPage = 2;
+
     /// <summary>Stop number meaning "the whole page".</summary>
     public const int WholePage = -1;
     /// <summary>Stop number meaning "the child is exploring".</summary>
@@ -137,7 +144,14 @@ public sealed record PartyDraw(double Alpha, PartyStar[] Stars)
 /// <param name="Forward">True when going on through the book.</param>
 /// <param name="TurningCam">The camera that shows the turning page whole, in world units.</param>
 /// <param name="UnderCam">The camera that shows the page underneath whole.</param>
-public readonly record struct FlipDraw(int TurningPage, int UnderPage, double Fold, bool Forward, RectD TurningCam, RectD UnderCam);
+/// <param name="TurningHalf">With one page at a time: which page of the earlier picture's spread is turning (see <see cref="Step.Half"/>). 0 when both pages show.</param>
+/// <param name="UnderHalf">With one page at a time: which page of the later picture's spread lies underneath.</param>
+public readonly record struct FlipDraw(int TurningPage, int UnderPage, double Fold, bool Forward, RectD TurningCam, RectD UnderCam,
+    int TurningHalf = 0, int UnderHalf = 0)
+{
+    /// <summary>True when one page at a time is showing, so a single page turns rather than a sheet of an open spread.</summary>
+    public bool OnePage => TurningHalf != 0 || UnderHalf != 0;
+}
 
 /// <summary>
 /// The book's cover. <paramref name="Open"/> is 0 with the book shut and 1 once the cover has swung

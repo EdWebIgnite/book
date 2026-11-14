@@ -21,5 +21,6 @@
     <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
     <ProjectReference Include="..\Reader.Avalonia\Reader.Avalonia.csproj" />
     <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
+    <ProjectReference Include="..\Reader.App\Reader.App.csproj" />
   </ItemGroup>
 </Project>

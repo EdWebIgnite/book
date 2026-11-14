@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The reader for Android phones and tablets: the same shelf, reader and settings as the Windows
+    program (Reader.App, Reader.Avalonia and Reader.Core), put on the phone's screen. The books in
+    ../../content are packed into the app, so it needs no internet at all.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Phone</RootNamespace>
+    <AssemblyName>BookReader.Phone</AssemblyName>
+    <ApplicationId>app.bookreader</ApplicationId>
+    <ApplicationTitle>Book Reader</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <!--
+      Android 8.0 (API 26) and newer. That reaches nearly every phone and tablet still in use, cheap ones
+      included, and is the oldest Android that .NET for Android and Avalonia still build for. Built
+      against Android 16 (API 36), which Google Play asks new apps to target.
+    -->
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <TargetPlatformVersion>36</TargetPlatformVersion>
+    <!--
+      64-bit Arm for every phone and tablet of the last several years, and 32-bit Arm for the cheapest
+      ones, many of which still run a 32-bit Android even on a 64-bit chip. Intel builds are left out:
+      almost no real phone needs them, and they would only make the app bigger.
+    -->
+    <RuntimeIdentifiers>android-arm64;android-arm</RuntimeIdentifiers>
+    <!-- Where the tools are on the build machine. Override on the command line if they live elsewhere. -->
+    <AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == '' and Exists('/root/android-sdk')">/root/android-sdk</AndroidSdkDirectory>
+    <JavaSdkDirectory Condition="'$(JavaSdkDirectory)' == '' and Exists('/usr/lib/jvm/java-21-openjdk-amd64')">/usr/lib/jvm/java-21-openjdk-amd64</JavaSdkDirectory>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- One APK holding both kinds of Arm, so the same file can be copied to any phone and installed. -->
+    <AndroidPackageFormats>apk;aab</AndroidPackageFormats>
+    <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Android" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+    <ProjectReference Include="..\Reader.Avalonia\Reader.Avalonia.csproj" />
+    <ProjectReference Include="..\Reader.App\Reader.App.csproj" />
+    <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The books, packed into the app. They are unpacked to the app's own storage the first time it runs. -->
+    <AndroidAsset Include="..\..\content\**\*" Link="Assets\content\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

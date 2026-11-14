@@ -1,6 +1,6 @@
 # Book Reader for the desktop
 
-This folder holds the reader as a C# program for Windows, Linux and macOS, built with [Avalonia](https://avaloniaui.net/). It opens the same books as the browser version in `web/` and is meant to behave the same way. The book format (`book.json`) is unchanged: both readers use the files in `content/`.
+This folder holds the reader as a C# program for Windows, Linux and macOS, and as an app for Android phones and tablets, built with [Avalonia](https://avaloniaui.net/). It opens the same books as the browser version in `web/` and is meant to behave the same way. The book format (`book.json`) is unchanged: both readers use the files in `content/`.
 
 The browser version is still the reference. When the two disagree, `web/reader.js` is right and this is a bug.
 
@@ -11,7 +11,9 @@ The browser version is still the reference. When the two disagree, `web/reader.j
 | `Reader.Core/` | The reader with no screen attached. Geometry, settings, the book format, and the engine that decides where the camera is, what is in focus, what has been found and what should be heard. It uses no drawing or window code at all, so it can be tested on its own and reused by the editor and the phone apps. |
 | `Reader.Avalonia/` | The reader on screen. `ReaderView` moves the engine on once a frame and passes on touches, the wheel and the keyboard; its drawing is in `ReaderPaint.cs`. `ReaderScreen` adds the buttons, the caption and The End box. `BookFiles.cs` loads the pictures, including the tiles of big scenes. |
 | `Reader.Audio/` | Sound. The small interface sounds are made in code (`Synth.cs`); the SoundFlow library opens the sound device and reads sound files. |
-| `Player/` | The program itself: the bookshelf, the reader screen and the settings panel. |
+| `Reader.App/` | The whole app as one view: the bookshelf, the reader screen and the settings panel, and how they hand over to each other. Shared by the Windows program and the phone app. |
+| `Player/` | The program for computers: a window holding `Reader.App`, the command line, the screenshot hook and the bench. |
+| `Phone/` | The app for Android phones and tablets: `Reader.App` on the phone's screen, with the books packed inside. See "Android" below. |
 | `Reader.Tests/` | Tests for `Reader.Core` and for the synthesised sounds. |
 
 Two things to know when reading the code:
@@ -35,6 +37,8 @@ export DOTNET_ROOT=/opt/dotnet PATH=/opt/dotnet:$PATH DOTNET_CLI_TELEMETRY_OPTOU
 cd desktop
 dotnet build BookReader.sln
 ```
+
+The solution includes the Android app, so building all of it needs the Android tools too (see "Android" below). Without them, build just the Windows program with `dotnet build Player`.
 
 ## Run
 
@@ -146,6 +150,56 @@ The result is one file, `BookReader.exe` (about 105 MB), which needs nothing ins
 
 Keep build output out of the repo. `bin/`, `obj/` and `publish/` are ignored by `.gitignore`.
 
+## Android
+
+`Phone/` is the reader for Android phones and tablets. It is the same reader as on Windows (`Reader.Core`, `Reader.Avalonia` and `Reader.App`), with the books from `content/` packed inside, so it works with no internet. It asks for no permissions at all (not even internet), collects nothing, and has no links out of the app and no editor.
+
+- **Android 8.0 (API 26) or newer**, built against Android 16 (API 36). API 26 reaches nearly every phone still in use, cheap ones included, and is the oldest Android that .NET and Avalonia still build for.
+- **64-bit and 32-bit Arm** (`arm64-v8a` and `armeabi-v7a`) in one APK of about 44 MB, 16 MB of it books. The 32-bit part is for the cheapest phones, many of which run a 32-bit Android. The 64-bit native libraries are aligned for phones with 16 KB memory pages (32-bit Android always uses 4 KB pages). From the Play Store (the `.aab`), each phone only downloads its own part.
+
+### Build and install
+
+You need the .NET 10 SDK with the Android workload (`dotnet workload install android`), the Android SDK with platform 36 and build-tools 36, and JDK 21. `ANDROID_HOME` and `JAVA_HOME` say where they are.
+
+```
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=/root/android-sdk
+./publish-android.sh /some/folder/outside/the/repo
+```
+
+That makes `BookReader.apk` and `BookReader.aab`. To install the APK, copy it to the phone and open it (Android asks once to allow installing from that app), or with a cable and USB debugging on: `adb install BookReader.apk`.
+
+Without a keystore the APK is signed with the .NET debug key, which is fine for your own phones. To sign with your own key, make one once and keep it outside the repo (never commit a keystore):
+
+```
+keytool -genkeypair -keystore ~/keys/bookreader.keystore -alias bookreader -keyalg RSA -keysize 2048 -validity 10000
+BOOKREADER_STORE_PASS=... ./publish-android.sh /some/folder ~/keys/bookreader.keystore bookreader
+```
+
+An update must be signed with the same key as the copy already on the phone, or Android refuses it.
+
+### How it reads on a phone
+
+- **Held upright, one page at a time.** A picture that fills a double-page spread is read a page (half the picture) at a time when it is seen whole. As a page opens, the page shown is the one holding the first stop; at the end of a picture, the one holding the last stop. A picture with nothing to stop at shows its left page, then its right page. Close-ups still move over the whole picture: as the camera goes in, the other page fades back in (the same way the crease fades), so a close-up can sit across the middle. Going from one page of a picture to its other page, or on to the next picture, is a single page turning. Portrait books show one portrait page. Explore pages are explored the same both ways. These rules are in `Reader.Core` (`OnePage`, `Step.Half`) with tests in `OnePageTests.cs`.
+- **Held sideways, the open book**, exactly as on Windows.
+- **Turning the phone keeps the place.** The same step stays on, and the camera glides to its new framing.
+- **Touch.** A tap anywhere goes on; a swipe left goes on and a swipe right goes back; a quick second tap is ignored. Pinch and drag explore, and a tap finds things. Touch targets are at least the size set in the settings, measured with the screen's real density. Dragging the page corner is not there: a tap or a swipe turns the page.
+- **The phone's edges.** Buttons and words keep clear of the notch, rounded corners, status bar and gesture bar; the picture fills the screen behind the bars.
+- **Back** closes the settings, or leaves the book for the shelf. Only from the shelf does it leave the app, so a child is never thrown out of the middle of a story.
+- **Into the background, or the screen locks:** the place is kept, sound stops and the clock stops, so the story carries on from the same moment. The screen stays on while a book is open.
+- **Settings** are only the grown-ups' ones, behind the gear, and a fresh install starts with the two-second lock on the gear.
+- **Cheap phones.** No picture is held bigger than 4096 pixels (most phone graphics chips can't draw bigger in one go; page 12 of the puddle book is 4800 wide), pictures are read at that size rather than shrunk afterwards, and only as many full-size pictures are kept as the phone's memory class allows (2 to 4). When Android says memory is short, the full-size pictures are let go and load again when wanted.
+- **Sound** uses the same library as Windows, which plays through Android's own sound system. If it can't start, the app stays silent.
+
+The books are unpacked from the app to its own storage the first time it runs, and again after each update.
+
+The Player can show what the phone app would, with no phone: `--phone` behaves as the phone app (touch, one page at a time when upright, the phone's picture limits), `--units-per-cm` gives a screen density and `--safe left,top,right,bottom` the room kept for a notch and bars. `--size` is in Android's screen units and `--scale` is the density. For a Galaxy S22 Ultra held upright:
+
+```
+dotnet Player/bin/Debug/net10.0/BookReader.dll --shot s22.png --phone --size 411x882 --scale 3.5 --safe 0,40,0,24   --units-per-cm 56 --book biggest-puddle --page 2 --stop -1
+```
+
+The bench takes `--phone` too, and reports how much memory a book took.
+
 ## Sound
 
 Sound uses [SoundFlow](https://github.com/LSXPrime/SoundFlow) 1.4.2, which is MIT licensed and carries the public-domain miniaudio library for Windows, Linux, macOS, Android and iOS. It was chosen because it plays through each system's own sound API with nothing extra to install, reads wav and mp3 files, and lets the program supply its own samples.
@@ -156,7 +210,7 @@ If there is no sound device, or the sound library cannot load, the reader stays 
 
 ## Different from the browser version
 
-- **The open book, the page turn and the cover** are only on the desktop. In the browser, `flip` flies across and books start open.
+- **The open book, the page turn and the cover** are only in this reader (Windows and Android). In the browser, `flip` flies across and books start open.
 - **Reduced motion.** "Follow this device's setting" reads the Windows setting (Settings, Accessibility, Visual effects, Animation effects). Linux and macOS are not asked yet, so there the choice in the settings panel is the way to reduce motion.
 - **No hand hints.** At the very start the Next arrow pulses instead of a tapping hand, and there is no dragging hand on explore pages (the idle hints do that job).
 - **Making room for a caption** starts gently. The browser moves the picture a fixed share of the way every frame, which starts with a jolt; here it eases like a damped spring and arrives at about the same time.

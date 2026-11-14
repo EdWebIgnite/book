@@ -9,10 +9,10 @@ using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using Reader.Core;
 
-namespace Player;
+namespace Reader.App;
 
 /// <summary>The bookshelf: every book in the content folder as a cover and a title. A port of the library in web/index.html.</summary>
-sealed class ShelfView : UserControl
+public sealed class ShelfView : UserControl
 {
     public static readonly IBrush Cream = new ImmutableSolidColorBrush(Color.Parse("#fff7ec"));
     public static readonly IBrush Orange = new ImmutableSolidColorBrush(Color.Parse("#e8730c"));
@@ -22,13 +22,16 @@ sealed class ShelfView : UserControl
     readonly TextBlock _message;
     readonly List<Bitmap> _covers = new();
 
-    public ShelfView()
+    readonly StackPanel _page;
+
+    /// <param name="forTouch">The phone and tablet app: no folder button and no keyboard hint.</param>
+    public ShelfView(bool forTouch = false)
     {
         Background = Cream;
         var heading = new TextBlock { Text = "My Books", Foreground = Orange, FontSize = 40, FontWeight = FontWeight.Black, Margin = new Thickness(0, 0, 0, 4) };
         var hint = new TextBlock
         {
-            Text = "Pick a book, then press the gear (or S) for the settings.",
+            Text = forTouch ? "Tap a book to read it." : "Pick a book, then press the gear (or S) for the settings.",
             Foreground = Brown, FontSize = 16, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
         };
         var open = new Button { Content = "Open a book folder…", HorizontalAlignment = HorizontalAlignment.Right, Focusable = false };
@@ -37,7 +40,7 @@ sealed class ShelfView : UserControl
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 20) };
         Grid.SetColumn(open, 1);
         top.Children.Add(hint);
-        top.Children.Add(open);
+        if (!forTouch) top.Children.Add(open);
 
         _message = new TextBlock { Foreground = Brown, FontSize = 16, TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, 0, 0, 16) };
         _grid.MaxWidth = 1100;
@@ -46,11 +49,17 @@ sealed class ShelfView : UserControl
         Content = new ScrollViewer
         {
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            Content = new StackPanel { Margin = new Thickness(24), Children = { heading, top, _message, _grid } },
+            Content = _page = new StackPanel { Margin = new Thickness(24), Children = { heading, top, _message, _grid } },
         };
     }
 
     public event Action<ShelfEntry>? BookChosen;
+
+    /// <summary>Room kept clear for a notch, rounded corners or the system bars, added to the usual margin.</summary>
+    public Thickness SafeArea
+    {
+        set => _page.Margin = new Thickness(24 + value.Left, 24 + value.Top, 24 + value.Right, 24 + value.Bottom);
+    }
     public event Action? OpenFolderRequested;
 
     /// <summary>Something to tell the person at the shelf: no books found, or a book that wouldn't open.</summary>

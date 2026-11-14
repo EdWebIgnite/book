@@ -70,8 +70,18 @@ public sealed partial class ReaderView
 
         if (e.BookMode)
         {
-            if (e.GetCover() is CoverDraw cover) DrawCover(ctx, book, cover, v, scaling);
-            else if (e.GetFlip() is FlipDraw flip) DrawCurl(ctx, book, flip, scaling);
+            if (e.GetCover() is CoverDraw cover)
+            {
+                DrawCover(ctx, book, cover, v, scaling);
+                // One page at a time: as the cover settles, the page that isn't being read goes dark.
+                int shownHalf = e.VisibleHalf();
+                if (shownHalf != Reader.Core.Step.Both && cover.Open > 0) CoverOtherPage(ctx, book, cover.Page, v, shownHalf, SmoothStep(0.5, 1, cover.Open), w, h);
+            }
+            else if (e.GetFlip() is FlipDraw flip)
+            {
+                if (flip.OnePage) DrawOnePageCurl(ctx, book, flip, w, h, scaling);
+                else DrawCurl(ctx, book, flip, scaling);
+            }
             else
             {
                 double crease = e.CreaseStrength();
@@ -80,6 +90,10 @@ public sealed partial class ReaderView
                     RectD r = v.ToScreen(BookLayout.Book(e.PageRects[i]));
                     if (OnScreen(r, w, h, r.H * 0.12)) DrawOpenBook(ctx, book, i, v, w, h, scaling, quality, crease);
                 }
+                // One page at a time: the other page of the spread is hidden while the page is seen whole,
+                // and comes back as the camera goes in close, so close-ups still move over the whole picture.
+                int shownHalf = e.VisibleHalf();
+                if (shownHalf != Reader.Core.Step.Both) CoverOtherPage(ctx, book, e.CurrentStep.Page, v, shownHalf, crease, w, h);
             }
         }
         else

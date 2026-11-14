@@ -37,6 +37,13 @@ public sealed partial class ReaderView : Control
     double _frameTime, _watchAtFrame, _clockOffset;
     bool _haveOffset;
 
+    // Time spent paused (the app in the background, the phone locked) is left off the clock, so the story
+    // carries on from exactly where it was rather than jumping ahead by however long it was away.
+    double _pausedMs, _pausedAt;
+    bool _paused;
+
+    double Watch => _watch.Elapsed.TotalMilliseconds - _pausedMs;
+
     public ReaderView(ReaderSettings settings, ISoundOutput? sound = null)
     {
         _sound = new BookFolderSound(sound ?? new NoSound());
@@ -79,7 +86,40 @@ public sealed partial class ReaderView : Control
     public bool KeepAwake { get; set; }
 
     /// <summary>The time now, on the same clock the frames use.</summary>
-    public double Now => Clock?.Invoke() ?? _frameTime + (_watch.Elapsed.TotalMilliseconds - _watchAtFrame);
+    public double Now => Clock?.Invoke() ?? _frameTime + (Watch - _watchAtFrame);
+
+    /// <summary>
+    /// The app has gone into the background or the screen is off: stop drawing, stop every sound and
+    /// hold the clock still. <see cref="Resume"/> carries on from the same moment.
+    /// </summary>
+    public void Pause()
+    {
+        if (_paused) return;
+        _pausedAt = _watch.Elapsed.TotalMilliseconds;
+        _paused = true;
+        _idleCheck.Stop();
+        Engine.Visible = false;
+        Engine.Hush();
+    }
+
+    /// <summary>Back in the foreground: start the clock again where it stopped.</summary>
+    public void Resume()
+    {
+        if (!_paused) return;
+        _pausedMs += _watch.Elapsed.TotalMilliseconds - _pausedAt;
+        _paused = false;
+        if (_attached) _idleCheck.Start();
+        Wake();
+    }
+
+    /// <summary>The phone is short of memory: let go of every picture that can be loaded again later.</summary>
+    public void ReleaseMemory()
+    {
+        _tiles.Clear();
+        _pictures.Clear();
+        _book?.ReleaseMemory();
+        Wake();
+    }
 
     public LoadedBook? Book => _book;
 
@@ -144,7 +184,7 @@ public sealed partial class ReaderView : Control
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
-        _idleCheck.Start();
+        if (!_paused) _idleCheck.Start();
         Wake();
     }
 
@@ -187,7 +227,7 @@ public sealed partial class ReaderView : Control
 
         // The frame's own time, evened out (see FrameClock), then shifted on to the stopwatch's clock so
         // that touches, which are timed by the stopwatch, and frames agree about what time it is.
-        double raw = frameTime.TotalMilliseconds, watch = _watch.Elapsed.TotalMilliseconds;
+        double raw = frameTime.TotalMilliseconds, watch = Watch;
         if (!_haveOffset || Math.Abs(raw + _clockOffset - watch) > 100)
         {
             _clockOffset = watch - raw;
@@ -214,7 +254,7 @@ public sealed partial class ReaderView : Control
         if (Showing && (Engine.Restless || KeepAwake || ShowFrameRate)) AskFrame();
     }
 
-    bool Showing => IsEffectivelyVisible && _book is not null;
+    bool Showing => IsEffectivelyVisible && _book is not null && !_paused;
 
     /// <summary>One frame, by hand: move the engine on to now and redraw if anything changed. For screenshots and the bench.</summary>
     public void Tick()

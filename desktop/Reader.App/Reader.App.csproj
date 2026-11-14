@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The whole reading app as one view: the bookshelf, the reader screen and the settings panel. The
+    Windows program puts it in a window; the phone and tablet app puts it on the screen.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Reader.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+    <ProjectReference Include="..\Reader.Avalonia\Reader.Avalonia.csproj" />
+  </ItemGroup>
+</Project>
