@@ -40,17 +40,25 @@ public sealed class ReaderScreen : UserControl
     bool _autoOnePage;
 
     /// <summary>Room at the top for the back button, title and gear, below any notch or status bar.</summary>
-    double TopRoom => TopInset + _safe.Top;
+    double TopRoom => (Compact ? CompactTop : TopInset) + _safe.Top;
     /// <summary>Room at the bottom for the arrows, above any gesture bar.</summary>
     double BottomRoom => (Compact ? CompactBottom : BaseBottom) + _safe.Bottom;
 
     /// <summary>
-    /// A phone on its side: the screen is so short that the picture also uses the room between the arrows,
-    /// which sit in the bottom corners beside it, or the open book would be tiny.
+    /// A phone on its side: the screen is so short that the picture takes nearly the whole height, and the
+    /// buttons shrink, turn see-through and sit over the corners of the picture instead of above and below it.
     /// </summary>
     bool Compact => _autoOnePage && Bounds.Height > 0 && Bounds.Height <= 519;
 
-    const double CompactBottom = 16;
+    const double CompactTop = 8, CompactBottom = 8;
+
+    /// <summary>The see-through white of the buttons when they sit over the picture.</summary>
+    static readonly IBrush GlassPaper = new ImmutableSolidColorBrush(Color.FromArgb(140, 255, 255, 255));
+    static readonly IBrush GlassYellow = new ImmutableSolidColorBrush(Color.FromArgb(170, 255, 210, 63));
+    static readonly IBrush Paper = new ImmutableSolidColorBrush(Color.FromArgb(235, 255, 255, 255));
+    static readonly BoxShadow GlassShadow = new() { OffsetY = 1, Blur = 4, Color = Color.FromArgb(40, 0, 0, 0) };
+    static readonly BoxShadow RoundShadow = new() { OffsetY = 2, Blur = 8, Color = Color.FromArgb(77, 0, 0, 0) };
+    static readonly BoxShadow ArrowShadow = new() { OffsetY = 2, Blur = 10, Color = Color.FromArgb(89, 0, 0, 0) };
 
     public ReaderScreen(ReaderSettings settings, ISoundOutput? sound = null)
     {
@@ -331,6 +339,7 @@ public sealed class ReaderScreen : UserControl
             words = _words.DesiredSize.Height - _words.Margin.Top - _words.Margin.Bottom + 18;
         }
         bool roomy = h >= 520 && h - TopRoom - BottomRoom - words >= h * 0.45;
+        View.Engine.InsetGoal.Top = TopRoom;
         View.Engine.InsetGoal.Bottom = BottomRoom + (roomy ? words : 0);
     }
 
@@ -400,6 +409,7 @@ public sealed class ReaderScreen : UserControl
         base.OnSizeChanged(e);
         ApplyLayout(e.NewSize);
         if (View.Engine.Book is not null) MakeRoom(View.Engine.State);
+        else View.Engine.SetInsets(TopRoom, BottomRoom);
         UpdateOnePage(e.NewSize);
     }
 
@@ -412,12 +422,25 @@ public sealed class ReaderScreen : UserControl
     {
         double w = size.Width > 0 ? size.Width : 1000, h = size.Height > 0 ? size.Height : 700;
         bool narrow = w <= 520, low = h <= 519;
+        bool glass = _autoOnePage && low;
 
-        double round = narrow ? 52 : 56, arrow = narrow ? 66 : 76;
-        foreach (RoundButton b in new[] { _back, _gear, _zoomIn, _zoomOut, _whole, _showMe }) b.Diameter = round;
+        double round = glass ? 44 : narrow ? 52 : 56, arrow = glass ? 54 : narrow ? 66 : 76;
+        foreach (RoundButton b in new[] { _back, _gear, _zoomIn, _zoomOut, _whole, _showMe })
+        {
+            b.Diameter = round;
+            if (b != _showMe) b.Background = glass ? GlassPaper : Paper;
+            b.Shadow = glass ? GlassShadow : RoundShadow;
+        }
+        _showMe.Background = glass ? GlassYellow : Yellow;
         _prev.Diameter = _next.Diameter = arrow;
+        foreach (RoundButton b in new[] { _prev, _next })
+        {
+            b.Background = glass ? GlassPaper : Paper;
+            b.Shadow = glass ? GlassShadow : ArrowShadow;
+        }
+        _title.IsVisible = !glass;
         Thickness safe = _safe;
-        double edge = (low ? 12 : 22) + safe.Bottom;
+        double edge = (glass ? 10 : low ? 12 : 22) + safe.Bottom;
         _prev.Margin = new Thickness(14 + safe.Left, 0, 0, edge);
         _next.Margin = new Thickness(0, 0, 14 + safe.Right, edge);
         _pageNo.IsVisible = !low;
@@ -428,8 +451,17 @@ public sealed class ReaderScreen : UserControl
         // The title sits between the back button and the gear, level with their middles.
         double gearRoom = _showGear ? round + 12 + 12 : 12;
         double sideRoom = 0;
-        if (low)
+        if (glass)
         {
+            // Over the picture: a short column on the right, half way up, between the gear and the Next arrow.
+            _side.Orientation = Orientation.Vertical;
+            _side.VerticalAlignment = VerticalAlignment.Center;
+            _side.Spacing = 8;
+            _side.Margin = new Thickness(0, safe.Top, 12 + safe.Right, safe.Bottom);
+        }
+        else if (low)
+        {
+            _side.Spacing = 12;
             // Too short for a column (a phone on its side): the zoom buttons go in a row along the top, beside the gear.
             _side.Orientation = Orientation.Horizontal;
             _side.VerticalAlignment = VerticalAlignment.Top;
@@ -439,6 +471,7 @@ public sealed class ReaderScreen : UserControl
         }
         else
         {
+            _side.Spacing = 12;
             _side.Orientation = Orientation.Vertical;
             _side.VerticalAlignment = VerticalAlignment.Center;
             _side.Margin = new Thickness(0, safe.Top, 12 + safe.Right, safe.Bottom);

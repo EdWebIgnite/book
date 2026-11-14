@@ -45,6 +45,8 @@ public sealed class SettingsPanel : UserControl
             Help: "In scenes with a story inside, this controls the just-for-fun extras."),
         new Check("prompts", "Show questions for the grown-up", s => s.Prompts, (s, v) => s.Prompts = v,
             Help: "A small \"Ask\" line at some stops, to get you talking about the story together."),
+        new Check("bookLook", "Show as an open book", s => s.BookLook, (s, v) => s.BookLook = v,
+            Help: "On: each picture lies across an open book with a crease, and pages curl over. Off: just the flat picture, and pages slide across."),
         new Choice("captionSize", "Word size", new[] { ("small", "Small"), ("medium", "Medium"), ("large", "Large") }, s => s.CaptionSize, (s, v) => s.CaptionSize = v),
         new Check("wholePageFirst", "Show whole page before its stops", s => s.WholePageFirst, (s, v) => s.WholePageFirst = v),
         new Check("wholePageLast", "Show whole page again after its stops", s => s.WholePageLast, (s, v) => s.WholePageLast = v),
@@ -69,8 +71,6 @@ public sealed class SettingsPanel : UserControl
         new Choice("zoomPath", "Zoom math", new[] { ("smooth", "Even zoom speed"), ("straight", "Straight line between boxes") }, s => s.ZoomPath, (s, v) => s.ZoomPath = v),
 
         new Section("Between pages"),
-        new Check("bookLook", "Show as an open book", s => s.BookLook, (s, v) => s.BookLook = v,
-            Help: "Each picture lies across both pages of an open book, with a crease down the middle that fades as the camera goes in. The book starts closed on its cover. Explore pages and very big scenes are shown as before."),
         new Choice("pageTurn", "Page change",
             new[] { ("flip", "Flip like a book page"), ("fly", "Fly straight across"), ("zoomOut", "Zoom out, across, then in"), ("cut", "Jump cut") },
             s => s.PageTurn, (s, v) => s.PageTurn = v,
