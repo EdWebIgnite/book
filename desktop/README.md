@@ -14,7 +14,9 @@ The browser version is still the reference. When the two disagree, `web/reader.j
 | `Reader.App/` | The whole app as one view: the bookshelf, the reader screen and the settings panel, and how they hand over to each other. Shared by the Windows program and the phone app. |
 | `Player/` | The program for computers: a window holding `Reader.App`, the command line, the screenshot hook and the bench. |
 | `Phone/` | The app for Android phones and tablets: `Reader.App` on the phone's screen, with the books packed inside. See "Android" below. |
-| `Reader.Tests/` | Tests for `Reader.Core` and for the synthesised sounds. |
+| `Editor/` | The book editor, `BookEditor.exe`: a program of its own for the people who make the books. See "The book editor" below. |
+| `Editor.Core/` | The editor's logic with no window: opening and saving book folders, undo, the safety copy, joining and shrinking pictures, Check book and Export. |
+| `Reader.Tests/` | Tests for `Reader.Core`, the synthesised sounds, narration, and the editor's logic. |
 
 Two things to know when reading the code:
 
@@ -204,9 +206,57 @@ The bench takes `--phone` too, and reports how much memory a book took.
 
 Sound uses [SoundFlow](https://github.com/LSXPrime/SoundFlow) 1.4.2, which is MIT licensed and carries the public-domain miniaudio library for Windows, Linux, macOS, Android and iOS. It was chosen because it plays through each system's own sound API with nothing extra to install, reads wav and mp3 files, and lets the program supply its own samples.
 
-Only the device and the file reading depend on it. The taps, chimes, whoosh, rain and thunder are worked out in `Synth.cs`, following the browser version's `Sounds` class note for note, so they can be tested with no sound device.
+Only the device and the file reading depend on it. A stop's recorded voice plays on a channel of its own beside any sound effect, and the reader asks the sound output how far the voice has got (from what has actually reached the speakers), so the words light up in step with what is heard. The taps, chimes, whoosh, rain and thunder are worked out in `Synth.cs`, following the browser version's `Sounds` class note for note, so they can be tested with no sound device.
 
 If there is no sound device, or the sound library cannot load, the reader stays silent and carries on. Nothing in `Reader.Audio` throws.
+
+## The book editor
+
+`Editor/` is `BookEditor.exe`, the program the owner and other illustrators and writers use to make books. It opens any book folder (or a folder of pictures with no `book.json` yet), and everything in the browser editor (`web/editor.js`) is there, plus narration, previews on phone screens, Check book and Export. The preview is the real reader: `Reader.Avalonia`'s `ReaderScreen`, as the Player and the phone app use it.
+
+```
+dotnet run --project Editor                         # the editor
+dotnet run --project Editor -- /path/to/book        # with a book open
+./publish-editor.sh /some/folder/outside/the/repo   # BookEditor-windows.zip, ready to unzip and run on Windows
+```
+
+The window: the pages down the left (drag one onto another to reorder), the page in the middle, settings for whatever is selected on the right, and the camera's journey through the page as cards along the bottom (drag a card onto another to reorder). F1 lists the keys. Ctrl+Z and Ctrl+Y undo and redo every change, typing in a box counting as one step.
+
+**Book folders and saving.** A book is its folder. A picture or sound added in the editor is copied into the folder at once (recordings into `voice/`, sounds into `sounds/`), so saving only writes `book.json`, and nothing can go missing between adding and saving. Saving writes to a temporary file first and swaps it in, keeping the version before as `book.json.bak`. While there are unsaved changes a safety copy of the book is written every 15 seconds to the editor's own folder (`%APPDATA%\BookEditor\recovery`, never into the book's folder); opening the book again after a crash offers it back. Recently opened books are listed in `%APPDATA%\BookEditor\recent.json`. Fields of `book.json` the editor doesn't know are kept and written back unchanged, so a book edited by hand or by a newer version loses nothing.
+
+**Pictures: whole spreads, or a left and a right page.** A page picture can be one picture covering the whole double-page spread, or two pictures, a left-hand and a right-hand page. Two pages are joined by the editor into one spread picture (side by side, the right page scaled to the left page's height) as soon as they are added, and the page uses that. This is done in the editor rather than in the format so the readers stay as simple as they are: they only ever see one picture per page. The editor notes which two pictures the spread came from in an editor-only `"spread": { "left": ..., "right": ... }` field on the page, so either half can be replaced later and joined again with the stops left where they are. The readers ignore that field and Export leaves it out. Pictures named as a pair (`page3-left.png` and `page3-right.png`, or `_L` and `_R`) are joined when added together; "+ Add left and right pages" picks the two by hand, and "Join with next page" makes two existing pages into one spread, keeping the stops, things to find, pictures on top and effects of both. A picture can be replaced keeping its stops. A picture smaller than 1000 pixels on its short side, or of a different shape from the other pages, is pointed out when added and in Check book.
+
+**Story and explore pages.** Drag on the picture to draw a stop (Shift draws over another box), drag a box to move it and a corner to resize it, and the arrow keys nudge it. A stop can pan to a second box, set its move time, go on by itself, have its own look, words, a question for the grown-up, a sound effect and a recording. Explore pages have things to find (story steps and extras), hints, Show me and the corner map. Moving effects (rain with splashes and dry areas, snow, leaves, sparkles, lightning with thunder, camera shake) and pictures on top (appear, go away, move straight or in a hop, bob or sway) work on both. Over the picture the editor can show the middle of a spread with its left and right pages, and around the selected stop a frame for each chosen screen showing what it will see (worked out the way the reader frames a stop, with the room the buttons and words take), with the other page dimmed for an upright phone.
+
+**Narration and read-along.** Each stop can have a recording of its words: add a wav, mp3 or ogg file (or drop one on the window with the stop selected), or record from the microphone (through SoundFlow; if there is no microphone the button is greyed out with the reason, and adding a file still works). A fresh recording has the quiet at each end trimmed off. The shape of the recording is drawn with orange trim handles. To time the words, press Tap along: the recording plays from the start trim, and Space marks the start of each word (Backspace takes one back, Esc stops). Click a word to hear it and nudge it with `,` and `.`, or drag its line on the shape. "Space words evenly" gives a first guess to fix up. Working the times out from the sound by itself is not attempted.
+
+In `book.json` this is a `voice` on the stop, with times in seconds from the start of the file:
+
+```
+"voice": { "file": "voice/p1-s1.wav", "start": 0.2, "end": 2.1, "words": [0.35, 0.75, 1.15, 1.55] }
+```
+
+`start` and `end` are the trim (left out when not trimmed), and `words` has one start time per word of the caption, a word being whatever lies between spaces, so punctuation stays with its word. The reader code is `ReadAlong` (splitting into words, which word is being spoken) and the voice handling in `ReaderEngine`.
+
+In the reader, a parents' setting **Read to me** (`readToMe`, on to start with, in the settings panel under For parents) plays a stop's recording when the camera arrives there and lights up each word of the caption as it is spoken. A tap goes on straight away and stops the voice. Without watch mode the reader waits for a tap, and once the voice has finished the Next arrow glows twice to say it's the child's turn. In watch mode it goes on 1.5 seconds after the voice ends (or after the stop's own rest time). A stop that goes on by itself waits for the voice first. Books with no recordings behave exactly as before, and the words are plain text unless a voice is reading them. `readToMe` is not in `web/reader.js`, so the settings test lists it as a desktop-only setting (`ReaderSettings.DesktopOnlyKeys`) rather than changing the browser version.
+
+**Preview.** Play (P) opens the book as it is now in the real reader, from the selected stop (playing the move into it) or the page's start, sized as a Windows window, a Galaxy S22 Ultra upright or sideways, a cheap 720 x 1600 phone upright or sideways, or a 10 inch tablet. Phones behave as the phone app does (one page at a time when upright, the phone's picture limits and safe areas). Open book, Read to me, watch mode and the Ask lines can be switched on and off. Nothing needs saving first.
+
+**Check book** (F7) lists, most serious first: missing pictures, sounds and recordings, stops or things to find outside the picture, tiny stops, stops with no words, captions too long for a phone held sideways or upright, pictures over 4096 pixels (Export shrinks them, or cuts explore scenes into tiles) or too small, pages of a different shape, stops with no recording in a book that has recordings, word timings that no longer match the words, story steps numbered with gaps, effects and pictures on top set to stops that don't exist, and files in the folder the book doesn't use (which can be moved into an `_unused` folder; nothing is deleted). Click a line to go to it.
+
+**Export** (Ctrl+E) makes a copy of the book for the apps in a folder of its own, named after the book's folder name, and a zip of it if wanted. Only the files the book uses are copied. Page pictures are made no bigger than 4096 pixels (or 2560 for a smaller download, or left as they are), pictures with no see-through parts become JPEG, covers are made smaller, and explore scenes over the limit are cut into tiles (an overview picture plus 1024-pixel tiles at full and half size, the layout the readers already load) so a phone only loads what the child is looking at. Scenes already cut into tiles are copied as they are. Missing sounds and pictures on top are left out rather than left pointing at nothing. Ticking "Also add it to a reader's books" copies the result into a content folder's `books/` and adds it to the end of its `library.json`.
+
+**Getting a book into the apps.** BookReader.exe can open any exported folder with "Open a book folder", or shows it on the shelf once it is in the `content` folder beside the program (Export can put it there). The phone app carries its books inside it: `Phone.csproj` packs everything in the repo's `content/` folder, so put the exported book in `content/books/<id>`, add its id to `content/library.json` (Export does both when pointed at the repo's `content` folder), then build and install the app again with `publish-android.sh`.
+
+**The screenshot hook.** Like the Player, the editor can draw one screen to a PNG with no display, never touching the real settings, recent books or safety copies:
+
+```
+dotnet Editor/bin/Release/net10.0/BookEditor.dll --shot main.png --book ../content/books/biggest-puddle --page 1 --stop 1
+dotnet Editor/bin/Release/net10.0/BookEditor.dll --shot phone.png --book ../content/books/biggest-puddle --page 1 --stop 1 --screen preview --device s22-upright --wait 2500
+dotnet Editor/bin/Release/net10.0/BookEditor.dll --shot check.png --book ../content/books/waterhole --screen check
+```
+
+`--screen` is main, welcome, preview, check, export, help or newbook, and `--do "drag 800,250 950,400; key ctrl+Z; save"` acts out mouse and keys first. `--help` lists everything.
 
 ## Different from the browser version
 
@@ -215,6 +265,7 @@ If there is no sound device, or the sound library cannot load, the reader stays 
 - **No hand hints.** At the very start the Next arrow pulses instead of a tapping hand, and there is no dragging hand on explore pages (the idle hints do that job).
 - **Making room for a caption** starts gently. The browser moves the picture a fixed share of the way every frame, which starts with a jolt; here it eases like a damped spring and arrives at about the same time.
 - **Soft glows** around the idle hint and the touch ripple are built from a few faint rings instead of a blurred shadow. They look much the same and cost less to draw.
-- **The editor.** There is no way into a book editor from the shelf, because there is no desktop editor yet.
+- **The editor.** The desktop editor is a separate program (`BookEditor.exe`, below). There is no way into it from the shelf, the Player or the phone app, and they don't contain it.
+- **Narration and read-along** (a recorded voice per stop, with the words lighting up) are only in this reader. The browser reader ignores the `voice` field, and the browser editor would drop it if it saved the book.
 - **Still pages are not redrawn.** The browser redraws every frame. This reader stops when nothing on screen is changing.
 - **Page pictures** are kept at several sizes, and the full-size ones load when they are wanted, as described above. Tiles of big scenes load only where the child is looking, as in the browser.

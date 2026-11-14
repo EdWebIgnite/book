@@ -86,6 +86,11 @@ public sealed class ReaderEngine
     (double Start, double Strength)? _shake;
     double? _flash;
     double _rainLoud;
+    // Narration: the voice of the stop being read, when it started (reader time) and when it ended.
+    Voice? _voice;
+    int _voiceWordCount;
+    double _voiceAt;
+    double? _voiceEndedAt;
     double _insetSpeedTop, _insetSpeedBottom;      // how fast each inset is changing, in units per millisecond
     List<RectD> _pageRects = new();
     List<Step> _steps = new();
@@ -405,7 +410,74 @@ public sealed class ReaderEngine
         Sound.PlayClip(name);
     }
 
-    void StopClip() => Sound.StopClip();
+    void StopClip()
+    {
+        Sound.StopClip();
+        StopVoice();
+    }
+
+    void StopVoice()
+    {
+        bool had = _voice is not null;
+        _voice = null;
+        _voiceEndedAt = null;
+        if (had) Sound.StopVoice();
+    }
+
+    /// <summary>Start a stop's recorded voice, when "Read to me" is on.</summary>
+    void PlayVoice(Stop stop)
+    {
+        if (!Settings.ReadToMe || stop.Voice is not { File.Length: > 0 } v) return;
+        _voice = v;
+        _voiceWordCount = ReadAlong.WordCount(stop.Caption);
+        _voiceAt = _now;
+        _voiceEndedAt = null;
+        Sound.PlayVoice(v.File, v.StartOrZero, v.End ?? 0);
+    }
+
+    /// <summary>How far into its sound file the voice has got, in seconds, or null with no voice playing.</summary>
+    public double? VoiceSeconds
+    {
+        get
+        {
+            if (_voice is not Voice v || _voiceEndedAt is not null) return null;
+            double reported = Sound.VoicePosition;
+            return reported >= 0 ? reported : v.StartOrZero + (_now - _voiceAt) / 1000;
+        }
+    }
+
+    /// <summary>True while a stop's voice is being read aloud.</summary>
+    public bool Reading => _voice is not null && _voiceEndedAt is null;
+
+    /// <summary>True when the stop on screen has a voice that has finished reading.</summary>
+    public bool ReadingDone => _voice is not null && _voiceEndedAt is not null;
+
+    /// <summary>The word of the caption being read right now (0 = first), or -1.</summary>
+    public int ReadAlongWord()
+    {
+        if (VoiceSeconds is not double at || _voice is null) return -1;
+        return ReadAlong.WordAt(_voice.Words, _voiceWordCount, at);
+    }
+
+    /// <summary>Notice when the voice has come to its end. Judged by the trimmed end, or by the sound output when there is none.</summary>
+    void UpdateVoice()
+    {
+        if (_voice is not Voice v || _voiceEndedAt is not null) return;
+        double elapsed = _now - _voiceAt;
+        double? end = ReadAlong.EndOf(v);
+        double reported = Sound.VoicePosition;
+        double at = reported >= 0 ? reported : v.StartOrZero + elapsed / 1000;
+        bool done = end is double e
+            ? at >= e || (elapsed > 600 && !Sound.VoicePlaying && reported >= 0)
+            : elapsed > 600 && !Sound.VoicePlaying;
+        // Never wait for ever: a voice that can't be heard still ends when its time is up.
+        if (end is double limit && elapsed > (limit - v.StartOrZero) * 1000 + 1500) done = true;
+        if (done)
+        {
+            _voiceEndedAt = _now;
+            RaiseChanged();
+        }
+    }
 
     /// <summary>Stop everything that makes a noise by itself. Call when the reader is put away.</summary>
     public void Hush()
@@ -828,6 +900,7 @@ public sealed class ReaderEngine
         if (Overview || stop is null) return;
         Step step = CurrentStep;
         if (!string.IsNullOrEmpty(stop.Sound)) PlayClip(stop.Sound);
+        PlayVoice(stop);
         foreach (PageEffect e in Book!.Pages[step.Page].Effects)
         {
             if (e.StopOrFirst - 1 != step.Stop) continue;
@@ -1222,6 +1295,7 @@ public sealed class ReaderEngine
         _lastUpdate = nowMs;
         SetTime(nowMs);
         double now = _now;
+        UpdateVoice();
 
         // The picture eases towards the room the screen has asked for.
         Insets.Top = EaseInset(Insets.Top, InsetGoal.Top, ref _insetSpeedTop, dt);
@@ -1290,12 +1364,15 @@ public sealed class ReaderEngine
             // Moving on without a tap: a stop marked to go on by itself (only when we came to it going forwards,
             // so going back never gets pushed forward again), or watch mode.
             Stop? stop = CurrentStop;
-            if (Sound.ClipPlaying) _restSince = now;   // let narration finish first
+            if (Sound.ClipPlaying || Reading) _restSince = now;   // let narration finish first
             double rested = now - _restSince;
             bool own = stop is not null && stop.Auto && _arrivedForward && !Overview;
             double hold = stop?.HoldSeconds is > 0 ? stop.HoldSeconds.Value : 0;
+            // After a recorded voice has read the words, watch mode goes on after a short breath rather
+            // than the full time a reader would need.
+            double watchHold = hold > 0 ? hold : ReadingDone ? Math.Min(1.5, Settings.AutoSeconds) : Settings.AutoSeconds;
             bool goOn = own ? rested > (hold > 0 ? hold : 1.5) * 1000
-                            : Settings.AutoPlay && rested > (hold > 0 ? hold : Settings.AutoSeconds) * 1000;
+                            : Settings.AutoPlay && rested > watchHold * 1000;
             if (goOn)
             {
                 _lastGo = double.NegativeInfinity;
@@ -1324,6 +1401,8 @@ public sealed class ReaderEngine
         if (_anim is not null || _fling is not null) return true;
         if (Insets.Top != InsetGoal.Top || Insets.Bottom != InsetGoal.Bottom) return true;
         if (_bursts.Count > 0 || _ripples.Count > 0 || _party is not null || _flash is not null || _shake is not null) return true;
+        // The words light up one by one while the voice reads them.
+        if (Reading && _voice!.Words.Count > 0) return true;
         if (_shown.Fade > 0) return true;
 
         // Weather that is showing or fading, and pictures on top that are moving, fading or bobbing.
@@ -1399,6 +1478,8 @@ public sealed class ReaderEngine
                     : exploring ? (noteShowing ? _note!.Ask : "")
                     : (!Overview && stop?.Ask is string q ? q : ""),
                 FirstStep = !_moved && !exploring && StepIndex == 0,
+                Reading = Reading && !Overview,
+                ReadingDone = ReadingDone && !Overview,
                 CanZoomIn = exploring && VisibleCam().H > ClosestZoom * 1.03,
                 CanZoomOut = exploring && VisibleCam().W < MaxCam().W * 0.98,
                 CanGoBack = StepIndex > 0 || Overview,

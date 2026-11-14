@@ -32,7 +32,10 @@ public sealed class ReaderScreen : UserControl
     readonly StackPanel _side, _words;
     readonly PillButton _again, _endBack;
 
-    bool _showingCloseUp, _showGear = true, _firstStep;
+    bool _showingCloseUp, _showGear = true, _firstStep, _yourTurn;
+    // Read-along: the caption shown as separate words, and which one is lit up.
+    string _captionText = "";
+    int _litWord = -2;
     double _gateTipUntil = double.NegativeInfinity;
     double? _gearHeldSince;
     bool _gearOpened;
@@ -308,7 +311,14 @@ public sealed class ReaderScreen : UserControl
         }
         _prev.Enabled = st.CanGoBack;
 
-        if (st.Caption.Length > 0) _caption.Text = st.Caption;
+        if (st.Caption.Length > 0 && st.Caption != _captionText)
+        {
+            _captionText = st.Caption;
+            _litWord = -2;
+            _caption.Inlines = null;
+            _caption.Text = st.Caption;
+        }
+        if (!st.Reading && _litWord != -2) ShowWords(-1);
         _captionBox.IsVisible = st.Caption.Length > 0;
         if (st.Ask.Length > 0) _askText.Text = st.Ask;
         _askBox.IsVisible = st.Ask.Length > 0;
@@ -316,7 +326,11 @@ public sealed class ReaderScreen : UserControl
         // At the very start the Next arrow pulses, to show where to tap. (On explore pages the idle hints
         // already show a child what to do, so nothing more is needed there.)
         _firstStep = st.FirstStep && !st.Finished;
-        if (!_firstStep) _next.Ring = null;
+        // When a recorded voice has finished reading, the Next arrow glows once to say "your turn".
+        bool turn = st.ReadingDone && !st.Finished && !_settings.AutoPlay;
+        if (turn && !_yourTurn) _yourTurnSince = View.Now;
+        _yourTurn = turn;
+        if (!_firstStep && !_yourTurn) _next.Ring = null;
 
         _end.IsVisible = st.Finished;
         ApplyLayout(Bounds.Size);
@@ -343,9 +357,59 @@ public sealed class ReaderScreen : UserControl
         View.Engine.InsetGoal.Bottom = BottomRoom + (roomy ? words : 0);
     }
 
+    double _yourTurnSince;
+
+    static readonly IBrush LitWord = new ImmutableSolidColorBrush(Color.Parse("#ffe066"));
+
+    /// <summary>
+    /// Light up one word of the caption (-1 for none). The words are separate pieces of text only while a
+    /// voice is reading; otherwise the caption is plain text, exactly as before narration existed.
+    /// </summary>
+    void ShowWords(int lit)
+    {
+        if (lit == _litWord) return;
+        _litWord = lit;
+        if (lit < 0)
+        {
+            _caption.Inlines = null;
+            _caption.Text = _captionText;
+            return;
+        }
+        var words = ReadAlong.Words(_captionText);
+        var inlines = new Avalonia.Controls.Documents.InlineCollection();
+        int at = 0;
+        for (int i = 0; i < words.Count; i++)
+        {
+            ReadAlong.Word w = words[i];
+            if (w.Start > at) inlines.Add(new Avalonia.Controls.Documents.Run(_captionText[at..w.Start]));
+            var run = new Avalonia.Controls.Documents.Run(_captionText.Substring(w.Start, w.Length));
+            if (i == lit) run.Background = LitWord;
+            inlines.Add(run);
+            at = w.Start + w.Length;
+        }
+        if (at < _captionText.Length) inlines.Add(new Avalonia.Controls.Documents.Run(_captionText[at..]));
+        _caption.Inlines = inlines;
+    }
+
     void OnFrame(double now)
     {
         bool still = View.Engine.Reduced;
+
+        // Read-along: follow the voice word by word.
+        if (View.Engine.Reading && _captionBox.IsVisible) ShowWords(View.Engine.ReadAlongWord());
+        else if (_litWord != -2 && _litWord != -1) ShowWords(-1);
+
+        // "Your turn": two soft rings from the Next arrow once the voice has finished, then it rests.
+        if (_yourTurn && !_firstStep)
+        {
+            double t = (now - _yourTurnSince) / 1800;
+            if (t >= 2 || still) _next.Ring = still && t < 2 ? new BoxShadow { Spread = 6, Blur = 12, Color = Color.FromArgb(160, 255, 255, 255) } : null;
+            else
+            {
+                double u = t % 1, grow = Easings.OutCubic(u);
+                _next.Ring = new BoxShadow { Spread = 2 + 14 * grow, Blur = 12, Color = Color.FromArgb((byte)(210 * (1 - u)), 255, 255, 255) };
+            }
+        }
 
         // The Next arrow's pulse: a soft ring that grows out of the button and fades, every 1.8 seconds.
         // With reduced motion it is a steady ring instead.
@@ -379,7 +443,8 @@ public sealed class ReaderScreen : UserControl
         if (_gateTip.IsVisible && now >= _gateTipUntil) _gateTip.IsVisible = false;
 
         // Ask the picture to keep the frames coming while one of these little animations is running.
-        View.KeepAwake = (_firstStep && !still) || (_showMe.IsVisible && !still) || _gearHeldSince is not null || _gateTip.IsVisible;
+        View.KeepAwake = (_firstStep && !still) || (_showMe.IsVisible && !still) || _gearHeldSince is not null || _gateTip.IsVisible
+            || View.Engine.Reading || (_yourTurn && now - _yourTurnSince < 3600);
     }
 
     // The gear is for grown-ups. With the lock on it needs a two-second hold.

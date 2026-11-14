@@ -65,6 +65,15 @@ public sealed class ReaderSettings
     /// <summary>Young children double-tap by accident, so this starts off.</summary>
     public bool DoubleTapZoom { get; set; }
 
+    /// <summary>
+    /// Play the recorded voice on stops that have one, and light up each word as it is read. Books with
+    /// no recorded voice are not affected. Only in this reader: the browser reader has no narration yet.
+    /// </summary>
+    public bool ReadToMe { get; set; } = true;
+
+    /// <summary>Settings only this reader has. They are saved with the rest but are not in web/reader.js.</summary>
+    public static readonly IReadOnlyList<string> DesktopOnlyKeys = new[] { "readToMe" };
+
     public ReaderSettings Clone()
     {
         var copy = new ReaderSettings();
@@ -131,6 +140,7 @@ public sealed class ReaderSettings
         ["scaleTime"] = ScaleTime,
         ["minTargetCm"] = MinTargetCm,
         ["doubleTapZoom"] = DoubleTapZoom,
+        ["readToMe"] = ReadToMe,
     };
 
     public string ToJsonString() => ToJson().ToJsonString(JsonOut);
@@ -180,6 +190,7 @@ public sealed class ReaderSettings
         ScaleTime = Flag(saved["scaleTime"], ScaleTime);
         MinTargetCm = Num(saved["minTargetCm"], MinTargetCm);
         DoubleTapZoom = Flag(saved["doubleTapZoom"], DoubleTapZoom);
+        ReadToMe = Flag(saved["readToMe"], ReadToMe);
     }
 
     /// <summary>

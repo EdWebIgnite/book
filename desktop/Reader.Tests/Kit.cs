@@ -158,5 +158,16 @@ sealed class FakeSound : ISoundOutput
     public void PlayClip(string fileName) { Clip = fileName; Calls.Add("clip " + fileName); }
     public void StopClip() { Clip = null; ClipPlaying = false; }
 
+    public string? Voice { get; private set; }
+    public bool VoicePlaying { get; set; }
+    /// <summary>-1: the engine keeps time itself, as with an output that can't tell.</summary>
+    public double VoicePosition { get; set; } = -1;
+    public void PlayVoice(string fileName, double fromSeconds, double toSeconds)
+    {
+        Voice = fileName;
+        Calls.Add($"voice {fileName} {fromSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)}-{toSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+    }
+    public void StopVoice() { Voice = null; VoicePlaying = false; Calls.Add("stop voice"); }
+
     public int Count(string call) => Calls.Count(c => c == call);
 }

@@ -179,6 +179,9 @@ public sealed class Synth
     double _rainGain;
     Biquad _rainHigh, _rainLow;
     volatile Clip? _clip;
+    // A stop's recorded voice has a channel of its own, so it can play over a sound effect.
+    volatile Clip? _voice;
+    volatile Clip? _lastVoice;
 
     public Synth(int sampleRate = 48000)
     {
@@ -255,6 +258,26 @@ public sealed class Synth
 
     public void StopClip() => _clip = null;
 
+    /// <summary>Start a decoded voice recording on its own channel. The samples must be at this synth's sample rate.</summary>
+    public void PlayVoice(float[] interleaved, int channels)
+    {
+        var clip = new Clip { Samples = interleaved, Channels = Math.Max(1, channels) };
+        _lastVoice = clip;
+        _voice = clip;
+    }
+
+    public void StopVoice()
+    {
+        _voice = null;
+        _lastVoice = null;
+    }
+
+    /// <summary>True while a voice recording is still sounding.</summary>
+    public bool VoicePlaying => _voice is not null;
+
+    /// <summary>How much of the latest voice recording has been played, in seconds. It stays at the end once finished.</summary>
+    public double VoiceSeconds => _lastVoice is Clip c ? c.Position / (double)c.Channels / SampleRate : 0;
+
     void Add(Voice voice)
     {
         if (_incoming.Count < MostVoices) _incoming.Enqueue(voice);
@@ -274,6 +297,7 @@ public sealed class Synth
             if (_voices.Count < MostVoices) _voices.Add(voice);
         }
         Clip? clip = _clip;
+        Clip? voiceClip = _voice;
         float volume = Volume;
         double step = 1.0 / SampleRate;
         double rainEase = 1 - Math.Exp(-step / 0.2);
@@ -303,13 +327,20 @@ public sealed class Synth
                     int source = clip.Position + Math.Min(c, clip.Channels - 1);
                     if (source < clip.Samples.Length) sample += clip.Samples[source];
                 }
+                if (voiceClip is not null && voiceClip.Position < voiceClip.Samples.Length)
+                {
+                    int source = voiceClip.Position + Math.Min(c, voiceClip.Channels - 1);
+                    if (source < voiceClip.Samples.Length) sample += voiceClip.Samples[source];
+                }
                 block[at + c] = (float)Math.Clamp(sample * volume, -1, 1);
             }
             if (clip is not null) clip.Position += clip.Channels;
+            if (voiceClip is not null && voiceClip.Position < voiceClip.Samples.Length) voiceClip.Position += voiceClip.Channels;
         }
         if (clip is not null && clip.Position >= clip.Samples.Length && ReferenceEquals(_clip, clip)) _clip = null;
+        if (voiceClip is not null && voiceClip.Position >= voiceClip.Samples.Length && ReferenceEquals(_voice, voiceClip)) _voice = null;
     }
 
     /// <summary>True when nothing is sounding: no notes, no rain, no sound file.</summary>
-    public bool Silent => _voices.Count == 0 && _incoming.IsEmpty && _rainGain <= 1e-5 && _rainTarget <= 0 && _clip is null;
+    public bool Silent => _voices.Count == 0 && _incoming.IsEmpty && _rainGain <= 1e-5 && _rainTarget <= 0 && _clip is null && _voice is null;
 }

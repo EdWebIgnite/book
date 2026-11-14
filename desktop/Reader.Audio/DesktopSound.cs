@@ -143,7 +143,7 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
     /// or the sound library can't be used. This is how the file reading can be checked on a machine with
     /// no speakers.
     /// </summary>
-    internal static float[]? ReadSoundFile(string path, int sampleRate = 48000, int channels = 2)
+    public static float[]? ReadSoundFile(string path, int sampleRate = 48000, int channels = 2)
     {
         try
         {
@@ -176,6 +176,69 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
         }
     }
 
+    // ---------------------------------------------------------------- the voice channel
+
+    int _voiceToken;
+    volatile bool _voiceLoading, _voiceActive;
+    double _voiceFrom;
+
+    /// <summary>
+    /// Play a stop's recorded voice from <paramref name="fromSeconds"/> to <paramref name="toSeconds"/>
+    /// (0 or less: to the end of the file), on its own channel beside any sound effect.
+    /// </summary>
+    public void PlayVoice(string fileName, double fromSeconds, double toSeconds)
+    {
+        StopVoice();
+        if (!Available || _disposed || string.IsNullOrEmpty(fileName)) return;
+        MiniAudioEngine? engine = _engine;
+        AudioFormat format = _format;
+        if (engine is null) return;
+        int token;
+        lock (_gate) token = ++_voiceToken;
+        _voiceFrom = Math.Max(0, fromSeconds);
+        _voiceLoading = true;
+        _voiceActive = true;
+        Task.Run(() =>
+        {
+            float[]? samples = Decode(engine, format, fileName);
+            lock (_gate)
+            {
+                if (token != _voiceToken || _disposed) return;
+                _voiceLoading = false;
+                if (samples is null || samples.Length == 0) { _voiceActive = false; return; }
+                float[] part = Slice(samples, format.Channels, format.SampleRate, fromSeconds, toSeconds);
+                _synth.PlayVoice(part, format.Channels);
+            }
+        });
+    }
+
+    /// <summary>The part of some interleaved samples between two times, in seconds (0 or less for the end: to the end).</summary>
+    internal static float[] Slice(float[] samples, int channels, int sampleRate, double fromSeconds, double toSeconds)
+    {
+        channels = Math.Max(1, channels);
+        int frames = samples.Length / channels;
+        int first = (int)Math.Clamp(Math.Round(Math.Max(0, fromSeconds) * sampleRate), 0, frames);
+        int last = toSeconds > 0 ? (int)Math.Clamp(Math.Round(toSeconds * sampleRate), first, frames) : frames;
+        if (first == 0 && last == frames) return samples;
+        return samples.AsSpan(first * channels, (last - first) * channels).ToArray();
+    }
+
+    public void StopVoice()
+    {
+        lock (_gate)
+        {
+            _voiceToken++;
+            _voiceLoading = false;
+            _voiceActive = false;
+        }
+        _synth.StopVoice();
+    }
+
+    public bool VoicePlaying => Available && (_voiceLoading || (_voiceActive && _synth.VoicePlaying));
+
+    /// <summary>Seconds into the sound file, from what has actually reached the speakers; -1 with no voice.</summary>
+    public double VoicePosition => !Available || !_voiceActive ? -1 : _voiceLoading ? _voiceFrom : _voiceFrom + _synth.VoiceSeconds;
+
     public void StopClip()
     {
         lock (_gate)
@@ -207,6 +270,7 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
         if (_disposed) return;
         _disposed = true;
         StopClip();
+        StopVoice();
         Available = false;
         Shutdown();
     }

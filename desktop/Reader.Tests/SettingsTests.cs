@@ -26,7 +26,9 @@ public class SettingsTests
     [Fact]
     public void Defaults_match_DEFAULT_SETTINGS_in_the_browser_reader()
     {
+        // Settings only the desktop and phone reader has (narration) are left out: the browser has no such thing yet.
         JsonObject ours = new ReaderSettings().ToJson();
+        foreach (string key in ReaderSettings.DesktopOnlyKeys) Assert.True(ours.Remove(key), key + " should be a setting");
         var theirs = Regex.Matches(JsBlock("DEFAULT_SETTINGS"), @"(\w+):\s*(""[^""]*""|[\w.\-]+)\s*,");
         Assert.Equal(30, theirs.Count);
         Assert.Equal(theirs.Select(m => m.Groups[1].Value), ours.Select(p => p.Key));

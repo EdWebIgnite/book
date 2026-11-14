@@ -41,6 +41,23 @@ public interface ISoundOutput
 
     /// <summary>True while a sound file is still playing. A stop that goes on by itself waits for it.</summary>
     bool ClipPlaying { get; }
+
+    /// <summary>
+    /// Play a stop's recorded voice from <paramref name="fromSeconds"/> to <paramref name="toSeconds"/>
+    /// (0 or less: to the end). The voice has its own channel, so it plays alongside a sound effect.
+    /// </summary>
+    void PlayVoice(string fileName, double fromSeconds, double toSeconds) { }
+
+    void StopVoice() { }
+
+    /// <summary>True while the voice is loading or still playing.</summary>
+    bool VoicePlaying => false;
+
+    /// <summary>
+    /// How far into the sound file the voice has got, in seconds, or -1 when the output can't tell (then
+    /// the reader keeps time itself). While the file is still loading this stays at the start.
+    /// </summary>
+    double VoicePosition => -1;
 }
 
 /// <summary>Silence, for tests and for machines with no sound.</summary>

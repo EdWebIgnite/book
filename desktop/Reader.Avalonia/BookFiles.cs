@@ -130,7 +130,15 @@ public sealed class LoadedBook : IDisposable
     public static LoadedBook Load(string folder)
     {
         if (!File.Exists(Path.Combine(folder, "book.json"))) throw new FileNotFoundException("There is no book.json in " + folder + ".");
-        Book book = BookJson.Load(folder);
+        return Load(folder, BookJson.Load(folder));
+    }
+
+    /// <summary>
+    /// Load a book that is already in memory, with its pictures in <paramref name="folder"/>. The editor
+    /// uses this to play a book as it is being made, before it is saved.
+    /// </summary>
+    public static LoadedBook Load(string folder, Book book)
+    {
         if (book.Pages.Count == 0) throw new InvalidDataException("This book has no pages.");
         var pages = new PagePictures[book.Pages.Count];
         Bitmap? firstFull = null;
@@ -458,6 +466,16 @@ public sealed class BookFolderSound : ISoundOutput
         string? path = Folder is null ? null : BookLibrary.SafePath(Folder, fileName);
         if (path is not null && File.Exists(path)) _inner.PlayClip(path);
     }
+
+    public void PlayVoice(string fileName, double fromSeconds, double toSeconds)
+    {
+        string? path = Folder is null ? null : BookLibrary.SafePath(Folder, fileName);
+        if (path is not null && File.Exists(path)) _inner.PlayVoice(path, fromSeconds, toSeconds);
+    }
+
+    public void StopVoice() => _inner.StopVoice();
+    public bool VoicePlaying => _inner.VoicePlaying;
+    public double VoicePosition => _inner.VoicePosition;
 }
 
 /// <summary>Reads a PNG's or JPEG's size from the start of the file, without decoding the picture.</summary>

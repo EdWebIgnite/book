@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The book editor for illustrators and writers: BookEditor.exe. It is a separate program on purpose.
+    The reader apps (Player and Phone) never reference this project, so children and parents can't
+    reach it from a reader.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>BookEditor</AssemblyName>
+    <RootNamespace>BookEditor</RootNamespace>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <!-- Draws the window with no screen attached, for the screenshot hook. -->
+    <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+    <ProjectReference Include="..\Reader.Avalonia\Reader.Avalonia.csproj" />
+    <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
+    <ProjectReference Include="..\Editor.Core\Editor.Core.csproj" />
+  </ItemGroup>
+</Project>

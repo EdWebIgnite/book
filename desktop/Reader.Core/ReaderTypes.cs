@@ -64,6 +64,10 @@ public sealed record ReaderState
     public string Ask { get; init; } = "";
     /// <summary>Nothing has been tapped yet: time for the tapping-hand hint.</summary>
     public bool FirstStep { get; init; }
+    /// <summary>The stop's recorded voice is reading its words aloud.</summary>
+    public bool Reading { get; init; }
+    /// <summary>The stop's recorded voice has finished: the child's turn to tap on.</summary>
+    public bool ReadingDone { get; init; }
     public bool CanZoomIn { get; init; }
     public bool CanZoomOut { get; init; }
     public bool CanGoBack { get; init; }

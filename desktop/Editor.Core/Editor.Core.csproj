@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The book editor's logic with no window attached: opening and saving book folders, undo and redo,
+    the recovery copy, joining page pictures, Check book and Export. Kept apart from the editor's
+    screens so it can be tested. Only the editor uses it: the reader apps never reference it.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Editor.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reading, resizing and writing pictures. The same version Avalonia draws with. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
+  </ItemGroup>
+</Project>

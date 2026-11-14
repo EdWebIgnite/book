@@ -28,6 +28,7 @@ public static class BookJson
             Author = Text(raw["author"]) ?? "",
             Cover = Text(raw["cover"]) ?? "",
             FocusStyle = NonEmpty(Text(raw["focusStyle"])) ?? FocusStyles.Dim,
+            Extra = Unknown(raw, BookKeys),
         };
         foreach (JsonNode? p in Items(raw["pages"]))
         {
@@ -46,7 +47,10 @@ public static class BookJson
             Image = Text(p["image"]) ?? "",
             Explore = Text(p["mode"]) == "explore",
             OpenWhole = !IsFalse(p["openWhole"]),
+            Extra = Unknown(p, PageKeys),
         };
+        if (p["spread"] is JsonObject spread && (Text(spread["left"]) is { Length: > 0 } || Text(spread["right"]) is { Length: > 0 }))
+            page.Spread = new SpreadSource { Left = Text(spread["left"]) ?? "", Right = Text(spread["right"]) ?? "" };
 
         if (p["stops"] is JsonArray stops)
         {
@@ -70,12 +74,13 @@ public static class BookJson
                 Ask = NonEmpty(Text(hot["ask"])),
                 Sound = NonEmpty(Text(hot["sound"])),
                 Effect = NonEmpty(Text(hot["effect"])),
+                Extra = Unknown(hot, HotspotKeys),
             });
         }
 
         if (p["guidance"] is JsonObject g)
         {
-            page.Guidance = new Guidance { Hints = !IsFalse(g["hints"]), ShowMe = !IsFalse(g["showMe"]), Map = Truthy(g["map"]) };
+            page.Guidance = new Guidance { Hints = !IsFalse(g["hints"]), ShowMe = !IsFalse(g["showMe"]), Map = Truthy(g["map"]), Extra = Unknown(g, GuidanceKeys) };
         }
 
         foreach (JsonNode? e in Items(p["effects"]))
@@ -90,6 +95,7 @@ public static class BookJson
                 Ground = Num(fx["ground"]),
                 Stop = Whole(fx["stop"]),
                 Strength = Num(fx["strength"]),
+                Extra = Unknown(fx, EffectKeys),
             };
             foreach (JsonNode? b in Items(fx["dry"])) effect.Dry.Add(Box(b));
             page.Effects.Add(effect);
@@ -109,6 +115,7 @@ public static class BookJson
                 MoveSeconds = Num(layer["moveSeconds"]),
                 Path = NonEmpty(Text(layer["path"])),
                 Idle = NonEmpty(Text(layer["idle"])),
+                Extra = Unknown(layer, LayerKeys),
             });
         }
 
@@ -138,7 +145,48 @@ public static class BookJson
         Caption = NonEmpty(Text(s["caption"])),
         Ask = NonEmpty(Text(s["ask"])),
         Sound = NonEmpty(Text(s["sound"])),
+        Voice = ParseVoice(s["voice"]),
+        Extra = Unknown(s, StopKeys),
     };
+
+    static Voice? ParseVoice(JsonNode? n)
+    {
+        if (n is not JsonObject v || NonEmpty(Text(v["file"])) is not string file) return null;
+        var voice = new Voice { File = file, Start = Num(v["start"]), End = Num(v["end"]) };
+        foreach (JsonNode? w in Items(v["words"])) if (Num(w) is double t) voice.Words.Add(t);
+        return voice;
+    }
+
+    // The fields each part of a book can have. Anything else is kept in Extra and written back as it was.
+    static readonly HashSet<string> BookKeys = new() { "id", "title", "author", "cover", "focusStyle", "pages" };
+    static readonly HashSet<string> PageKeys = new() { "image", "mode", "openWhole", "stops", "panels", "hotspots", "guidance", "effects", "layers", "tiles", "spread" };
+    static readonly HashSet<string> StopKeys = new() { "box", "to", "panSeconds", "style", "moveSeconds", "auto", "holdSeconds", "caption", "ask", "sound", "voice" };
+    static readonly HashSet<string> HotspotKeys = new() { "box", "name", "story", "caption", "ask", "sound", "effect" };
+    static readonly HashSet<string> GuidanceKeys = new() { "hints", "showMe", "map" };
+    static readonly HashSet<string> EffectKeys = new() { "type", "amount", "from", "to", "ground", "dry", "stop", "strength" };
+    static readonly HashSet<string> LayerKeys = new() { "image", "box", "from", "to", "moveTo", "moveAt", "moveSeconds", "path", "idle" };
+
+    static JsonObject? Unknown(JsonObject o, HashSet<string> known)
+    {
+        JsonObject? extra = null;
+        foreach (var (key, value) in o)
+        {
+            if (known.Contains(key)) continue;
+            extra ??= new JsonObject();
+            extra[key] = value?.DeepClone();
+        }
+        return extra;
+    }
+
+    /// <summary>Put back the fields that were kept from the file, after the known ones.</summary>
+    static void AddExtra(JsonObject o, JsonObject? extra)
+    {
+        if (extra is null) return;
+        foreach (var (key, value) in extra)
+        {
+            if (!o.ContainsKey(key)) o[key] = value?.DeepClone();
+        }
+    }
 
     // ---------------------------------------------------------------- writing
 
@@ -147,7 +195,7 @@ public static class BookJson
     {
         var pages = new JsonArray();
         foreach (Page p in book.Pages) pages.Add((JsonNode)SerializePage(p));
-        return new JsonObject
+        var o = new JsonObject
         {
             ["id"] = book.Id,
             ["title"] = book.Title,
@@ -156,6 +204,8 @@ public static class BookJson
             ["focusStyle"] = string.IsNullOrEmpty(book.FocusStyle) ? FocusStyles.Dim : book.FocusStyle,
             ["pages"] = pages,
         };
+        AddExtra(o, book.Extra);
+        return o;
     }
 
     /// <summary>The text to put in book.json: two-space indents, accents and curly quotes left as they are.</summary>
@@ -175,6 +225,8 @@ public static class BookJson
             if (!string.IsNullOrEmpty(s.Caption)) o["caption"] = s.Caption;
             if (!string.IsNullOrEmpty(s.Ask)) o["ask"] = s.Ask;
             if (!string.IsNullOrEmpty(s.Sound)) o["sound"] = s.Sound;
+            if (s.Voice is { File.Length: > 0 } v) o["voice"] = VoiceJson(v);
+            AddExtra(o, s.Extra);
             stops.Add((JsonNode)o);
         }
         var page = new JsonObject { ["image"] = p.Image, ["stops"] = stops };
@@ -187,12 +239,16 @@ public static class BookJson
             {
                 if (e.Type == PageEffect.Lightning)
                 {
-                    effects.Add((JsonNode)new JsonObject { ["type"] = e.Type, ["stop"] = e.StopOrFirst });
+                    var lo = new JsonObject { ["type"] = e.Type, ["stop"] = e.StopOrFirst };
+                    AddExtra(lo, e.Extra);
+                    effects.Add((JsonNode)lo);
                     continue;
                 }
                 if (e.Type == PageEffect.Shake)
                 {
-                    effects.Add((JsonNode)new JsonObject { ["type"] = e.Type, ["stop"] = e.StopOrFirst, ["strength"] = Round4(e.StrengthOrDefault) });
+                    var so = new JsonObject { ["type"] = e.Type, ["stop"] = e.StopOrFirst, ["strength"] = Round4(e.StrengthOrDefault) };
+                    AddExtra(so, e.Extra);
+                    effects.Add((JsonNode)so);
                     continue;
                 }
                 var o = new JsonObject { ["type"] = e.Type, ["amount"] = Round4(e.AmountOrDefault) };
@@ -205,6 +261,7 @@ public static class BookJson
                     foreach (RectD b in e.Dry) dry.Add((JsonNode)BoxJson(b));
                     o["dry"] = dry;
                 }
+                AddExtra(o, e.Extra);
                 effects.Add((JsonNode)o);
             }
             page["effects"] = effects;
@@ -226,6 +283,7 @@ public static class BookJson
                     if (l.Path == "hop") o["path"] = "hop";
                 }
                 if (l.Idle is "bob" or "sway") o["idle"] = l.Idle;
+                AddExtra(o, l.Extra);
                 layers.Add((JsonNode)o);
             }
             page["layers"] = layers;
@@ -252,16 +310,39 @@ public static class BookJson
                 if (!string.IsNullOrEmpty(h.Ask)) o["ask"] = h.Ask;
                 if (!string.IsNullOrEmpty(h.Sound)) o["sound"] = h.Sound;
                 if (!string.IsNullOrEmpty(h.Effect) && h.Effect != "sparkle") o["effect"] = h.Effect;
+                AddExtra(o, h.Extra);
                 hotspots.Add((JsonNode)o);
             }
             page["hotspots"] = hotspots;
-            page["guidance"] = new JsonObject { ["hints"] = p.Guidance.Hints, ["showMe"] = p.Guidance.ShowMe, ["map"] = p.Guidance.Map };
+            var guidance = new JsonObject { ["hints"] = p.Guidance.Hints, ["showMe"] = p.Guidance.ShowMe, ["map"] = p.Guidance.Map };
+            AddExtra(guidance, p.Guidance.Extra);
+            page["guidance"] = guidance;
         }
+        if (p.Spread is SpreadSource sp && (sp.Left.Length > 0 || sp.Right.Length > 0))
+            page["spread"] = new JsonObject { ["left"] = sp.Left, ["right"] = sp.Right };
+        AddExtra(page, p.Extra);
         return page;
     }
 
     /// <summary>Four decimal places, rounding halves up the way the browser does.</summary>
     public static double Round4(double v) => Math.Floor(v * 10000 + 0.5) / 10000;
+
+    /// <summary>Three decimal places: a thousandth of a second is finer than anyone can hear.</summary>
+    public static double Round3(double v) => Math.Floor(v * 1000 + 0.5) / 1000;
+
+    static JsonObject VoiceJson(Voice v)
+    {
+        var o = new JsonObject { ["file"] = v.File };
+        if (v.Start is double start && start > 0) o["start"] = Round3(start);
+        if (v.End is double end && end > 0) o["end"] = Round3(end);
+        if (v.Words.Count > 0)
+        {
+            var words = new JsonArray();
+            foreach (double t in v.Words) words.Add((JsonNode)JsonValue.Create(Round3(t)));
+            o["words"] = words;
+        }
+        return o;
+    }
 
     static JsonObject BoxJson(RectD b) => new() { ["x"] = Round4(b.X), ["y"] = Round4(b.Y), ["w"] = Round4(b.W), ["h"] = Round4(b.H) };
 

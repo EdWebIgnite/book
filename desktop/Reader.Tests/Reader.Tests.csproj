@@ -14,6 +14,8 @@
     <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
     <!-- Only for the sound tests, which run the synthesiser with no sound device. -->
     <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
+    <!-- The book editor's logic: saving, undo, Check book, Export. -->
+    <ProjectReference Include="..\Editor.Core\Editor.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -39,6 +39,8 @@ public sealed class SettingsPanel : UserControl
             s => s.ReduceMotion, (s, v) => s.ReduceMotion = v,
             Help: "Reduced movement helps children who feel dizzy or unwell with zooming."),
         new Check("sound", "Touch and movement sounds", s => s.Sound, (s, v) => s.Sound = v),
+        new Check("readToMe", "Read to me", s => s.ReadToMe, (s, v) => s.ReadToMe = v,
+            Help: "In books with a recorded voice, the words are read aloud and light up as they are read. Books without one are not changed."),
         new Choice("extras", "Things to find",
             new[] { ("on", "Everything, any time"), ("afterStory", "The story first, then the rest"), ("off", "Only the story") },
             s => s.Extras, (s, v) => s.Extras = v,
