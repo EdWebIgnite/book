@@ -78,7 +78,7 @@ public class StepsAndMovesTests
         Rig rig = Kit.Open(Puddle);
         ReaderEngine e = rig.Engine;
         Assert.True(e.State.WholePage);
-        Assert.Equal(Geo.Inflate(e.PageRects[0], 0.03), e.Shown.Cam);
+        Assert.Equal(e.WholeCam(0), e.Shown.Cam);
         // Soft edges at 60% strength on the whole page of a "vignette" book.
         Assert.Equal(0.75 * 0.6, e.Shown.Vig, 9);
 
@@ -156,7 +156,7 @@ public class StepsAndMovesTests
             Rig rig = Kit.Open(Puddle);
             rig.Next();
             Assert.True(rig.Engine.Animating);
-            double expected = rig.Engine.MoveTime(Geo.Inflate(rig.Engine.PageRects[0], 0.03), rig.Engine.Target().Cam, 1400).Ms;
+            double expected = rig.Engine.MoveTime(rig.Engine.WholeCam(0), rig.Engine.Target().Cam, 1400).Ms;
             double took = rig.RunUntilStill(frameMs: frameMs);
             Assert.InRange(took, expected, expected + frameMs);
             return expected;
@@ -258,7 +258,7 @@ public class StepsAndMovesTests
         Assert.True(e.State.WholePage);
         Assert.True(e.State.Overview);
         Assert.Equal("", e.State.Caption);                       // no words over the whole page
-        Assert.Equal(Geo.Inflate(e.PageRects[0], 0.03), e.Shown.Cam);
+        Assert.Equal(e.WholeCam(0), e.Shown.Cam);
         e.ToggleOverview();
         rig.RunUntilStill();
         Assert.False(e.State.WholePage);

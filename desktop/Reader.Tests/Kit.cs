@@ -39,7 +39,12 @@ static class Kit
         book.Pages.Select(p => p.Tiles is { Height: > 0 } t ? (double)t.Width / t.Height : p.Explore ? 3.2 : 1.6).ToArray();
 
     /// <summary>An engine showing a book on a 1000 x 700 screen, with the settings a fresh install has.</summary>
-    public static Rig Open(Book book, Action<ReaderSettings>? tweak = null)
+    public static Rig Open(Book book, Action<ReaderSettings>? tweak = null) => Open(book, tweak, hasCover: false);
+
+    /// <summary>The same, with the book's cover picture available, so it starts closed on its cover.</summary>
+    public static Rig OpenWithCover(string id, Action<ReaderSettings>? tweak = null) => Open(Load(id), tweak, hasCover: true);
+
+    public static Rig Open(Book book, Action<ReaderSettings>? tweak, bool hasCover)
     {
         var settings = new ReaderSettings { ReduceMotion = "off" };
         tweak?.Invoke(settings);
@@ -48,7 +53,7 @@ static class Kit
         engine.SetViewSize(1000, 700);
         var rig = new Rig(engine, sound);
         engine.SetTime(rig.Now);
-        engine.SetBook(book, Aspects(book));
+        engine.SetBook(book, Aspects(book), 0, hasCover);
         engine.Update(rig.Now);
         return rig;
     }

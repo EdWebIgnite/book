@@ -58,11 +58,14 @@ static class Screenshot
                 }
                 int page = o.Page;
                 int? stop = o.Stop;
+                bool placeGiven = o.PlaceGiven;
                 o.Page = 1;
                 o.Stop = null;
+                o.PlaceGiven = false;
                 window.OpenBookNow(folder);
                 Dispatcher.UIThread.RunJobs();
-                window.JumpTo(page, stop);
+                // With no page asked for, the book stays as it opens: on its cover, if it has one.
+                if (placeGiven) window.JumpTo(page, stop);
                 Pass(16);
 
                 ReaderEngine engine = window.Screen.Engine;

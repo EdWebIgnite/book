@@ -69,8 +69,8 @@ sealed class SettingsPanel : UserControl
         new Choice("zoomPath", "Zoom math", new[] { ("smooth", "Even zoom speed"), ("straight", "Straight line between boxes") }, s => s.ZoomPath, (s, v) => s.ZoomPath = v),
 
         new Section("Between pages"),
-        new Check("bookLook", "Show pages as a book", s => s.BookLook, (s, v) => s.BookLook = v,
-            Help: "One page at a time, lying in an open book: a cover behind it and a spine on the left. Explore pages and very big scenes are shown as before."),
+        new Check("bookLook", "Show as an open book", s => s.BookLook, (s, v) => s.BookLook = v,
+            Help: "Each picture lies across both pages of an open book, with a crease down the middle that fades as the camera goes in. The book starts closed on its cover. Explore pages and very big scenes are shown as before."),
         new Choice("pageTurn", "Page change",
             new[] { ("flip", "Flip like a book page"), ("fly", "Fly straight across"), ("zoomOut", "Zoom out, across, then in"), ("cut", "Jump cut") },
             s => s.PageTurn, (s, v) => s.PageTurn = v,

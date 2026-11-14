@@ -113,13 +113,15 @@ public sealed partial class ReaderView : Control
         _tiles.Clear();
         _pictures.Clear();
         _frames.Clear();
+        ForgetBookPictures();
         _book = book;
         book.LoadAtOnce = _loadAtOnce;
         book.PictureArrived += Wake;
         _sound.Folder = book.Folder;
         Engine.SetTime(Now);
         Engine.SetViewSize(Bounds.Width, Bounds.Height);
-        Engine.SetBook(book.Book, book.Aspects, startStep);
+        Engine.SetBook(book.Book, book.Aspects, startStep, book.HasCover);
+        PrepareCover(book);
         Wake();
     }
 

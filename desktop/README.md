@@ -58,16 +58,17 @@ Settings are kept between runs in `settings.json` in the user's own app-data fol
 
 The file carries a `settingsVersion`. A file saved before version 2 (by the first desktop build) is brought up to date once when it is loaded: the whole page is shown again after its stops, the book look is switched on and the page change becomes the flip. Everything else in it is kept, and after that the file is left as the user sets it.
 
-## The book look and the page flip
+## The open book, the page turn and the cover
 
-Two settings, both on to start with, make the reader look and turn like a real book. They are in the settings panel under Fine tuning, Between pages.
+Two settings, both on to start with, make the reader look and turn like a real picture book. They are in the settings panel under Fine tuning, Between pages.
 
-- **Show pages as a book** (`bookLook`). Guided pages are shown one at a time as the top page of a book lying open: a cover board behind the page (its colour comes from the book's cover picture), a spine on the left, the edges of the pages underneath on the right and bottom, and a soft shadow. Pages being explored and tiled big scenes are drawn as before, with nothing around them. With the setting off, pages lie side by side as they do in the browser.
-- **Page change: Flip like a book page** (`pageTurn` = `flip`). Going from one whole page to the next turns the page over from its right edge to the spine, in 900 ms at the standard speed. Going back plays it the other way. From a close-up, the camera first eases out to the whole page.
+- **Show as an open book** (`bookLook`). Each landscape picture lies across both pages of an open book, as a double-page spread: the crease runs down the middle of the picture. Around the pages are a cover board, the edges of the pages underneath (more on the left the further into the book you are, more on the right at the start) and a soft shadow. The crease and the pages' curve into the binding are fully there when the book is seen whole and fade out as the camera goes in, so a close-up never has a dark line through a character. A portrait picture (the comic) is the right-hand page, and the left-hand page shows the picture before it, or plain paper. Pages being explored and tiled big scenes are drawn as before, with no book round them. With the setting off, pages lie side by side as they do in the browser.
+- **Page change: Flip like a book page** (`pageTurn` = `flip`). Going from one whole spread to the next, the right-hand page lifts from its outer edge and rolls over to the left, bending as paper does, its back showing the left half of the next picture while the right half is uncovered underneath. Going back, the left-hand page rolls over to the right. It takes 900 ms at the standard speed. From a close-up, the camera first eases out to the whole book.
+- **The cover.** A book whose `book.json` names a `cover` picture starts closed on it, in the middle of the screen. The first tap swings the cover open round the spine like a stiff board, its inside landing as the left-hand page of the first spread, while the camera eases to the open book. Going back from the first page closes it again. A book without a cover picture starts open. `--page` and `--stop` skip the cover.
 
-The flip is never used where it would show something a page is hiding. A page with `"openWhole": false` (page 6 of Moss, which hides a raindrop) is arrived at through a short dip to dark instead, and so is any page of a different shape from the one before it. A stop with `"moveSeconds": 0` still cuts. With reduced motion there is no flip, only the fade. The flip needs the book look: without it, `flip` behaves like `fly`.
+The page turn is never used where it would show something a page is hiding. A page with `"openWhole": false` (page 6 of Moss, which hides a raindrop) is arrived at through a short dip to dark instead, and so is any page of a different shape from the one before it. A stop with `"moveSeconds": 0` still cuts. With reduced motion there is no turn and no swinging cover, only the fade. The turn needs the open book: without it, `flip` behaves like `fly`.
 
-On a machine with no screen, `xvfb-run -a dotnet Player/bin/Debug/net10.0/BookReader.dll` runs it on a pretend display.
+How it is made: the sizes of the book are in `BookLayout` and the bending is in `Curl` (both in `Reader.Core/BookLayout.cs`, with tests). The turning page rolls over a cylinder that travels from the outer edge to the spine. `ReaderBook.cs` cuts the page into upright strips, puts each where its bit of paper is on the roll (with the fold leaning a little, the top corner leading), draws strips that are lifted higher a little bigger, as nearer things look, and shades each by how it faces the light.
 
 ## Test
 
@@ -97,11 +98,12 @@ dotnet Player/bin/Debug/net10.0/BookReader.dll --shot garden.png --book biggest-
 
 Screenshots always start from the default settings and never touch the saved ones. Run with `--help` for the full list.
 
-To catch a page half way through its flip, get to the whole page at the end of page 1 and stop the clock part of the way through the turn:
+With no `--page` or `--stop` the picture is of the book as it opens: closed on its cover. To catch a page part of the way through its turn, get to the whole page at the end of a page and stop the clock during the turn (it lasts 900 ms), or catch the cover half open:
 
 ```
-dotnet Player/bin/Debug/net10.0/BookReader.dll --shot flip.png --book biggest-puddle --page 1 --stop 2 --wait 4000 \
-  --do "tap 900,400; wait 3500; key Right; wait 432"
+dotnet Player/bin/Debug/net10.0/BookReader.dll --shot turn.png --book biggest-puddle --page 2 --stop 2 --wait 5000 \
+  --do "key Right; wait 3500; key Right; wait 400"
+dotnet Player/bin/Debug/net10.0/BookReader.dll --shot cover.png --book biggest-puddle --do "wait 400; key Right; wait 550"
 ```
 
 ## Smooth movement, and how to measure it
@@ -126,7 +128,7 @@ dotnet Player/bin/Release/net10.0/BookReader.dll --bench
 dotnet Player/bin/Release/net10.0/BookReader.dll --bench --pages 1 --set bookLook=false --set pageTurn=fly
 ```
 
-Reader time is made up (sixty frames a second), so two builds draw the same frames and their numbers can be compared. It prints the number of frames, the average and worst time, and how many took over 20 ms. It also times a blank window, because the bench paints without a graphics card and reads every frame back, which costs about 20 ms a frame here by itself. The line that starts "so the reader's own drawing" has that taken off.
+Reader time is made up (sixty frames a second), so two builds draw the same frames and their numbers can be compared. It prints the number of frames, the average and worst time, and how many took over 20 ms, for all frames and separately for the frames while a page was turning and while the cover was swinging open. It also times a blank window, because the bench paints without a graphics card and reads every frame back, which costs about 20 ms a frame here by itself. The line that starts "so the reader's own drawing" has that taken off.
 
 ## Publish for Windows
 
@@ -151,7 +153,7 @@ If there is no sound device, or the sound library cannot load, the reader stays 
 
 ## Different from the browser version
 
-- **The book look and the flip** are only on the desktop. In the browser, `flip` flies across.
+- **The open book, the page turn and the cover** are only on the desktop. In the browser, `flip` flies across and books start open.
 - **Reduced motion.** "Follow this device's setting" reads the Windows setting (Settings, Accessibility, Visual effects, Animation effects). Linux and macOS are not asked yet, so there the choice in the settings panel is the way to reduce motion.
 - **No hand hints.** At the very start the Next arrow pulses instead of a tapping hand, and there is no dragging hand on explore pages (the idle hints do that job).
 - **Making room for a caption** starts gently. The browser moves the picture a fixed share of the way every frame, which starts with a jolt; here it eases like a damped spring and arrives at about the same time.

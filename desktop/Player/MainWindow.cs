@@ -174,9 +174,10 @@ sealed class MainWindow : Window
         _shelf.IsVisible = false;
         _screen.SetBook(book);
         old?.Dispose();
-        if (_options.Page > 1 || _options.Stop is not null) JumpTo(_options.Page, _options.Stop);
+        if (_options.PlaceGiven) JumpTo(_options.Page, _options.Stop);
         _options.Page = 1;          // only the first book opened starts where the command line said
         _options.Stop = null;
+        _options.PlaceGiven = false;
     }
 
     /// <summary>Page and stop as a person counts them: 1 is the first, -1 the whole page, -2 exploring, null however the page opens.</summary>
@@ -189,7 +190,7 @@ sealed class MainWindow : Window
         {
             > 0 => stopNumber.Value - 1,
             < 0 => stopNumber.Value,
-            _ => e.Steps.First(s => s.Page == page).Stop,
+            _ => e.Steps.First(s => s.Page == page && s.Stop != Step.Cover).Stop,      // a page asked for by number is past the cover
         };
         _screen.View.Do(engine => engine.JumpTo(page, stop));
     }

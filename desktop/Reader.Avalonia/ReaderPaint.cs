@@ -37,7 +37,6 @@ public sealed partial class ReaderView
     readonly Dictionary<uint, IImmutableBrush> _brushes = new();
     readonly Dictionary<(uint Colour, int Width, bool Round), ImmutablePen> _pens = new();
     readonly Dictionary<(int Page, int Effect), Geometry> _weatherClips = new();
-    readonly Dictionary<int, BookFrame> _bookFrames = new();        // by page shape (width over height, in thousandths)
     LoadedBook? _shapesFor;
 
     /// <summary>How many times the picture has been drawn. The bench uses it to tell drawn frames from skipped ones.</summary>
@@ -61,7 +60,7 @@ public sealed partial class ReaderView
             // Shapes kept from the last book don't fit this one.
             _shapesFor = book;
             _weatherClips.Clear();
-            _bookFrames.Clear();
+            _frames3.Clear();
         }
 
         ViewTransform v = e.GetView();
@@ -71,13 +70,15 @@ public sealed partial class ReaderView
 
         if (e.BookMode)
         {
-            if (e.GetFlip() is FlipDraw flip) DrawFlip(ctx, book, flip, w, h, scaling);
+            if (e.GetCover() is CoverDraw cover) DrawCover(ctx, book, cover, v, scaling);
+            else if (e.GetFlip() is FlipDraw flip) DrawCurl(ctx, book, flip, scaling);
             else
             {
+                double crease = e.CreaseStrength();
                 foreach (int i in e.BookPages())
                 {
-                    RectD r = v.ToScreen(e.PageRects[i]);
-                    if (OnScreen(r, w, h, r.H * 0.12)) DrawBookPage(ctx, book, i, r, w, h, scaling, quality, weather: true);
+                    RectD r = v.ToScreen(BookLayout.Book(e.PageRects[i]));
+                    if (OnScreen(r, w, h, r.H * 0.12)) DrawOpenBook(ctx, book, i, v, w, h, scaling, quality, crease);
                 }
             }
         }
@@ -285,285 +286,6 @@ public sealed partial class ReaderView
                     break;
             }
         }
-    }
-
-    // ---------------------------------------------------------------- the book look
-
-    /// <summary>
-    /// The parts of a book drawn around one page: a cover board showing as a border, a spine on the left,
-    /// the edges of the pages underneath, a shadow, and the shading where the page dips into the gutter.
-    /// Everything is in page units (the page one unit tall, its top-left corner at 0, 0) and is made once
-    /// for a page shape; drawing it is a matter of setting the transform.
-    /// </summary>
-    sealed class BookFrame
-    {
-        /// <summary>How far the cover board shows beyond the page at the top, right and bottom.</summary>
-        public const double Board = 0.017;
-        /// <summary>The width of the spine, outside the page on the left.</summary>
-        public const double Spine = 0.024;
-        /// <summary>How far each page edge underneath sticks out beyond the one above it.</summary>
-        const double Edge = 0.0038;
-        /// <summary>How far the gutter shading reaches in from the page's left edge.</summary>
-        const double Gutter = 0.055;
-
-        readonly RoundedRect _board;
-        readonly IBrush _boardBrush, _spineBrush, _gutterBrush;
-        readonly Geometry _spine;
-        readonly (Rect Rect, IBrush Brush)[] _edges;
-        readonly IPen _crease, _rim;
-        readonly Rect _gutter, _shadowArea;
-        Bitmap? _shadowPicture;
-
-        public BookFrame(double aspect, Color board)
-        {
-            var outer = new Rect(-Spine, -Board, aspect + Spine + Board, 1 + 2 * Board);
-            _board = new RoundedRect(outer, new CornerRadius(0.007, 0.016, 0.016, 0.007));
-            _boardBrush = new ImmutableSolidColorBrush(board);
-            _shadowArea = outer.Inflate(0.14);
-            _rim = new ImmutablePen(new ImmutableSolidColorBrush(Shade(board, 1.45, 40)), 0.0016);
-
-            // The spine: darker than the board, a little lighter along its middle as if rounded.
-            var spine = new StreamGeometry();
-            using (StreamGeometryContext g = spine.Open())
-            {
-                const double k = 0.007;
-                g.BeginFigure(new Point(0, -Board), true);
-                g.LineTo(new Point(0, 1 + Board), true);
-                g.LineTo(new Point(-Spine + k, 1 + Board), true);
-                g.ArcTo(new Point(-Spine, 1 + Board - k), new Size(k, k), 0, false, SweepDirection.Clockwise, true);
-                g.LineTo(new Point(-Spine, -Board + k), true);
-                g.ArcTo(new Point(-Spine + k, -Board), new Size(k, k), 0, false, SweepDirection.Clockwise, true);
-                g.EndFigure(true);
-            }
-            _spine = spine;
-            _spineBrush = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(-Spine, 0, RelativeUnit.Absolute),
-                EndPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
-                GradientStops =
-                {
-                    new GradientStop(Shade(board, 0.5), 0), new GradientStop(Shade(board, 0.82), 0.4),
-                    new GradientStop(Shade(board, 0.62), 0.8), new GradientStop(Shade(board, 0.36), 1),
-                },
-            }.ToImmutable();
-
-            // The pages underneath: three paper edges showing past the right and the bottom of the top page.
-            Color[] paper = { Color.Parse("#cbc3b2"), Color.Parse("#efe9dc"), Color.Parse("#d5cdbd") };
-            _edges = new (Rect, IBrush)[3];
-            for (int i = 0; i < 3; i++)
-            {
-                double out_ = (3 - i) * Edge;
-                _edges[i] = (new Rect(0, 0, aspect + out_, 1 + out_), new ImmutableSolidColorBrush(paper[i]));
-            }
-
-            // Where the page dips into the gutter: dark right at the spine, gone a little way in.
-            _gutter = new Rect(0, 0, Gutter, 1);
-            _gutterBrush = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
-                EndPoint = new RelativePoint(Gutter, 0, RelativeUnit.Absolute),
-                GradientStops =
-                {
-                    new GradientStop(Color.FromArgb(92, 0, 0, 0), 0), new GradientStop(Color.FromArgb(40, 0, 0, 0), 0.3),
-                    new GradientStop(Color.FromArgb(12, 0, 0, 0), 0.65), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1),
-                },
-            }.ToImmutable();
-            _crease = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(110, 0, 0, 0)), 0.0018);
-        }
-
-        /// <summary>A colour made darker or lighter, with an optional lift so that near-black still shows a rim.</summary>
-        static Color Shade(Color c, double by, int lift = 0) => Color.FromRgb(
-            (byte)Math.Clamp(c.R * by + lift, 0, 255), (byte)Math.Clamp(c.G * by + lift, 0, 255), (byte)Math.Clamp(c.B * by + lift, 0, 255));
-
-        /// <summary>The soft shadow under the whole book, as a picture a couple of hundred pixels to the unit.</summary>
-        Bitmap MakeShadow()
-        {
-            const double pixelsPerUnit = 220;
-            var size = new PixelSize((int)Math.Ceiling(_shadowArea.Width * pixelsPerUnit), (int)Math.Ceiling(_shadowArea.Height * pixelsPerUnit));
-            var picture = new RenderTargetBitmap(size);
-            // Worked out in the picture's own pixels, with no transform: a blur's width does not follow a
-            // transform the way a shape does.
-            double k = pixelsPerUnit;
-            Rect board = _board.Rect;
-            var inPixels = new RoundedRect(new Rect((board.X - _shadowArea.X) * k, (board.Y - _shadowArea.Y) * k, board.Width * k, board.Height * k), 0.012 * k);
-            var shadow = new BoxShadows(new BoxShadow { OffsetX = 0.004 * k, OffsetY = 0.016 * k, Blur = 0.07 * k, Color = Color.FromArgb(170, 0, 0, 0) });
-            using (DrawingContext ctx = picture.CreateDrawingContext())
-                ctx.DrawRectangle(null, null, inPixels, shadow);
-            return picture;
-        }
-
-        /// <summary>What lies under the page: shadow, cover board, spine, and the edges of the pages beneath.</summary>
-        public void DrawUnder(DrawingContext ctx)
-        {
-            // The shadow is blurred once into a small picture and stretched from then on. Blurring it afresh
-            // every frame cost more than drawing the page itself on a computer with no graphics card.
-            _shadowPicture ??= MakeShadow();
-            // Only the part that shows around the board is drawn; the board hides the rest.
-            using (ctx.PushRenderOptions(Quick)) DrawAround(ctx, _shadowPicture, _shadowArea, _board.Rect.Deflate(0.006));
-            ctx.DrawRectangle(_boardBrush, _rim, _board);
-            ctx.DrawGeometry(_spineBrush, null, _spine);
-            foreach (var (rect, brush) in _edges) ctx.FillRectangle(brush, rect);
-        }
-
-        /// <summary>What lies over the page: the shading at the gutter, and nothing anywhere near the middle.</summary>
-        public void DrawOver(DrawingContext ctx)
-        {
-            ctx.FillRectangle(_gutterBrush, _gutter);
-            ctx.DrawLine(_crease, new Point(0, 0), new Point(0, 1));
-        }
-    }
-
-    BookFrame FrameFor(LoadedBook book, int page)
-    {
-        // Pages of the same shape share one frame.
-        int shape = (int)Math.Round(book.Aspects[page] * 1000);
-        if (!_bookFrames.TryGetValue(shape, out BookFrame? frame))
-            _bookFrames[shape] = frame = new BookFrame(shape / 1000.0, book.Board);
-        return frame;
-    }
-
-    static Matrix PageSpace(RectD r) => Matrix.CreateScale(r.H, r.H) * Matrix.CreateTranslation(r.X, r.Y);
-
-    /// <summary>A page drawn as the top page of a book lying open on the table.</summary>
-    void DrawBookPage(DrawingContext ctx, LoadedBook book, int page, RectD r, double w, double h, double scaling, RenderOptions quality, bool weather)
-    {
-        BookFrame frame = FrameFor(book, page);
-        Matrix space = PageSpace(r);
-        using (ctx.PushTransform(space)) frame.DrawUnder(ctx);
-        DrawPage(ctx, book, page, r, null, w, h, scaling, quality, weather);
-        using (ctx.PushTransform(space)) frame.DrawOver(ctx);
-    }
-
-    // ---------------------------------------------------------------- the page flip
-
-    static readonly IImmutableBrush Paper = new ImmutableSolidColorBrush(Color.Parse("#f3eee3"));
-    static readonly Rect UnitSquare = new(0, 0, 1, 1);
-
-    /// <summary>A shadow that is darkest at x = 0 and has faded away by x = 1, in a unit square.</summary>
-    static readonly IBrush FallOff = new LinearGradientBrush
-    {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
-        EndPoint = new RelativePoint(1, 0, RelativeUnit.Absolute),
-        GradientStops =
-        {
-            new GradientStop(Color.FromArgb(255, 0, 0, 0), 0), new GradientStop(Color.FromArgb(120, 0, 0, 0), 0.25),
-            new GradientStop(Color.FromArgb(40, 0, 0, 0), 0.6), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1),
-        },
-    }.ToImmutable();
-
-    /// <summary>The same shadow the other way round: nothing at x = 0, darkest at x = 1.</summary>
-    static readonly IBrush FallOffBack = new LinearGradientBrush
-    {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
-        EndPoint = new RelativePoint(1, 0, RelativeUnit.Absolute),
-        GradientStops =
-        {
-            new GradientStop(Color.FromArgb(0, 0, 0, 0), 0), new GradientStop(Color.FromArgb(40, 0, 0, 0), 0.4),
-            new GradientStop(Color.FromArgb(120, 0, 0, 0), 0.75), new GradientStop(Color.FromArgb(255, 0, 0, 0), 1),
-        },
-    }.ToImmutable();
-
-    /// <summary>
-    /// The shading on the back of the turning leaf, in a unit square: x = 0 is the leaf's free edge, x = 1
-    /// the fold. A little shade out at the free edge, plain paper, then a band of light where the paper
-    /// curves up towards us, and dark right in the fold.
-    /// </summary>
-    static readonly IBrush LeafShade = new LinearGradientBrush
-    {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
-        EndPoint = new RelativePoint(1, 0, RelativeUnit.Absolute),
-        GradientStops =
-        {
-            new GradientStop(Color.FromArgb(50, 40, 30, 20), 0), new GradientStop(Color.FromArgb(0, 40, 30, 20), 0.4),
-            new GradientStop(Color.FromArgb(0, 255, 255, 255), 0.5), new GradientStop(Color.FromArgb(70, 255, 255, 255), 0.8),
-            new GradientStop(Color.FromArgb(40, 40, 30, 20), 0.93), new GradientStop(Color.FromArgb(125, 40, 30, 20), 1),
-        },
-    }.ToImmutable();
-
-    static readonly IPen LeafEdge = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(70, 60, 45, 30)), 1);
-
-    /// <summary>
-    /// A page turning over. The page underneath lies whole. The turning page is cut at the fold line: what
-    /// is left of the fold has not lifted yet and is drawn as it was; what was right of it has folded over
-    /// and shows its back, mirrored about the fold, as far as the spine. Shadows do the rest: one from
-    /// the leaf on to the page it is passing over, and one in the crease on the page just uncovered.
-    /// </summary>
-    void DrawFlip(DrawingContext ctx, LoadedBook book, FlipDraw flip, double w, double h, double scaling)
-    {
-        ReaderEngine e = Engine;
-        RectD under = e.ViewFor(flip.UnderCam).ToScreen(e.PageRects[flip.UnderPage]);
-        RectD page = e.ViewFor(flip.TurningCam).ToScreen(e.PageRects[flip.TurningPage]);
-        DrawBookPage(ctx, book, flip.UnderPage, under, w, h, scaling, Quick, weather: true);
-
-        double fold = Math.Clamp(flip.Fold, 0, 1);
-        if (fold >= 0.9995) return;                               // the leaf has gone over the spine
-        double foldX = page.Right - page.W * fold;                // the fold line travels from the right edge to the spine
-        double lift = Math.Sin(Math.PI * fold);                   // 0 lying flat at either end, 1 standing up half way
-
-        // The crease's shadow on the page just uncovered, right of the fold.
-        if (fold > 0.001)
-        {
-            double reach = Math.Min(page.W * (0.05 + 0.06 * lift), page.Right - foldX);
-            if (reach > 0.5)
-            {
-                using (ctx.PushOpacity(0.2 + 0.25 * lift))
-                using (ctx.PushTransform(Matrix.CreateScale(reach, page.H) * Matrix.CreateTranslation(foldX, page.Y)))
-                    ctx.FillRectangle(FallOff, UnitSquare);
-            }
-        }
-
-        // The part of the turning page that has not lifted yet.
-        if (foldX > page.X + 0.5)
-        {
-            using (ctx.PushClip(new Rect(page.X, page.Y, foldX - page.X, page.H)))
-            {
-                DrawPage(ctx, book, flip.TurningPage, page, null, w, h, scaling, Quick, weather: false);
-                using (ctx.PushTransform(PageSpace(page))) FrameFor(book, flip.TurningPage).DrawOver(ctx);
-            }
-        }
-
-        // The leaf: the mirror image, about the fold, of the part that was to its right.
-        double leafWidth = page.Right - foldX;                    // how wide the folded-over part is
-        double freeEdge = foldX - leafWidth;                      // where its far edge lies now
-        double left = Math.Max(page.X, freeEdge);                 // the spine cuts it off
-        if (foldX - left < 0.5) return;
-
-        // The shadow it throws on the page it is passing over, to the left of its free edge.
-        if (freeEdge > page.X + 1)
-        {
-            double reach = Math.Min(page.W * 0.12 * (0.3 + 0.7 * lift), freeEdge - page.X);
-            using (ctx.PushOpacity(0.5 * (0.35 + 0.65 * lift)))
-            using (ctx.PushTransform(Matrix.CreateScale(reach, page.H) * Matrix.CreateTranslation(freeEdge - reach, page.Y)))
-                ctx.FillRectangle(FallOffBack, UnitSquare);
-        }
-
-        // A lifted page bows: its top and bottom edges curve out a little, most in the middle of the leaf and
-        // most half way through the turn. That bow is what makes it read as paper rather than a sliding panel.
-        double bow = page.H * 0.026 * lift;
-        var leaf = new StreamGeometry();
-        using (StreamGeometryContext g = leaf.Open())
-        {
-            const int pieces = 10;
-            // u runs from 0 at the leaf's free edge to 1 at the fold. The free edge is the part lifted
-            // nearest to us, so it looks tallest; the paper also bellies a little in between.
-            double Bow(double x) { double u = (x - freeEdge) / Math.Max(1e-6, leafWidth); return bow * (0.6 * (1 - u * u) + 0.4 * 4 * u * (1 - u)); }
-            g.BeginFigure(new Point(foldX, page.Y), true);
-            for (int i = 1; i <= pieces; i++)
-            {
-                double x = foldX + (left - foldX) * i / pieces;
-                g.LineTo(new Point(x, page.Y - Bow(x)), true);
-            }
-            for (int i = pieces; i >= 0; i--)
-            {
-                double x = foldX + (left - foldX) * i / pieces;
-                g.LineTo(new Point(x, page.Bottom + Bow(x)), true);
-            }
-            g.EndFigure(true);
-        }
-        ctx.DrawGeometry(Paper, LeafEdge, leaf);
-        using (ctx.PushGeometryClip(leaf))
-        using (ctx.PushTransform(Matrix.CreateScale(leafWidth, page.H + 2 * bow) * Matrix.CreateTranslation(freeEdge, page.Y - bow)))
-            ctx.FillRectangle(LeafShade, UnitSquare);
     }
 
     // ---------------------------------------------------------------- over the pages

@@ -54,7 +54,9 @@ static class Bench
             const double frameMs = 1000.0 / 60;
             var all = new List<double>();
             var moving = new List<double>();
-            var record = new List<double>();      // the part of each frame spent before painting: engine, layout, recording the drawing
+            var record = new List<double>();
+            var turns = new List<double>();       // frames while a page was curling over
+            var cover = new List<double>();       // frames while the cover was swinging open      // the part of each frame spent before painting: engine, layout, recording the drawing
             var watch = new Stopwatch();
 
             void Frame()
@@ -62,6 +64,7 @@ static class Bench
                 clock += frameMs;
                 int before = view.RenderCount;
                 bool wasMoving = engine.Animating;
+                bool turning = engine.GetFlip() is not null, swinging = engine.GetCover() is { Open: > 0 };
                 watch.Restart();
                 view.Tick();
                 Dispatcher.UIThread.RunJobs();
@@ -73,6 +76,8 @@ static class Bench
                 record.Add(recorded);
                 all.Add(ms);
                 if (wasMoving || engine.Animating) moving.Add(ms);
+                if (turning || engine.GetFlip() is not null) turns.Add(ms);
+                if (swinging || engine.GetCover() is { Open: > 0 }) cover.Add(ms);
                 // Let pictures that finished loading in the background be handed over between frames.
                 Dispatcher.UIThread.RunJobs();
             }
@@ -83,6 +88,8 @@ static class Bench
             all.Clear();
             moving.Clear();
             record.Clear();
+            turns.Clear();
+            cover.Clear();
 
             int lastPage = Math.Clamp(o.BenchPages, 1, engine.Book!.Pages.Count);
             var tapAt = new Point(o.Width * 0.75, o.Height * 0.5);
@@ -120,6 +127,8 @@ static class Bench
             Console.WriteLine($"bench: {book}, pages 1 to {lastPage}, {taps} taps, window {o.Width}x{o.Height}");
             Report("frames drawn", all);
             Report("  of each frame, the part before painting (engine, layout, recording the drawing)", record);
+            Report("  of which, while a page was turning", turns);
+            Report("  of which, while the cover was swinging open", cover);
             Report("a blank window, for comparison (what the bench itself costs: painting and reading back an empty frame)", empty);
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                 $"  so the reader's own drawing took about {Math.Max(0, all.Average() - blank):0.0} ms a frame on average, " +

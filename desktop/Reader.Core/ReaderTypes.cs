@@ -14,6 +14,8 @@ public readonly record struct Step(int Page, int Stop, bool Explore = false, boo
     public const int WholePage = -1;
     /// <summary>Stop number meaning "the child is exploring".</summary>
     public const int Exploring = -2;
+    /// <summary>Stop number meaning "the book closed on its cover", which comes before the first page.</summary>
+    public const int Cover = -3;
 }
 
 /// <summary>
@@ -136,6 +138,12 @@ public sealed record PartyDraw(double Alpha, PartyStar[] Stars)
 /// <param name="TurningCam">The camera that shows the turning page whole, in world units.</param>
 /// <param name="UnderCam">The camera that shows the page underneath whole.</param>
 public readonly record struct FlipDraw(int TurningPage, int UnderPage, double Fold, bool Forward, RectD TurningCam, RectD UnderCam);
+
+/// <summary>
+/// The book's cover. <paramref name="Open"/> is 0 with the book shut and 1 once the cover has swung
+/// right over to the left; while it is between, the cover is turning.
+/// </summary>
+public readonly record struct CoverDraw(int Page, double Open, bool Opening);
 
 /// <summary>One sharp tile to draw over a big scene's overview picture.</summary>
 /// <param name="Level">0 is full size, each level after is half the one before.</param>

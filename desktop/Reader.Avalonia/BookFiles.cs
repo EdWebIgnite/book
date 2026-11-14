@@ -137,9 +137,31 @@ public sealed class LoadedBook : IDisposable
             foreach (PagePictures? p in pages) if (p is not null) foreach (Bitmap b in p.Smaller) b.Dispose();
             throw;
         }
-        var loaded = new LoadedBook(book, folder, pages, BoardColour(folder, book, pages));
+        var loaded = new LoadedBook(book, folder, pages, BoardColour(folder, book, pages)) { Cover = LoadCover(folder, book) };
         if (firstFull is not null) loaded._full.Put(pages[0].Path, firstFull);
         return loaded;
+    }
+
+    /// <summary>The book's own cover picture, if book.json names one and it can be read. The first page doesn't count.</summary>
+    public Bitmap? Cover { get; private init; }
+
+    /// <summary>True when the book has a cover picture to start on.</summary>
+    public bool HasCover => Cover is not null;
+
+    static Bitmap? LoadCover(string folder, Book book)
+    {
+        try
+        {
+            string? path = BookLibrary.SafePath(folder, book.Cover);
+            if (path is null || !File.Exists(path)) return null;
+            using FileStream file = File.OpenRead(path);
+            // Big enough to be sharp when the closed book fills a large screen, small enough to draw quickly.
+            return Bitmap.DecodeToHeight(file, 1400, BitmapInterpolationMode.HighQuality);
+        }
+        catch (Exception)
+        {
+            return null;   // a damaged cover: the book just opens without it
+        }
     }
 
     /// <summary>
@@ -231,6 +253,7 @@ public sealed class LoadedBook : IDisposable
 
     public void Dispose()
     {
+        Cover?.Dispose();
         _full.Dispose();
         foreach (PagePictures p in _pages) foreach (Bitmap b in p.Smaller) b.Dispose();
     }

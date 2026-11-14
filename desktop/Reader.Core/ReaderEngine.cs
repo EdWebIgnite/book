@@ -28,7 +28,7 @@ public sealed class ReaderEngine
     /// <summary>The closest zoom on an explore page shows this much of the page's height.</summary>
     public const double ClosestZoom = 0.12;
 
-    enum AnimKind { Move, Fly, Pan, Flip }
+    enum AnimKind { Move, Fly, Pan, Flip, Cover }
 
     sealed class Anim
     {
@@ -46,10 +46,15 @@ public sealed class ReaderEngine
         public bool Forward = true;
         /// <summary>What plays straight after this, as part of the same journey (pull back, flip, go in).</summary>
         public Anim? After;
+        /// <summary>A dip to dark that leaves the closed book, or arrives at it: the cover shows on that side of the dip.</summary>
+        public bool FromCover, ToCover;
     }
 
     /// <summary>How long a page takes to flip at the standard move speed, in milliseconds.</summary>
     public const double FlipMs = 900;
+
+    /// <summary>How long the cover takes to swing open at the standard move speed, in milliseconds.</summary>
+    public const double CoverMs = 1100;
     const double StandardMoveMs = 1400;
 
     sealed record Note(string Text, string Ask, double Until);
@@ -162,10 +167,15 @@ public sealed class ReaderEngine
     /// Start a book. <paramref name="pageAspects"/> is each page image's width divided by its height,
     /// which is all the engine needs to know about the pictures.
     /// </summary>
-    public void SetBook(Book book, IReadOnlyList<double> pageAspects, int startStep = 0)
+    /// <param name="hasCover">
+    /// True when the book's cover picture can be shown. The book then starts closed on its cover (with the
+    /// book look on), and the first tap opens it.
+    /// </param>
+    public void SetBook(Book book, IReadOnlyList<double> pageAspects, int startStep = 0, bool hasCover = false)
     {
         if (pageAspects.Count != book.Pages.Count) throw new ArgumentException("One aspect ratio is needed for every page.", nameof(pageAspects));
         Book = book;
+        HasCover = hasCover;
         StopClip();
         _fx.Clear();
         _layers.Clear();
@@ -218,11 +228,17 @@ public sealed class ReaderEngine
         _found.Clear();
     }
 
-    /// <summary>Index of the first step showing the given page and stop (-1 whole page, -2 explore).</summary>
+    /// <summary>The book has a cover picture to start on (see <see cref="SetBook"/>).</summary>
+    public bool HasCover { get; private set; }
+
+    /// <summary>
+    /// Index of the first step showing the given page and stop (-1 whole page, -2 explore, -3 the cover).
+    /// When there is no such step, the first step of the page, not counting the cover.
+    /// </summary>
     public int FindStep(int page, int stop)
     {
         int i = _steps.FindIndex(s => s.Page == page && s.Stop == stop);
-        if (i < 0) i = _steps.FindIndex(s => s.Page == page);
+        if (i < 0) i = _steps.FindIndex(s => s.Page == page && s.Stop != Step.Cover);
         return Math.Max(0, i);
     }
 
@@ -248,6 +264,9 @@ public sealed class ReaderEngine
         var s = Settings;
         var steps = new List<Step>();
         if (Book is null) return steps;
+        // With the book look the book starts closed on its cover, if it has one and its first page is shown as a book.
+        if (HasCover && s.BookLook && Book.Pages.Count > 0 && !Book.Pages[0].Explore && Book.Pages[0].Tiles is null)
+            steps.Add(new Step(0, Step.Cover));
         for (int p = 0; p < Book.Pages.Count; p++)
         {
             Page page = Book.Pages[p];
@@ -385,15 +404,41 @@ public sealed class ReaderEngine
             style == FocusStyles.Spotlight ? s.Spotlight * k : 0);
     }
 
-    /// <summary>The camera that shows a page whole, with a little air around it.</summary>
-    public RectD WholeCam(int page) => Inflate(_pageRects[page], 0.03);
+    /// <summary>True when this page is shown as an open book: the book look is on, and it is a guided page and not a tiled scene.</summary>
+    public bool ShownAsBook(int page) => HasBook && Settings.BookLook && !IsTiled(page);
+
+    /// <summary>
+    /// The camera that shows a page whole, with a little air around it. With the book look it frames the
+    /// whole open book, board and page edges included.
+    /// </summary>
+    public RectD WholeCam(int page) =>
+        ShownAsBook(page) ? Inflate(BookLayout.Book(_pageRects[page]), BookLayout.Air) : Inflate(_pageRects[page], 0.03);
+
+    /// <summary>The camera on the closed book, centred on it.</summary>
+    public RectD ClosedCam(int page) => Inflate(BookLayout.Closed(_pageRects[page]), BookLayout.Air);
 
     /// <summary>A page seen whole, with the book's focus style at a gentler strength.</summary>
     Shot WholeShot(int page)
     {
         // The whole page never gets a spotlight: a book set to spotlight shows soft edges here instead.
         string wholeStyle = Book!.FocusStyle == FocusStyles.Spotlight ? FocusStyles.Vignette : Book.FocusStyle;
-        return Styled(WholeCam(page), _pageRects[page], wholeStyle, 0.6);
+        // In the open book the focus is both pages, so a portrait book's left-hand page isn't darkened.
+        RectD focus = ShownAsBook(page) ? BookLayout.Spread(_pageRects[page]) : _pageRects[page];
+        return Styled(WholeCam(page), focus, wholeStyle, 0.6);
+    }
+
+    /// <summary>The closed book: nothing in focus and no effects, just the cover in the middle of the screen.</summary>
+    Shot CoverShot(int page) => Styled(ClosedCam(page), BookLayout.Closed(_pageRects[page]), FocusStyles.None, 0);
+
+    /// <summary>
+    /// How strongly the crease and the curve of the pages show right now, 0 to 1: fully at the whole-book
+    /// view, fading out as the camera goes in closer (see <see cref="BookLayout.CreaseStrength"/>).
+    /// </summary>
+    public double CreaseStrength()
+    {
+        if (!BookMode || ViewWidth <= 0) return 0;
+        double whole = ViewFor(WholeCam(CurrentStep.Page)).Scale, now = GetView(withShake: false).Scale;
+        return whole <= 0 ? 0 : BookLayout.CreaseStrength(now / whole);
     }
 
     /// <summary>Camera, focus box and effect strengths for the current step (start box, or end box of a pan).</summary>
@@ -402,6 +447,7 @@ public sealed class ReaderEngine
         Step step = CurrentStep;
         RectD pr = _pageRects[step.Page];
         if (step.Explore) return Styled(ExploreStart(), pr, FocusStyles.None, 0);
+        if (step.Stop == Step.Cover) return CoverShot(step.Page);
         Stop? stop = CurrentStop;
         if (Overview || stop is null) return WholeShot(step.Page);
         RectD box = BoxRect(step.Page, end && stop.To is RectD to ? to : stop.Box);
@@ -417,7 +463,7 @@ public sealed class ReaderEngine
     /// True when pages are shown one at a time as pages of a book, rather than side by side. That is when
     /// the book look is switched on, except while a page is being explored and on tiled big scenes.
     /// </summary>
-    public bool BookMode => HasBook && Settings.BookLook && !CurrentStep.Explore && !IsTiled(CurrentStep.Page);
+    public bool BookMode => HasBook && !CurrentStep.Explore && ShownAsBook(CurrentStep.Page);
 
     /// <summary>Move from wherever the camera is now (drift included) to the current step.</summary>
     void MoveTo(int? previousPage, bool instant = false, Leaving? leaving = null)
@@ -446,9 +492,23 @@ public sealed class ReaderEngine
         StopClip();
         _lastTouch = now;
 
+        // Opening the book from its cover, or closing it again: the cover swings over like a stiff board.
+        bool fromCover = leaving is Leaving l0 && l0.Step.Stop == Step.Cover, toCover = step.Stop == Step.Cover;
+        if ((fromCover || toCover) && ms > 0 && leaving is Leaving l1)
+        {
+            if (!reduced && CanSwingCover(l1, step))
+            {
+                StartCover(l1, from, to, own);
+                RaiseChanged();
+                return;
+            }
+            fade = true;
+            ms = 340;
+            arcK = 0;
+        }
         // With the book look, a page change is a page turning over where it can be, and a dip to dark where
         // it can't. Explore pages and tiled scenes are not shown as books, so they keep the flight.
-        if (pageChanged && ms > 0 && !reduced && leaving is Leaving left && s.BookLook && s.PageTurn == "flip"
+        else if (pageChanged && ms > 0 && !reduced && leaving is Leaving left && s.BookLook && s.PageTurn == "flip"
             && !left.Step.Explore && !step.Explore && !IsTiled(fromPage) && !IsTiled(step.Page))
         {
             if (CanFlip(fromPage, left, step))
@@ -470,6 +530,7 @@ public sealed class ReaderEngine
             Smooth = s.ZoomPath == "smooth",
             ArcK = arcK, Fade = fade,
             FromPage = fromPage, ToPage = step.Page,
+            FromCover = fromCover, ToCover = toCover,
         };
         if (ms == 0) Finish();
         else if (SoundOn) Sound.Whoosh(_anim.Ms);
@@ -490,6 +551,66 @@ public sealed class ReaderEngine
         // The two pages lie on top of each other during the turn, so they have to be the same shape.
         double a = _pageRects[fromPage].W / _pageRects[fromPage].H, b = _pageRects[to.Page].W / _pageRects[to.Page].H;
         return canLeave && canArrive && Math.Abs(a / b - 1) < 0.03;
+    }
+
+    /// <summary>
+    /// Can the cover swing open (or shut) here? Opening shows the first spread whole, so the first page
+    /// must be one that may be seen whole. Shutting starts from the first page seen whole, pulling back to
+    /// it first if that is allowed. From anywhere else the book is simply faded shut.
+    /// </summary>
+    bool CanSwingCover(Leaving left, Step to)
+    {
+        Page first = Book!.Pages[0];
+        if (left.Step.Stop == Step.Cover) return to.Page == 0 && (to.Stop == Step.WholePage || first.OpenWhole);
+        return left.Step.Page == 0 && (left.Whole || first.OpenWhole);
+    }
+
+    /// <summary>
+    /// The cover swinging open, with the camera easing from the closed book to the open one, then going in
+    /// to the first stop if the first page doesn't open whole. Shutting is the same backwards, pulling back
+    /// to the whole spread first when the camera is in close.
+    /// </summary>
+    void StartCover(Leaving left, Shot from, Shot to, double? ownSeconds)
+    {
+        var s = Settings;
+        bool smooth = s.ZoomPath == "smooth";
+        double ms = Math.Max(1, CoverMs * s.MoveMs / StandardMoveMs);
+        Shot whole = WholeShot(0), closed = CoverShot(0);
+        if (left.Step.Stop == Step.Cover)
+        {
+            var open = new Anim
+            {
+                Kind = AnimKind.Cover, From = closed, To = whole, Start = _now, Ms = ms,
+                Easing = Easings.EaseInOutSine, Smooth = smooth, FromPage = 0, ToPage = 0, Forward = true,
+            };
+            if (CurrentStep.Stop != Step.WholePage)
+            {
+                double goIn = ownSeconds is double seconds ? Math.Max(1, seconds * 1000) : MoveTime(whole.Cam, to.Cam, s.MoveMs).Ms;
+                open.After = new Anim { Kind = AnimKind.Move, From = whole, To = to, Ms = goIn, Easing = s.Easing, Smooth = smooth, FromPage = 0, ToPage = 0 };
+            }
+            _anim = open;
+            if (SoundOn) Sound.PageTurn();
+            return;
+        }
+        var shut = new Anim
+        {
+            Kind = AnimKind.Cover, From = whole, To = closed, Start = _now, Ms = ms,
+            Easing = Easings.EaseInOutSine, Smooth = smooth, FromPage = 0, ToPage = 0, Forward = false,
+        };
+        if (left.Whole)
+        {
+            shut.From = from;
+            _anim = shut;
+            if (SoundOn) Sound.PageTurn();
+            return;
+        }
+        _anim = new Anim
+        {
+            Kind = AnimKind.Move, From = from, To = whole, Start = _now,
+            Ms = MoveTime(from.Cam, whole.Cam, s.MoveMs).Ms, Easing = s.Easing, Smooth = smooth,
+            FromPage = 0, ToPage = 0, After = shut,
+        };
+        if (SoundOn) Sound.Whoosh(_anim.Ms);
     }
 
     /// <summary>
@@ -566,12 +687,12 @@ public sealed class ReaderEngine
             // The next part of the same journey starts exactly where this one ended, not a frame late.
             next.Start = Math.Min(_now, done.Start + done.Ms);
             _anim = next;
-            if (next.Kind == AnimKind.Flip && SoundOn) Sound.PageTurn();
+            if (next.Kind is AnimKind.Flip or AnimKind.Cover && SoundOn) Sound.PageTurn();
             return;
         }
         _anim = null;
         _restSince = _now;
-        if (done.Kind is AnimKind.Move or AnimKind.Flip) { Arrive(); AfterArrive(); }
+        if (done.Kind is AnimKind.Move or AnimKind.Flip or AnimKind.Cover) { Arrive(); AfterArrive(); }
         done.Then?.Invoke();
     }
 
@@ -583,7 +704,7 @@ public sealed class ReaderEngine
     }
 
     /// <summary>True while the camera is on its way to a step: flying, turning a page, or fading across.</summary>
-    bool Travelling => _anim is { Kind: AnimKind.Move or AnimKind.Flip };
+    bool Travelling => _anim is { Kind: AnimKind.Move or AnimKind.Flip or AnimKind.Cover };
 
     /// <summary>A stop with an end box glides there once the camera has arrived.</summary>
     void AfterArrive()
@@ -1208,6 +1329,8 @@ public sealed class ReaderEngine
         if (step.Page != page) return 0;
         // -1 is the whole page as it opens, -2 is exploring. The whole page shown again after the stops
         // counts as being past the last stop, so what started during the page is still there.
+        // The closed book shows nothing of its first page.
+        if (step.Stop == Step.Cover) return 0;
         int at = step.Closing ? Book!.Pages[page].Stops.Count : step.Stop;
         if (e.From is > 1 && at >= -1 && at < e.From - 1) return 0;
         if (e.To is >= 1 && (at == Step.Exploring || at > e.To - 1)) return 0;
@@ -1338,6 +1461,29 @@ public sealed class ReaderEngine
         return a.Forward
             ? new FlipDraw(a.FromPage, a.ToPage, eased, true, WholeCam(a.FromPage), WholeCam(a.ToPage))
             : new FlipDraw(a.ToPage, a.FromPage, 1 - eased, false, WholeCam(a.ToPage), WholeCam(a.FromPage));
+    }
+
+    /// <summary>
+    /// The book's cover, when it is to be drawn: shut while the reader rests on the cover (or during the
+    /// half of a dip to dark that is on the cover's side), turning while it swings open or shut. Null
+    /// when the book is open.
+    /// </summary>
+    public CoverDraw? GetCover()
+    {
+        if (!HasBook) return null;
+        if (_anim is Anim a)
+        {
+            double raw = a.Ms <= 0 ? 1 : Clamp((_now - a.Start) / a.Ms, 0, 1);
+            if (a.Kind == AnimKind.Cover)
+            {
+                double eased = Easings.InOutSine(raw);
+                return new CoverDraw(0, a.Forward ? eased : 1 - eased, a.Forward);
+            }
+            if (a.Fade && (a.FromCover || a.ToCover)) return (raw < 0.5 ? a.FromCover : a.ToCover) ? new CoverDraw(0, 0, false) : null;
+            if (a.Kind == AnimKind.Pan && CurrentStep.Stop == Step.Cover) return new CoverDraw(0, 0, false);
+            return null;
+        }
+        return CurrentStep.Stop == Step.Cover ? new CoverDraw(0, 0, false) : null;
     }
 
     /// <summary>

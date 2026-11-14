@@ -13,6 +13,8 @@ sealed class Options
     public int Page = 1;
     /// <summary>Stop to open at, counting from 1. -1 is the whole page, -2 is exploring, null is however the page opens.</summary>
     public int? Stop;
+    /// <summary>True when --page or --stop was given. The book then opens on that page, past its cover.</summary>
+    public bool PlaceGiven;
 
     // The screenshot hook: draw one state with no screen attached, save it and exit.
     public string? Shot;
@@ -111,8 +113,8 @@ sealed class Options
                 case "--help" or "-h" or "/?": o.Help = true; break;
                 case "--content": o.Content = Value(); break;
                 case "--book": o.Book = Value(); break;
-                case "--page": o.Page = Int(Value(), a, o) ?? 1; break;
-                case "--stop": o.Stop = Int(Value(), a, o); break;
+                case "--page": o.Page = Int(Value(), a, o) ?? 1; o.PlaceGiven = true; break;
+                case "--stop": o.Stop = Int(Value(), a, o); o.PlaceGiven = true; break;
                 case "--shot": o.Shot = Value(); break;
                 case "--wait": o.WaitMs = Num(Value(), a, o) ?? 1000; break;
                 case "--scale": o.Scale = Num(Value(), a, o) ?? 1; break;
