@@ -34,6 +34,9 @@ sealed class Inspector : UserControl
 
     public NarrationPanel? Narration => _narration;
 
+    /// <summary>The words box of the selected stop, for the walkthrough to point at.</summary>
+    public Control? CaptionBox { get; private set; }
+
     /// <summary>Which sections the author has folded away, kept between rebuilds.</summary>
     readonly Dictionary<string, bool> _open = new() { ["Book"] = false, ["Moving effects"] = false, ["Pictures on top"] = false };
 
@@ -49,6 +52,7 @@ sealed class Inspector : UserControl
         Vector scroll = _scroll.Offset;
         _narration?.Detach();
         _narration = null;
+        CaptionBox = null;
         _body.Children.Clear();
         if (!_state.HasBook) return;
         Page? p = _state.Page;
@@ -150,7 +154,9 @@ sealed class Inspector : UserControl
             count.Text = words == 0 ? "" : $"{words} word{(words == 1 ? "" : "s")}, {text.Length} letters.{lines}{timing}";
             count.Foreground = lines.Length > 0 || timing.Length > 0 ? Ui.Warn : Ui.Muted;
         }
-        panel.Children.Add(Text(s.Caption, "", "Words", $"caption{_state.PageIndex}:{index}", v => s.Caption = v, multiline: true, after: Count));
+        var caption = Text(s.Caption, "", "Words", $"caption{_state.PageIndex}:{index}", v => s.Caption = v, multiline: true, after: Count);
+        CaptionBox = caption;
+        panel.Children.Add(caption);
         Count(s.Caption ?? "");
         panel.Children.Add(count);
         panel.Children.Add(Ui.FieldName("Question for the grown-up (optional)"));
@@ -239,7 +245,17 @@ sealed class Inspector : UserControl
         panel.Children.Add(Ui.FieldName("Name (for example Old Turtle)"));
         panel.Children.Add(Text(h.Name, "", "Name", $"hname{index}", v => h.Name = v));
         panel.Children.Add(Ui.FieldName("What it says when found"));
-        panel.Children.Add(Text(h.Caption, "", "Words", $"hcap{index}", v => h.Caption = v, multiline: true));
+        var hcount = Ui.Help("");
+        void HCount(string text)
+        {
+            int words = ReadAlong.WordCount(text);
+            string timing = h.Voice is { Words.Count: > 0 } v && v.Words.Count != words ? " The words have changed since they were timed: time them again." : "";
+            hcount.Text = words == 0 ? "" : $"{words} word{(words == 1 ? "" : "s")}.{timing}";
+            hcount.Foreground = timing.Length > 0 ? Ui.Warn : Ui.Muted;
+        }
+        panel.Children.Add(Text(h.Caption, "", "Words", $"hcap{index}", v => h.Caption = v, multiline: true, after: HCount));
+        HCount(h.Caption ?? "");
+        panel.Children.Add(hcount);
         panel.Children.Add(Ui.FieldName("Question for the grown-up (optional)"));
         panel.Children.Add(Text(h.Ask, "For example: What else lives in the sea?", "Question", $"hask{index}", v => h.Ask = v));
         panel.Children.Add(Ui.Heading("How it behaves"));
@@ -249,8 +265,11 @@ sealed class Inspector : UserControl
         panel.Children.Add(Ui.FieldName("When found"));
         panel.Children.Add(Ui.Choice<string?>(new List<(string?, string)> { (null, "Sparkle"), ("none", "No sparkle, just the words") }, h.Effect == "none" ? "none" : null,
             v => _state.Change("When found", () => h.Effect = v, source: this)));
-        panel.Children.Add(Ui.Heading("Sound"));
-        panel.Children.Add(SoundRow(h.Sound, v => h.Sound = v, "Plays when it is found: a voice saying the words, or a noise it makes."));
+        panel.Children.Add(Ui.Heading("Read aloud"));
+        _narration = new NarrationPanel(_state, _window, h, _state.PageIndex, index);
+        panel.Children.Add(_narration);
+        panel.Children.Add(Ui.Heading("Sound effect"));
+        panel.Children.Add(SoundRow(h.Sound, v => h.Sound = v, "Plays when it is found: a noise it makes. For the words read aloud, use Read aloud above, so they light up as they are read."));
         return Ui.CardBox(panel, Ui.Gold);
     }
 
@@ -474,9 +493,14 @@ sealed class Inspector : UserControl
             Ui.Button("Choose a cover picture...", _window.PickCover, "A portrait picture, like the front of a real book", small: true),
             Ui.Button("No cover", () => _state.Change("No cover", () => b.Cover = "", structure: true), small: true)));
         panel.Children.Add(Ui.Help("With a cover, the book starts closed on it and the first tap swings it open."));
+        panel.Children.Add(Ui.Heading("Read aloud"));
+        panel.Children.Add(Ui.FieldName("Language of the recordings, for timing words automatically"));
+        panel.Children.Add(Ui.Choice<string>(AutoTiming.Languages.ToList(), AutoTiming.Language, v => AutoTiming.Language = v));
+        panel.Children.Add(Ui.Row(Ui.Button("Time all stops...", () => _ = _window.Timing.TimeAll(), "Time the words of every recording in the book in one go", small: true)));
         panel.Children.Add(Ui.Heading("Folder"));
         panel.Children.Add(Ui.Label(_state.Project!.Folder, 12, Ui.Muted));
-        panel.Children.Add(Ui.Row(Ui.Button("Open the folder", _window.ShowFolder, small: true)));
+        panel.Children.Add(Ui.Row(Ui.Button("Open the folder", _window.ShowFolder, small: true),
+            Ui.Button("Show the book file", _window.ShowBookFile, "The book's book.json as text, for sorting out problems", small: true)));
         return panel;
     }
 }

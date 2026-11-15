@@ -6,7 +6,7 @@ namespace Editor.Core;
 /// <summary>
 /// Timing the words of a caption to its recording by hand. The author plays the recording and taps a
 /// key as each word starts; each tap gives the next word its time. Afterwards single words can be
-/// nudged earlier or later. (Working the times out from the sound alone is not attempted.)
+/// nudged earlier or later. (The computer can also work the times out from the sound: see WordAligner.)
 /// </summary>
 public sealed class TapAlong
 {

@@ -18,7 +18,35 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
     <!-- Draws the window with no screen attached, for the screenshot hook. -->
     <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
+    <!--
+      "Time words automatically": free speech recognition that runs on the computer, with no internet
+      once its file of speech knowledge has been downloaded (see Editor.Core/SpeechModel.cs). MIT licensed.
+      The runtime packages carry the native code for Windows, Linux and macOS; NoAvx is for older
+      processors without AVX, which the main one can't run on.
+    -->
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
   </ItemGroup>
+
+  <!--
+    Publishing for one system (publish-editor.sh does win-x64): the speech recogniser's native code
+    stays as files beside BookEditor.exe in runtimes/, where Whisper.net looks for it, instead of being
+    packed inside the single exe (from where it couldn't find it). Only the files for that system go in.
+  -->
+  <Target Name="KeepSpeechCodeBesideTheExe" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(RuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_OtherSpeechCode Include="@(ResolvedFileToPublish)"
+                        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/'))
+                                   And !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/$(RuntimeIdentifier)/'))
+                                   And !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/noavx/$(RuntimeIdentifier)/'))" />
+      <_OtherSpeechCode Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'ggml-metal.metal' And !$(RuntimeIdentifier.StartsWith('osx'))" />
+      <ResolvedFileToPublish Remove="@(_OtherSpeechCode)" />
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/'))">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />

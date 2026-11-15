@@ -166,11 +166,55 @@ public sealed class BookProject
             Add(p.Image);
             if (p.Spread is SpreadSource s) { Add(s.Left); Add(s.Right); }
             foreach (Stop st in p.Stops) { Add(st.Sound); Add(st.Voice?.File); }
-            foreach (Hotspot h in p.Hotspots) Add(h.Sound);
+            foreach (Hotspot h in p.Hotspots) { Add(h.Sound); Add(h.Voice?.File); }
             foreach (Layer l in p.Layers) Add(l.Image);
             if (p.Tiles is TileInfo t && TilesFolder(t) is string tf) used.Add(tf);
         }
         return used;
+    }
+
+    /// <summary>
+    /// Join a left-hand and a right-hand page picture (both already in the folder) into a new spread
+    /// picture, and make the page for it. The page remembers the two halves, so either can be replaced.
+    /// </summary>
+    public Page JoinPage(string left, string right, string stem)
+    {
+        stem = Path.GetFileName(stem);
+        string name = UniqueName((stem.Length > 0 ? stem : "spread") + "-spread.jpg");
+        Pictures.JoinSpread(PathOf(left)!, PathOf(right)!, PathOf(name)!);
+        return new Page { Image = name, Spread = new SpreadSource { Left = left, Right = right } };
+    }
+
+    /// <summary>
+    /// Delete spread pictures the editor joined that nothing uses any more: not the book as it is, not any
+    /// step that undo or redo can go back to (<paramref name="alsoKeep"/>), and not the book as it was last
+    /// saved before this (book.json.bak). Only pictures carrying the editor's own note are ever deleted, so
+    /// pictures people brought in, the left and right pages included, are never touched. Returns what went.
+    /// </summary>
+    public List<string> TidyJoinedPictures(IEnumerable<Book>? alsoKeep = null)
+    {
+        var keep = new HashSet<string>(UsedFiles(), StringComparer.OrdinalIgnoreCase);
+        void KeepAll(Book b)
+        {
+            var other = new BookProject(Folder, b);
+            foreach (string f in other.UsedFiles()) keep.Add(f);
+        }
+        foreach (Book b in alsoKeep ?? Enumerable.Empty<Book>()) KeepAll(b);
+        string backup = BookFile + ".bak";
+        if (File.Exists(backup))
+        {
+            try { KeepAll(BookJson.Parse(File.ReadAllText(backup))); }
+            catch (System.Text.Json.JsonException) { return new List<string>(); }     // can't tell what the backup needs: leave everything
+        }
+        var gone = new List<string>();
+        foreach (string full in Directory.EnumerateFiles(Folder, "*.jpg", SearchOption.TopDirectoryOnly))
+        {
+            string rel = Relative(full);
+            if (keep.Contains(rel) || !Pictures.IsJoined(full)) continue;
+            try { File.Delete(full); gone.Add(rel); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* in use: next time */ }
+        }
+        return gone;
     }
 
     /// <summary>The folder a tiled scene's tiles are in ("page1_tiles/"), from its path pattern.</summary>

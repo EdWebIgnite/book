@@ -33,19 +33,27 @@ Making a book:
 2. Drag on a picture to draw where the camera stops, in reading order, and
    type the words for each stop.
 3. Add a recording of each stop's words (or record with the microphone),
-   then press Tap along and press Space as each word starts, so the words
-   light up as they are read.
+   then press "Time words automatically", so the words light up as they
+   are read. The first time, this downloads the speech recogniser (about
+   150 MB, once); after that it works with no internet, and recordings
+   never leave the computer. Nudge any word that is a little off, or use
+   Tap along to time the words by hand.
 4. Press Play to see it in the real reader, on a computer or a phone.
 5. Check book lists anything that will go wrong. Export makes a copy ready
-   for the apps.
+   for the apps, and a book file (ending .picturebook) to send to a phone.
+   Open that file on the phone and the Book Reader app adds it to its shelf.
+
+New to it? The first time, the editor offers a step-by-step walkthrough.
+It is always there again under the ? button.
 
 Save with Ctrl+S. While there are unsaved changes, a safety copy is kept
 every few seconds, so nothing is lost if the computer stops. Ctrl+Z undoes
 anything. F1 shows every key.
 
-To put a book in BookReader.exe: export it with "Also add it to a reader's
-books" ticked and choose the "content" folder next to BookReader.exe. Or open
-the exported folder in BookReader with "Open a book folder".
+To put a book in BookReader.exe: drop its .picturebook file on the window,
+or open the exported folder with "Open a book folder". Or export it with
+"Also add it to a reader's books" ticked and choose the "content" folder
+next to BookReader.exe.
 TXT
 (cd "$out" && zip -qr BookEditor-windows.zip BookEditor)
 echo "Made $out/BookEditor-windows.zip"

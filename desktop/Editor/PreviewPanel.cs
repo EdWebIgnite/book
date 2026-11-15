@@ -63,6 +63,9 @@ sealed class PreviewPanel : UserControl
 
     public ReaderScreen? Screen => _screen;
 
+    /// <summary>The choice of screen, for the walkthrough to point at.</summary>
+    public Control DeviceBox => _deviceBox;
+
     public Device Device
     {
         get => _device;

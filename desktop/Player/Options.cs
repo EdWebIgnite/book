@@ -1,4 +1,5 @@
 using System.Globalization;
+using Reader.Core;
 
 namespace Player;
 
@@ -42,6 +43,11 @@ sealed class Options
     /// <summary>The parts of a phone screen kept for the notch and the gesture bar: left, top, right, bottom.</summary>
     public Avalonia.Thickness? SafeArea;
 
+    /// <summary>A book file (.picturebook) to add to the shelf and open: given with --import, or as the only plain argument (Open with).</summary>
+    public string? Import;
+    /// <summary>Where books added from files are kept. Screenshots use a folder of their own.</summary>
+    public string? ImportFolder;
+
     public string? Problem;
     public bool Help;
 
@@ -56,6 +62,9 @@ sealed class Options
             --stop <n>           start on this stop (1 is the first; -1 the whole page; -2 exploring)
             --fps                start with the frame-rate readout showing (the F key switches it on and off)
             --set <key>=<value>  use this setting for this run, for example --set autoPlay=true
+            --import <file>      add a book file (.picturebook) to the shelf and open it. A book file given
+                                 on its own (as Windows does with "Open with") does the same.
+            --books <folder>     where books added from files are kept (the user's app-data folder when left out)
 
         Draw one screen to a picture file and exit, with no window:
 
@@ -164,6 +173,8 @@ sealed class Options
                     else o.Problem ??= "--look should look like 0.5,0.25.";
                     break;
                 }
+                case "--import": o.Import = Value(); break;
+                case "--books": o.ImportFolder = Value(); break;
                 case "--set":
                 {
                     string pair = Value() ?? "";
@@ -173,6 +184,7 @@ sealed class Options
                     break;
                 }
                 default:
+                    if (!a.StartsWith('-') && o.Import is null && BookPackage.LooksLikePackage(a)) { o.Import = a; break; }
                     o.Problem ??= "Unknown option: " + a;
                     break;
             }

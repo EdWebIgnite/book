@@ -74,6 +74,7 @@ public static class BookJson
                 Ask = NonEmpty(Text(hot["ask"])),
                 Sound = NonEmpty(Text(hot["sound"])),
                 Effect = NonEmpty(Text(hot["effect"])),
+                Voice = ParseVoice(hot["voice"]),
                 Extra = Unknown(hot, HotspotKeys),
             });
         }
@@ -161,7 +162,7 @@ public static class BookJson
     static readonly HashSet<string> BookKeys = new() { "id", "title", "author", "cover", "focusStyle", "pages" };
     static readonly HashSet<string> PageKeys = new() { "image", "mode", "openWhole", "stops", "panels", "hotspots", "guidance", "effects", "layers", "tiles", "spread" };
     static readonly HashSet<string> StopKeys = new() { "box", "to", "panSeconds", "style", "moveSeconds", "auto", "holdSeconds", "caption", "ask", "sound", "voice" };
-    static readonly HashSet<string> HotspotKeys = new() { "box", "name", "story", "caption", "ask", "sound", "effect" };
+    static readonly HashSet<string> HotspotKeys = new() { "box", "name", "story", "caption", "ask", "sound", "effect", "voice" };
     static readonly HashSet<string> GuidanceKeys = new() { "hints", "showMe", "map" };
     static readonly HashSet<string> EffectKeys = new() { "type", "amount", "from", "to", "ground", "dry", "stop", "strength" };
     static readonly HashSet<string> LayerKeys = new() { "image", "box", "from", "to", "moveTo", "moveAt", "moveSeconds", "path", "idle" };
@@ -310,6 +311,7 @@ public static class BookJson
                 if (!string.IsNullOrEmpty(h.Ask)) o["ask"] = h.Ask;
                 if (!string.IsNullOrEmpty(h.Sound)) o["sound"] = h.Sound;
                 if (!string.IsNullOrEmpty(h.Effect) && h.Effect != "sparkle") o["effect"] = h.Effect;
+                if (h.Voice is { File.Length: > 0 } hv) o["voice"] = VoiceJson(hv);
                 AddExtra(o, h.Extra);
                 hotspots.Add((JsonNode)o);
             }

@@ -99,8 +99,46 @@ public static class Pictures
             canvas.DrawBitmap(r, l.Width, 0);
         }
         Write(spread, output, quality);
+        MarkJoined(output);
         return (info.Width, info.Height);
     }
+
+    // A note inside every spread the editor joins, so that the editor can tell its own joined pictures from
+    // pictures people brought in, and tidy away the ones nothing uses any more. (A JPEG comment: viewers ignore it.)
+    static readonly byte[] JoinedNote = System.Text.Encoding.ASCII.GetBytes("Joined by the Book Editor from a left and a right page");
+
+    /// <summary>Write the editor's note into a JPEG it made (just after the start marker). Other files are left alone.</summary>
+    public static void MarkJoined(string path)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 || IsJoined(bytes)) return;
+        int len = JoinedNote.Length + 2;
+        var marked = new byte[bytes.Length + len + 2];
+        marked[0] = 0xFF; marked[1] = 0xD8;
+        marked[2] = 0xFF; marked[3] = 0xFE;                                 // a comment
+        marked[4] = (byte)(len >> 8); marked[5] = (byte)(len & 0xFF);
+        JoinedNote.CopyTo(marked, 6);
+        Array.Copy(bytes, 2, marked, 6 + JoinedNote.Length, bytes.Length - 2);
+        File.WriteAllBytes(path, marked);
+    }
+
+    /// <summary>True for a spread picture the editor joined (it carries the editor's note).</summary>
+    public static bool IsJoined(string path)
+    {
+        try
+        {
+            var head = new byte[6 + JoinedNote.Length];
+            using FileStream f = File.OpenRead(path);
+            int n = f.Read(head, 0, head.Length);
+            return n == head.Length && IsJoined(head);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    static bool IsJoined(byte[] head) =>
+        head.Length >= 6 + JoinedNote.Length && head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF && head[3] == 0xFE
+        && head.AsSpan(6, JoinedNote.Length).SequenceEqual(JoinedNote);
 
     /// <summary>
     /// Write a copy of a picture no bigger than <paramref name="maxSide"/> pixels either way (0: any size),

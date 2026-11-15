@@ -35,6 +35,16 @@ public sealed class AndroidApp : AvaloniaAndroidApplication<PhoneApp>
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.ScreenLayout
         | ConfigChanges.SmallestScreenSize | ConfigChanges.UiMode | ConfigChanges.Density | ConfigChanges.Keyboard
         | ConfigChanges.KeyboardHidden | ConfigChanges.Navigation)]
+// A book file opened from Files, WhatsApp, Drive or an email comes here to be added to the shelf. Phones
+// rarely know the .picturebook ending, so the app also offers itself for zip files and files of unknown
+// type; anything that isn't a book is turned down with a friendly message.
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+    DataSchemes = new[] { "content", "file" }, DataMimeTypes = new[] { "application/zip", "application/x-zip-compressed", "application/x-zip", "application/octet-stream", "application/x-picturebook" })]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+    DataSchemes = new[] { "content", "file" }, DataHost = "*", DataMimeType = "*/*",
+    DataPathPatterns = new[] { ".*\\.picturebook", ".*\\..*\\.picturebook", ".*\\..*\\..*\\.picturebook", ".*\\..*\\..*\\..*\\.picturebook" })]
+[IntentFilter(new[] { Intent.ActionSend }, Categories = new[] { Intent.CategoryDefault },
+    DataMimeTypes = new[] { "application/zip", "application/x-zip-compressed", "application/x-zip", "application/octet-stream", "application/x-picturebook" })]
 public sealed class MainActivity : AvaloniaMainActivity
 {
     /// <summary>The screen that is showing, for keeping it awake while a book is open.</summary>
@@ -45,6 +55,35 @@ public sealed class MainActivity : AvaloniaMainActivity
         Current = this;
         PhoneDevice.Measure(this);
         base.OnCreate(savedInstanceState);
+        // Started by opening a book file (not when Android brings the screen back after it was put away).
+        if (savedInstanceState is null) TakeBookFile(Intent);
+    }
+
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        TakeBookFile(intent);
+    }
+
+    /// <summary>A book file sent or opened with the app: hand it to the shelf to be checked and added.</summary>
+    void TakeBookFile(Intent? intent)
+    {
+        if (intent is null) return;
+        Android.Net.Uri? uri = intent.Action switch
+        {
+            Intent.ActionView => intent.Data,
+            Intent.ActionSend => OperatingSystem.IsAndroidVersionAtLeast(33)
+                ? intent.GetParcelableExtra(Intent.ExtraStream, Java.Lang.Class.FromType(typeof(Android.Net.Uri))) as Android.Net.Uri
+#pragma warning disable CA1422 // the old way, for Android 12 and older
+                : intent.GetParcelableExtra(Intent.ExtraStream) as Android.Net.Uri,
+#pragma warning restore CA1422
+            _ => null,
+        };
+        if (uri is null) return;
+        // Only once: turning the phone or coming back to the app must not add it again.
+        intent.SetAction(Intent.ActionMain);
+        intent.SetData(null);
+        PhoneApp.OpenBookFile(this, uri);
     }
 
     protected override void OnPause()

@@ -88,6 +88,8 @@ public sealed class ReaderEngine
     double _rainLoud;
     // Narration: the voice of the stop being read, when it started (reader time) and when it ended.
     Voice? _voice;
+    bool _voiceFound;                              // the voice is a found thing's, read with its words in the found message
+    bool _arrivePending;                           // opened straight onto a stop: its sounds start once the reader is showing
     int _voiceWordCount;
     double _voiceAt;
     double? _voiceEndedAt;
@@ -207,6 +209,7 @@ public sealed class ReaderEngine
         _shown = Target();
         _hasShown = true;
         _restSince = _lastTouch = _now;
+        _arrivePending = true;
         AfterArrive();
         RaiseChanged();
     }
@@ -214,6 +217,7 @@ public sealed class ReaderEngine
     /// <summary>Put the book away: go quiet and forget it, so nothing more moves or sounds until another is set.</summary>
     public void ClearBook()
     {
+        _arrivePending = false;
         Hush();
         Book = null;
         _steps = new List<Step>();
@@ -303,6 +307,8 @@ public sealed class ReaderEngine
         _fling = null;
         _shown = Target();
         _restSince = _lastTouch = _now;
+        StopClip();
+        _arrivePending = true;
         AfterArrive();
         RaiseChanged();
     }
@@ -425,11 +431,15 @@ public sealed class ReaderEngine
     }
 
     /// <summary>Start a stop's recorded voice, when "Read to me" is on.</summary>
-    void PlayVoice(Stop stop)
+    void PlayVoice(Stop stop) => PlayVoice(stop.Voice, stop.Caption, found: false);
+
+    /// <summary>Start a recorded voice reading these words, when "Read to me" is on.</summary>
+    void PlayVoice(Voice? voice, string? caption, bool found)
     {
-        if (!Settings.ReadToMe || stop.Voice is not { File.Length: > 0 } v) return;
+        if (!Settings.ReadToMe || voice is not { File.Length: > 0 } v) return;
         _voice = v;
-        _voiceWordCount = ReadAlong.WordCount(stop.Caption);
+        _voiceFound = found;
+        _voiceWordCount = ReadAlong.WordCount(caption);
         _voiceAt = _now;
         _voiceEndedAt = null;
         Sound.PlayVoice(v.File, v.StartOrZero, v.End ?? 0);
@@ -449,8 +459,8 @@ public sealed class ReaderEngine
     /// <summary>True while a stop's voice is being read aloud.</summary>
     public bool Reading => _voice is not null && _voiceEndedAt is null;
 
-    /// <summary>True when the stop on screen has a voice that has finished reading.</summary>
-    public bool ReadingDone => _voice is not null && _voiceEndedAt is not null;
+    /// <summary>True when the stop on screen has a voice that has finished reading. (Not a found thing's voice: that isn't the child's cue to go on.)</summary>
+    public bool ReadingDone => _voice is not null && _voiceEndedAt is not null && !_voiceFound;
 
     /// <summary>The word of the caption being read right now (0 = first), or -1.</summary>
     public int ReadAlongWord()
@@ -640,6 +650,7 @@ public sealed class ReaderEngine
         bool fade = reduced;
         _fling = null;
         _note = null;
+        _arrivePending = false;
         StopClip();
         _lastTouch = now;
 
@@ -1098,6 +1109,8 @@ public sealed class ReaderEngine
         if (storyDone) _party = now;
         if (SoundOn) { if (storyDone) Sound.Party(); else Sound.Find(); }
         if (!string.IsNullOrEmpty(h.Sound)) PlayClip(h.Sound);
+        else StopVoice();
+        PlayVoice(h.Voice, h.Caption, found: true);
         if (!string.IsNullOrEmpty(h.Caption)) Say(h.Caption, storyDone ? 3000 : 0, h.Ask);
         else { _note = null; RaiseChanged(); }
     }
@@ -1295,6 +1308,12 @@ public sealed class ReaderEngine
         _lastUpdate = nowMs;
         SetTime(nowMs);
         double now = _now;
+        // Opened straight onto a stop (no journey to arrive by): its sound and voice start once it is showing.
+        if (_arrivePending && Visible && ViewWidth > 0 && HasBook)
+        {
+            _arrivePending = false;
+            Arrive();
+        }
         UpdateVoice();
 
         // The picture eases towards the room the screen has asked for.
@@ -1380,7 +1399,8 @@ public sealed class ReaderEngine
             }
         }
 
-        // A hotspot's caption clears itself after a while.
+        // A hotspot's caption clears itself after a while, but not while its voice is still reading it.
+        if (_note is not null && _voiceFound && Reading && _note.Until < now + 1500) _note = _note with { Until = now + 1500 };
         if (_note is not null && now >= _note.Until + 50) { _note = null; RaiseChanged(); }
 
         UpdateWeather(dt);

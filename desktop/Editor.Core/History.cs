@@ -74,6 +74,12 @@ public sealed class History
         return (BookJson.Parse(e.Json), e);
     }
 
+    /// <summary>Every book that undo and redo can go back to (for keeping the files they use).</summary>
+    public IEnumerable<Book> Remembered()
+    {
+        foreach (Entry e in _undo.Concat(_redo)) yield return BookJson.Parse(e.Json);
+    }
+
     public void Clear()
     {
         _undo.Clear();

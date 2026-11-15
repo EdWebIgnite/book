@@ -29,6 +29,12 @@ files the browser version uses.
 Keys: Right or Space goes on. Left goes back. W shows the whole page.
 + and - zoom on explore pages. S opens the settings. Esc goes back to the books.
 F shows how many frames a second the program is drawing (top left).
+
+Book files: a book made with the Book Editor can come as one file ending in
+.picturebook. Drop it on the window, press "Open a book file" on the shelf,
+or right-click the file, choose "Open with" and pick BookReader.exe. It is
+added to the shelf (kept in your own app-data folder) and opens. Books added
+this way can be taken off again in the settings (S), under Books.
 TXT
 (cd "$out" && zip -qr BookReader-windows.zip BookReader)
 echo "Made $out/BookReader-windows.zip"

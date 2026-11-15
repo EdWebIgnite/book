@@ -329,7 +329,7 @@ public class EditorCheckAndExportTests
         ExportResult r = Exporter.Export(p, temp["out"], ExportOptions.Phone);
 
         Assert.Equal(Path.Combine(temp["out"], "check-me"), r.Folder);
-        Assert.True(File.Exists(r.ZipFile));
+        Assert.True(File.Exists(r.BookFile));
         Book exported = BookJson.Load(r.Folder);
         // Every file the exported book names is there, and nothing else but book.json.
         var named = new BookProjectView(r.Folder, exported).Used();
@@ -370,8 +370,8 @@ public class EditorCheckAndExportTests
         using var temp = new TempFolder();
         BookProject p = Sample(temp);
         p.Book.Pages.RemoveAt(4);
-        ExportResult r = Exporter.Export(p, temp["out"], ExportOptions.Originals with { Zip = false });
-        Assert.Null(r.ZipFile);
+        ExportResult r = Exporter.Export(p, temp["out"], ExportOptions.Originals with { BookFile = false });
+        Assert.Null(r.BookFile);
         Book exported = BookJson.Load(r.Folder);
         Assert.Equal("huge.png", exported.Pages[3].Image);
         Assert.Null(exported.Pages[2].Tiles);
@@ -382,7 +382,7 @@ public class EditorCheckAndExportTests
     {
         using var temp = new TempFolder();
         TempFolder.CopyFolder(Kit.BookFolder("deep-sea"), temp["deep-sea"]);
-        ExportResult r = Exporter.Export(BookProject.Open(temp["deep-sea"]), temp["out"], ExportOptions.Phone with { Zip = false });
+        ExportResult r = Exporter.Export(BookProject.Open(temp["deep-sea"]), temp["out"], ExportOptions.Phone with { BookFile = false });
         Book exported = BookJson.Load(r.Folder);
         Assert.NotNull(exported.Pages[0].Tiles);
         Assert.True(File.Exists(Path.Combine(r.Folder, exported.Pages[0].Tiles!.PathFor(0, 0, 0))));

@@ -121,6 +121,8 @@ public sealed class Hotspot
     public string? Sound { get; set; }
     /// <summary>"none" for words without the sparkle. Anything else sparkles.</summary>
     public string? Effect { get; set; }
+    /// <summary>Optional: the words read aloud when it is found (when "Read to me" is on), lighting up as they are read.</summary>
+    public Voice? Voice { get; set; }
     public System.Text.Json.Nodes.JsonObject? Extra { get; set; }
 }
 

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Platform.Storage;
 using Avalonia.Media;
 using Reader.App;
 using Reader.Core;
@@ -38,12 +39,33 @@ sealed class MainWindow : Window
             SaveSettings = saveSettings,
             DeviceReducedMotion = DeviceMotion.Reduced(),
             UnitsPerCm = options.UnitsPerCm,
+            ImportFolder = options.ImportFolder ?? DefaultImportFolder,
         };
         App = new AppView(setup, settings, sound);
         App.Screen.View.ShowFrameRate = options.ShowFrameRate;
         if (options.SafeArea is { } safe) App.SafeArea = safe;
         Content = App;
         Opened += (_, _) => Start();
+
+        // A book file dropped on the window is added to the shelf and opened.
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
+        AddHandler(DragDrop.DropEvent, (_, e) =>
+        {
+            var paths = e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>().ToList() ?? new List<string>();
+            if (paths.FirstOrDefault(p => File.Exists(p)) is string file) _ = ImportAndOpen(file);
+            else if (paths.FirstOrDefault(Directory.Exists) is string folder && File.Exists(Path.Combine(folder, "book.json"))) _ = App.OpenBook(folder);
+        });
+    }
+
+    /// <summary>Books added from book files: %APPDATA%\BookReader\books on Windows, beside the settings.</summary>
+    public static string DefaultImportFolder => Path.Combine(Path.GetDirectoryName(SettingsStore.DefaultPath)!, "books");
+
+    /// <summary>Add a book file to the shelf and open the book.</summary>
+    public async Task ImportAndOpen(string file)
+    {
+        BookPackage.Result r = await App.ImportBookFile(file);
+        if (r.Ok && r.Folder is not null) await App.OpenBook(r.Folder);
     }
 
     /// <summary>The shelf, reader and settings that fill the window.</summary>
@@ -56,6 +78,7 @@ sealed class MainWindow : Window
     void Start()
     {
         LoadShelf();
+        if (_options.Shot is null && _options.Import is not null) { _ = ImportAndOpen(_options.Import); return; }
         if (_options.Shot is null && _options.Book is not null && App.ResolveBook(_options.Book) is string folder)
             _ = App.OpenBook(folder, () => { if (_options.PlaceGiven) App.JumpTo(_options.Page, _options.Stop); });
     }

@@ -111,9 +111,9 @@ public static class BookChecker
                 if (st.Voice is Voice v)
                 {
                     if (!project.Has(v.File)) Add(Severity.Problem, $"{at}: the recording is missing: {v.File}", i, Spot.Stop, s, v.File);
-                    else if (v.Words.Count == 0 && ReadAlong.WordCount(st.Caption) > 0) Add(Severity.Tip, $"{at} has a recording but its words aren't timed yet, so they won't light up. Use Tap along.", i, Spot.Stop, s);
+                    else if (v.Words.Count == 0 && ReadAlong.WordCount(st.Caption) > 0) Add(Severity.Tip, $"{at} has a recording but its words aren't timed yet, so they won't light up. Use \"Time words automatically\" or Tap along.", i, Spot.Stop, s);
                     else if (v.Words.Count > 0 && !ReadAlong.TimesFit(v, st.Caption))
-                        Add(Severity.Warning, $"{at}: the word timings don't match the words any more (the words were changed after timing). Tap along again.", i, Spot.Stop, s);
+                        Add(Severity.Warning, $"{at}: the word timings don't match the words any more (the words were changed after timing). Time them again.", i, Spot.Stop, s);
                 }
                 else if (anyVoice && !string.IsNullOrWhiteSpace(st.Caption)) silent.Add((i, s));
                 if (aspect >= 1.2 && !p.Explore && Framing.CrossesCrease(st.To ?? st.Box, aspect) && st.Box.W < 0.45 && ShouldNoteCrease(st))
@@ -136,6 +136,13 @@ public static class BookChecker
                     if (string.IsNullOrWhiteSpace(hs.Caption)) Add(Severity.Tip, $"{at} says nothing when found.", i, Spot.Hotspot, h);
                     if (hs.Story > 0 && string.IsNullOrWhiteSpace(hs.Name)) Add(Severity.Tip, $"{at} is a story step with no name, so \"First find...\" can't say what to look for.", i, Spot.Hotspot, h);
                     if (!string.IsNullOrEmpty(hs.Sound) && !project.Has(hs.Sound)) Add(Severity.Problem, $"{at}: the sound file is missing: {hs.Sound}", i, Spot.Hotspot, h, hs.Sound);
+                    if (hs.Voice is Voice hv)
+                    {
+                        if (!project.Has(hv.File)) Add(Severity.Problem, $"{at}: the recording is missing: {hv.File}", i, Spot.Hotspot, h, hv.File);
+                        else if (hv.Words.Count == 0 && ReadAlong.WordCount(hs.Caption) > 0) Add(Severity.Tip, $"{at} has a recording but its words aren't timed yet, so they won't light up.", i, Spot.Hotspot, h);
+                        else if (hv.Words.Count > 0 && !ReadAlong.TimesFit(hv, hs.Caption))
+                            Add(Severity.Warning, $"{at}: the word timings don't match the words any more (the words were changed after timing). Time them again.", i, Spot.Hotspot, h);
+                    }
                 }
             }
 

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -27,6 +28,11 @@ public sealed class AppSetup
     public bool DeviceReducedMotion { get; init; }
     /// <summary>Screen units per centimetre, for the smallest touch target. Null leaves the desktop's 37.8.</summary>
     public double? UnitsPerCm { get; init; }
+    /// <summary>
+    /// Where books added from a book file are kept (laid out like a content folder). Null: books can't be
+    /// added from files. On the phone this is in the app's own storage, so the books survive updates.
+    /// </summary>
+    public string? ImportFolder { get; init; }
 }
 
 /// <summary>
@@ -69,9 +75,11 @@ public sealed class AppView : UserControl
         _panel.ReplayRequested += () => _screen.View.Do(e => e.Replay());
         _panel.CopyRequested += CopySettings;
         _panel.Done += FocusReader;
+        if (setup.ImportFolder is not null) BuildBooksSection();
 
         _shelf.BookChosen += entry => _ = OpenBook(entry.Folder);
         _shelf.OpenFolderRequested += () => _ = PickFolder();
+        _shelf.OpenFileRequested += () => _ = PickAndOpenBookFile();
 
         Content = new Panel { Children = { _shelf, _screen, _panel } };
     }
@@ -105,7 +113,7 @@ public sealed class AppView : UserControl
     public void LoadShelf(bool coversNow = false)
     {
         _content = _setup.Content;
-        if (_content is null)
+        if (_content is null && (_setup.ImportFolder is null || BookPackage.List(_setup.ImportFolder).Count == 0))
         {
             _shelf.Show(Array.Empty<ShelfEntry>());
             _shelf.Say(_setup.NoBooksMessage);
@@ -114,21 +122,30 @@ public sealed class AppView : UserControl
         ShowContent(_content, coversNow);
     }
 
-    void ShowContent(string content, bool coversNow = false)
+    void ShowContent(string? content, bool coversNow = false)
     {
-        try
+        var books = new List<ShelfEntry>();
+        string? message = null;
+        if (content is not null)
         {
-            var problems = new List<string>();
-            List<ShelfEntry> books = BookLibrary.List(content, problems);
-            _shelf.Show(books, coversNow);
-            _shelf.Say(problems.Count > 0 ? "Couldn't load: " + string.Join("; ", problems)
-                     : books.Count == 0 ? "There are no books in " + content + " yet." : null);
+            try
+            {
+                var problems = new List<string>();
+                books = BookLibrary.List(content, problems);
+                message = problems.Count > 0 ? "Couldn't load: " + string.Join("; ", problems)
+                        : books.Count == 0 ? "There are no books in " + content + " yet." : null;
+            }
+            catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+            {
+                message = "Couldn't load books: " + e.Message;
+            }
         }
-        catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
-        {
-            _shelf.Show(Array.Empty<ShelfEntry>());
-            _shelf.Say("Couldn't load books: " + e.Message);
-        }
+        // Books added from book files come after the ones that came with the app.
+        List<ShelfEntry> added = _setup.ImportFolder is string import ? BookPackage.List(import) : new List<ShelfEntry>();
+        books.AddRange(added);
+        if (added.Count > 0 && books.Count == added.Count) message = null;
+        _shelf.Show(books, coversNow);
+        _shelf.Say(message);
     }
 
     /// <summary>A book asked for by name: an id from the library, or a folder.</summary>
@@ -161,6 +178,203 @@ public sealed class AppView : UserControl
         {
             _shelf.Say("Couldn't open the folder: " + e.Message);
         }
+    }
+
+    // ---------------------------------------------------------------- books from book files
+
+    string _bookNote = "";
+
+    /// <summary>Raised after a book file was taken in (or turned down), with what to tell the person.</summary>
+    public event Action<BookPackage.Result>? BookImported;
+
+    /// <summary>
+    /// Take in a book file: copied to the app's storage first (it may come from a chat or a download that
+    /// can only be read once), checked, unpacked and put on the shelf. The shelf shows what happened.
+    /// </summary>
+    public async Task<BookPackage.Result> ImportBook(Func<Task<Stream>> open, string? name = null)
+    {
+        if (_setup.ImportFolder is not string root) return BookPackage.Result.Fail("This app can't add books from files.");
+        _shelf.Say("Adding the book…");
+        _bookNote = "Adding the book…";
+        if (_panel.IsVisible) BuildBooksSection();
+        BookPackage.Result result;
+        try
+        {
+            Stream source = await open();
+            result = await Task.Run(() =>
+            {
+                Directory.CreateDirectory(root);
+                string copy = Path.Combine(root, ".download-" + Guid.NewGuid().ToString("N")[..12]);
+                try
+                {
+                    using (source)
+                    using (FileStream f = File.Create(copy))
+                    {
+                        // A book file is never bigger than its unpacked limit, so a copy that goes past it is stopped there.
+                        long most = BookPackage.Limits.Default.MaxTotalBytes, total = 0;
+                        var buffer = new byte[81920];
+                        int n;
+                        while ((n = source.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            total += n;
+                            if (total > most) return BookPackage.Result.Fail("That file is too big to be a picture book.");
+                            f.Write(buffer, 0, n);
+                        }
+                    }
+                    return BookPackage.Import(copy, root, null);
+                }
+                finally { try { File.Delete(copy); } catch (IOException) { } }
+            });
+        }
+        catch (Exception)
+        {
+            // Whatever the system's file reading threw (the phone's own exceptions included), the parent gets a plain answer.
+            result = BookPackage.Result.Fail("Couldn't read that file. Try saving it on this device first, then add it again.");
+        }
+        AfterImport(result);
+        return result;
+    }
+
+    /// <summary>Take in a book file that is already on this computer (opened with the program, or dropped on its window).</summary>
+    public Task<BookPackage.Result> ImportBookFile(string path) => ImportBook(() => Task.FromResult<Stream>(File.OpenRead(path)), Path.GetFileName(path));
+
+    /// <summary>The same on the spot, for screenshots.</summary>
+    public BookPackage.Result ImportBookFileNow(string path)
+    {
+        BookPackage.Result r = _setup.ImportFolder is string root ? BookPackage.Import(path, root) : BookPackage.Result.Fail("This app can't add books from files.");
+        AfterImport(r);
+        return r;
+    }
+
+    void AfterImport(BookPackage.Result result)
+    {
+        if (result.Ok && ReaderShowing) CloseBook();
+        ShowContent(_content);
+        _shelf.Say(result.Message);
+        _bookNote = result.Message;
+        if (_setup.ImportFolder is not null) BuildBooksSection();
+        BookImported?.Invoke(result);
+    }
+
+    /// <summary>Show the system's file picker and take in the book file chosen.</summary>
+    public async Task PickBookFile()
+    {
+        if (_setup.ImportFolder is null || TopLevel.GetTopLevel(this) is not TopLevel top) return;
+        IReadOnlyList<IStorageFile> picked;
+        try
+        {
+            picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Add a book from a file",
+                AllowMultiple = false,
+                FileTypeFilter = new[]
+                {
+                    // Phones often don't know the .picturebook ending, so any file can be chosen there and is checked once picked.
+                    new FilePickerFileType("Picture books") { Patterns = new[] { "*" + BookPackage.Extension, "*.zip" }, MimeTypes = new[] { "*/*" } },
+                },
+            });
+        }
+        catch (Exception)
+        {
+            _bookNote = "Couldn't open the list of files on this device.";
+            BuildBooksSection();
+            return;
+        }
+        if (picked.Count == 0) return;
+        IStorageFile file = picked[0];
+        await ImportBook(() => file.OpenReadAsync(), file.Name);
+    }
+
+    /// <summary>The shelf's "Open a book file" button: add a book file, then open the book.</summary>
+    async Task PickAndOpenBookFile()
+    {
+        if (_setup.ImportFolder is null || TopLevel.GetTopLevel(this) is not TopLevel top) return;
+        try
+        {
+            var picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Open a book file", AllowMultiple = false,
+                FileTypeFilter = new[] { new FilePickerFileType("Picture books") { Patterns = new[] { "*" + BookPackage.Extension, "*.zip" } } },
+            });
+            if (picked.Count == 0) return;
+            IStorageFile file = picked[0];
+            BookPackage.Result r = await ImportBook(() => file.OpenReadAsync(), file.Name);
+            if (r.Ok && r.Folder is not null) await OpenBook(r.Folder);
+        }
+        catch (Exception)
+        {
+            _shelf.Say("Couldn't open the list of files.");
+        }
+    }
+
+    /// <summary>The grown-ups' part of the settings for books from files: add one, or take one off the shelf.</summary>
+    void BuildBooksSection()
+    {
+        if (_setup.ImportFolder is not string root) return;
+        var section = _panel.Extra;
+        section.Children.Clear();
+        section.Children.Add(new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#f4eee6")), Margin = new Thickness(-18, 22, -18, 0), Padding = new Thickness(18, 10),
+            Child = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = "Books", FontSize = 16, FontWeight = FontWeight.ExtraBold, Foreground = new SolidColorBrush(Color.Parse("#222222")) },
+                    new TextBlock { Text = "Add a book someone made for you. Book files end in .picturebook.", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#6b5b4b")), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap },
+                },
+            },
+        });
+        var add = new Button { Content = "Add a book from a file…", FontSize = 14, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 4), Focusable = false, MinHeight = 40 };
+        add.Click += (_, _) => _ = PickBookFile();
+        section.Children.Add(add);
+        if (_bookNote.Length > 0)
+            section.Children.Add(new TextBlock { Text = _bookNote, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#a0460a")), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6) });
+        section.Children.Add(new TextBlock
+        {
+            Text = _setup.Touch ? "Or open the book file from WhatsApp, Files, Drive or an email, and choose Book Reader."
+                                : "Or drag a book file onto this window, or open it with BookReader.exe.",
+            FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#777777")), TextWrapping = TextWrapping.Wrap,
+        });
+        List<ShelfEntry> books = BookPackage.List(root);
+        if (books.Count > 0)
+        {
+            section.Children.Add(new TextBlock { Text = "ADDED FROM FILES", FontSize = 13, FontWeight = FontWeight.Bold, LetterSpacing = 0.65, Foreground = ShelfView.Orange, Margin = new Thickness(0, 18, 0, 6) });
+            foreach (ShelfEntry b in books) section.Children.Add(AddedBookRow(root, b));
+        }
+    }
+
+    Control AddedBookRow(string root, ShelfEntry book)
+    {
+        var name = new TextBlock { Text = book.Title, FontSize = 14, Foreground = new SolidColorBrush(Color.Parse("#222222")), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        var remove = new Button { Content = "Remove", FontSize = 13, Focusable = false, VerticalAlignment = VerticalAlignment.Center };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 4) };
+        Grid.SetColumn(remove, 1);
+        row.Children.Add(name);
+        row.Children.Add(remove);
+        remove.Click += (_, _) =>
+        {
+            // Asked once more, so a stray tap doesn't take a book away.
+            var yes = new Button { Content = "Yes, remove it", FontSize = 13, Focusable = false, Foreground = Brushes.White, Background = new SolidColorBrush(Color.Parse("#c0392b")) };
+            var no = new Button { Content = "Keep it", FontSize = 13, Focusable = false, Margin = new Thickness(6, 0, 0, 0) };
+            var ask = new StackPanel { Orientation = Orientation.Horizontal, Children = { yes, no } };
+            Grid.SetColumn(ask, 1);
+            row.Children.Remove(remove);
+            row.Children.Add(ask);
+            name.Text = $"Remove \"{book.Title}\" from this device?";
+            no.Click += (_, _) => BuildBooksSection();
+            yes.Click += (_, _) =>
+            {
+                if (ReaderShowing && _book is not null && Path.GetFullPath(_book.Folder) == Path.GetFullPath(book.Folder)) CloseBook();
+                bool gone;
+                try { gone = BookPackage.Remove(root, Path.GetFileName(book.Folder)); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { gone = false; }
+                ShowContent(_content);
+                _bookNote = gone ? $"Removed \"{book.Title}\"." : "Couldn't remove that book. Try again.";
+                BuildBooksSection();
+            };
+        };
+        return row;
     }
 
     // ---------------------------------------------------------------- opening and closing a book
@@ -270,6 +484,7 @@ public sealed class AppView : UserControl
     {
         bool on = show ?? !_panel.IsVisible;
         if (on) _panel.Build();
+        if (on && !_panel.IsVisible && _setup.ImportFolder is not null) { _bookNote = ""; BuildBooksSection(); }
         _panel.IsVisible = on;
         if (!on) FocusReader();
     }

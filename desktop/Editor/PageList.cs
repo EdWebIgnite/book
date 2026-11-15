@@ -30,6 +30,8 @@ sealed class PageList : UserControl
         var spread = Ui.Button("+ Add left and right pages", () => _window.AddLeftRight(), "Pick a left-hand page and a right-hand page. They are joined into one spread.", small: true);
         spread.HorizontalAlignment = HorizontalAlignment.Stretch;
         spread.HorizontalContentAlignment = HorizontalAlignment.Center;
+        AddButton = add;
+        SpreadButton = spread;
         var panel = new DockPanel { Margin = new Thickness(10) };
         var bottom = new StackPanel { Spacing = 6, Margin = new Thickness(0, 10, 0, 0), Children = { add, spread } };
         DockPanel.SetDock(bottom, Dock.Bottom);
@@ -51,6 +53,10 @@ sealed class PageList : UserControl
     }
 
     bool _waiting;
+
+    /// <summary>The add buttons, for the walkthrough to point at.</summary>
+    public Control AddButton { get; }
+    public Control SpreadButton { get; }
 
     public void Rebuild()
     {

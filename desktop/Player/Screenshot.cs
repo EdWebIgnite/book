@@ -24,6 +24,9 @@ static class Screenshot
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                 .SetupWithoutStarting();
 
+            // Book files are taken into a folder of the screenshot's own, never the real one.
+            string shotBooks = Path.Combine(Path.GetTempPath(), "book-reader-shot-" + Environment.ProcessId);
+            o.ImportFolder ??= shotBooks;
             var settings = new ReaderSettings();
             if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());
 
@@ -38,6 +41,12 @@ static class Screenshot
             if (o.Scale > 0 && Math.Abs(o.Scale - 1) > 0.001) window.SetRenderScaling(o.Scale);
             Dispatcher.UIThread.RunJobs();
             window.LoadShelf(coversNow: true);
+            if (o.Import is not null)
+            {
+                var r = window.App.ImportBookFileNow(o.Import);
+                window.LoadShelf(coversNow: true);
+                window.App.Say(r.Message);
+            }
 
             void Pass(double ms)
             {
@@ -104,6 +113,8 @@ static class Screenshot
                     Pass(100);
                 }
             }
+            // The settings open first, so the steps can act on them (scroll them, press their buttons).
+            if (o.ShowSettings) { window.ToggleSettings(true); Pass(16); }
             if (o.Do is not null)
             {
                 string? problem = ActOut(o.Do, window, Pass, ms => clock += ms);
@@ -113,8 +124,6 @@ static class Screenshot
                     return 2;
                 }
             }
-            if (o.ShowSettings) window.ToggleSettings(true);
-
             Dispatcher.UIThread.RunJobs();
             // Draw once more with everything settled: tiles and layer pictures asked for in the first frame are here now.
             view.InvalidateVisual();
@@ -136,6 +145,11 @@ static class Screenshot
         {
             Console.Error.WriteLine("Couldn't take the screenshot: " + e.Message);
             return 1;
+        }
+        finally
+        {
+            string shotBooks = Path.Combine(Path.GetTempPath(), "book-reader-shot-" + Environment.ProcessId);
+            try { if (Directory.Exists(shotBooks)) Directory.Delete(shotBooks, true); } catch (IOException) { }
         }
     }
 

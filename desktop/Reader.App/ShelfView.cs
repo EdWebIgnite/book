@@ -37,10 +37,15 @@ public sealed class ShelfView : UserControl
         var open = new Button { Content = "Open a book folder…", HorizontalAlignment = HorizontalAlignment.Right, Focusable = false };
         open.Click += (_, _) => OpenFolderRequested?.Invoke();
         ToolTip.SetTip(open, "Open any folder that has a book.json in it (Ctrl+O)");
+        var openFile = new Button { Content = "Open a book file…", Focusable = false, Margin = new Thickness(0, 0, 8, 0) };
+        openFile.Click += (_, _) => OpenFileRequested?.Invoke();
+        ToolTip.SetTip(openFile, "Add a book file (.picturebook) from the Book Editor to the shelf. You can also drop one on this window.");
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { openFile, open } };
+        open.HorizontalAlignment = HorizontalAlignment.Left;
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 20) };
-        Grid.SetColumn(open, 1);
+        Grid.SetColumn(buttons, 1);
         top.Children.Add(hint);
-        if (!forTouch) top.Children.Add(open);
+        if (!forTouch) top.Children.Add(buttons);
 
         _message = new TextBlock { Foreground = Brown, FontSize = 16, TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, 0, 0, 16) };
         _grid.MaxWidth = 1100;
@@ -61,6 +66,8 @@ public sealed class ShelfView : UserControl
         set => _page.Margin = new Thickness(24 + value.Left, 24 + value.Top, 24 + value.Right, 24 + value.Bottom);
     }
     public event Action? OpenFolderRequested;
+    /// <summary>"Open a book file" was pressed.</summary>
+    public event Action? OpenFileRequested;
 
     /// <summary>Something to tell the person at the shelf: no books found, or a book that wouldn't open.</summary>
     public void Say(string? message)

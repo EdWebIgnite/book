@@ -57,15 +57,19 @@ static class SoundShapes
 }
 
 /// <summary>
-/// The recording for one stop: add a sound file or record one, trim the start and end, and time the
-/// words by tapping along. Words light up in the apps as they are read.
+/// The recording for one stop (or one thing to find): add a sound file or record one, trim the start and
+/// end, and time the words, automatically or by tapping along. Words light up in the apps as they are read.
 /// </summary>
 sealed class NarrationPanel : UserControl
 {
     readonly EditorState _state;
     readonly MainWindow _window;
-    readonly Stop _stop;
-    readonly int _page, _index;
+    readonly Func<Voice?> _get;
+    readonly Action<Voice?> _set;
+    readonly Func<string?> _caption;
+    readonly VoiceTarget _target;
+    readonly string _fileStem;
+    readonly bool _hotspot;
     readonly StackPanel _body = new();
     readonly DispatcherTimer _timer;
     Waveform? _wave;
@@ -78,23 +82,41 @@ sealed class NarrationPanel : UserControl
     readonly System.Diagnostics.Stopwatch _clock = new();
 
     public NarrationPanel(EditorState state, MainWindow window, Stop stop, int page, int index)
+        : this(state, window, () => stop.Voice, v => stop.Voice = v, () => stop.Caption, new VoiceTarget(page, false, index), $"p{page + 1}-s{index + 1}") { }
+
+    public NarrationPanel(EditorState state, MainWindow window, Hotspot hotspot, int page, int index)
+        : this(state, window, () => hotspot.Voice, v => hotspot.Voice = v, () => hotspot.Caption, new VoiceTarget(page, true, index), $"p{page + 1}-find{index + 1}") { }
+
+    NarrationPanel(EditorState state, MainWindow window, Func<Voice?> get, Action<Voice?> set, Func<string?> caption, VoiceTarget target, string fileStem)
     {
         _state = state;
         _window = window;
-        _stop = stop;
-        _page = page;
-        _index = index;
+        _get = get;
+        _set = set;
+        _caption = caption;
+        _target = target;
+        _fileStem = fileStem;
+        _hotspot = target.Hotspot;
         Content = _body;
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(30), DispatcherPriority.Render, (_, _) => Tick());
         SoundShapes.Arrived += Build;
+        _window.Timing.BusyChanged += Build;
         Build();
     }
 
-    Voice? Voice => _stop.Voice;
+    Voice? Voice => _get();
+    string? Caption => _caption();
+
+    /// <summary>The automatic timing button, for the walkthrough to point at.</summary>
+    public Control? AutoButton { get; private set; }
+
+    /// <summary>The buttons to add or record a voice, for the walkthrough to point at.</summary>
+    public Control? AddButtons { get; private set; }
 
     public void Detach()
     {
         SoundShapes.Arrived -= Build;
+        _window.Timing.BusyChanged -= Build;
         if (_tapping is not null) FinishTapping(save: true);
         StopPlaying();
         // Something else was clicked while recording: keep what was recorded rather than lose it.
@@ -111,10 +133,14 @@ sealed class NarrationPanel : UserControl
         if (_window.Recorder.Recording) { BuildRecording(); return; }
         if (Voice is not Voice v)
         {
-            _body.Children.Add(Ui.Help("No recording yet. With a recording, the apps read the words aloud when Read to me is on, and each word lights up as it is read."));
+            _body.Children.Add(Ui.Help(_hotspot
+                ? "No recording yet. With a recording, the words are read aloud when it is found (if Read to me is on), and each word lights up in the message as it is read."
+                : "No recording yet. With a recording, the apps read the words aloud when Read to me is on, and each word lights up as it is read."));
             var record = Ui.Button("● Record", StartRecording, "Record from the microphone. Read the words, then press Stop.", small: true);
             record.IsEnabled = _window.MicrophoneProblem.Length == 0;
-            _body.Children.Add(Ui.Row(Ui.Button("Add a recording...", PickFile, "A wav, mp3 or ogg file of the words being read", small: true), record));
+            var addRow = Ui.Row(Ui.Button("Add a recording...", PickFile, "A wav, mp3 or ogg file of the words being read", small: true), record);
+            AddButtons = addRow;
+            _body.Children.Add(addRow);
             if (_window.MicrophoneProblem.Length > 0) _body.Children.Add(Ui.Help(_window.MicrophoneProblem + " You can still add a recording made elsewhere."));
             return;
         }
@@ -127,7 +153,7 @@ sealed class NarrationPanel : UserControl
 
         if (samples is not null)
         {
-            _wave = new Waveform(samples, v, ReadAlong.Words(_stop.Caption).Select(w => _stop.Caption!.Substring(w.Start, w.Length)).ToList())
+            _wave = new Waveform(samples, v, ReadAlong.Words(Caption).Select(w => Caption!.Substring(w.Start, w.Length)).ToList())
             {
                 Height = 96, Margin = new Thickness(0, 6, 0, 2),
             };
@@ -158,18 +184,26 @@ sealed class NarrationPanel : UserControl
         }
         else
         {
-            int count = ReadAlong.WordCount(_stop.Caption);
+            int count = ReadAlong.WordCount(Caption);
             var play = Ui.Button(_playing ? "■ Stop" : "▶ Play", () => { if (_playing) StopPlaying(); else Play(v.StartOrZero); }, "Play the recording (the trimmed part)", small: true);
+            bool busy = _window.Timing.Busy;
+            var auto = Ui.Button(busy ? "Timing the words..." : "Time words automatically", () => _ = _window.Timing.TimeOne(_target),
+                "The computer listens to the recording and works out when each word starts. Check it by playing, then nudge any word that's off.", primary: true, small: true);
+            auto.IsEnabled = count > 0 && !missing && !busy;
+            AutoButton = auto;
             var tap = Ui.Button("Tap along", StartTapping, "Play the recording and press Space as each word starts", small: true);
-            tap.IsEnabled = count > 0 && samples is not null;
-            var even = Ui.Button("Space words evenly", () => _state.Change("Space words evenly", () => v.Words = TapAlong.Spread(_stop.Caption, v.StartOrZero + 0.05, (v.End ?? length) - 0.3), structure: true),
-                "A first guess to fix up: the words spread across the recording", small: true);
-            even.IsEnabled = count > 0 && samples is not null;
-            _body.Children.Add(Ui.Row(play, tap, even));
+            tap.IsEnabled = count > 0 && samples is not null && !busy;
+            var even = Ui.Button("Space words evenly", () => _state.Change("Space words evenly", () => v.Words = TapAlong.Spread(Caption, v.StartOrZero + 0.05, (v.End ?? length) - 0.3), structure: true),
+                "A rough first guess to fix up: the words spread across the recording", small: true);
+            even.IsEnabled = count > 0 && samples is not null && !busy;
+            _body.Children.Add(Ui.Row(play, auto, tap));
+            var all = Ui.Button("Time all stops...", () => _ = _window.Timing.TimeAll(), "Time the words of every recording in the book in one go", small: true);
+            all.IsEnabled = !busy;
+            _body.Children.Add(Ui.Row(even, all));
             var record = Ui.Button("Record again", StartRecording, small: true);
             record.IsEnabled = _window.MicrophoneProblem.Length == 0;
             _body.Children.Add(Ui.Row(Ui.Button("Replace...", PickFile, small: true), record,
-                Ui.Button("Remove", () => _state.Change("Remove the recording", () => _stop.Voice = null, structure: true), "The file stays in the folder; Check book lists it as unused", small: true)));
+                Ui.Button("Remove", () => _state.Change("Remove the recording", () => _set(null), structure: true), "The file stays in the folder; Check book lists it as unused", small: true)));
             if (count == 0) _body.Children.Add(Ui.Help("Type the words above first, then they can be timed to the recording."));
         }
 
@@ -216,12 +250,12 @@ sealed class NarrationPanel : UserControl
     {
         if (_words is null || Voice is not Voice v) return;
         _words.Children.Clear();
-        var words = ReadAlong.Words(_stop.Caption);
+        var words = ReadAlong.Words(Caption);
         IReadOnlyList<double> times = _tapping is not null ? _tapping.Times : v.Words;
         int lit = _tapping is not null ? _tapping.NextWord : _playing ? ReadAlong.WordAt(v.Words, words.Count, Position()) : -1;
         for (int i = 0; i < words.Count; i++)
         {
-            string text = _stop.Caption!.Substring(words[i].Start, words[i].Length);
+            string text = Caption!.Substring(words[i].Start, words[i].Length);
             string time = i < times.Count ? times[i].ToString("0.00", CultureInfo.InvariantCulture) : "--";
             bool sel = i == _selectedWord && _tapping is null;
             var chip = new Border
@@ -245,8 +279,8 @@ sealed class NarrationPanel : UserControl
         {
             _status.Text = _tapping is not null ? $"Word {Math.Min(_tapping.NextWord + 1, words.Count)} of {words.Count} next."
                 : words.Count == 0 ? ""
-                : v.Words.Count == 0 ? "The words aren't timed yet. Press Tap along."
-                : v.Words.Count != words.Count ? "The words have changed since they were timed. Press Tap along again."
+                : v.Words.Count == 0 ? "The words aren't timed yet. Press \"Time words automatically\", or Tap along."
+                : v.Words.Count != words.Count ? "The words have changed since they were timed. Time them again."
                 : _selectedWord >= 0 ? "Nudge the chosen word with , (earlier) and . (later), or with the buttons below."
                 : "Click a word to hear it and to nudge its time.";
         }
@@ -341,7 +375,7 @@ sealed class NarrationPanel : UserControl
     void StartTapping()
     {
         if (Voice is not Voice v) return;
-        _tapping = new TapAlong(ReadAlong.WordCount(_stop.Caption), v.StartOrZero);
+        _tapping = new TapAlong(ReadAlong.WordCount(Caption), v.StartOrZero);
         _selectedWord = -1;
         _window.FocusForKeys();
         Play(v.StartOrZero);
@@ -375,12 +409,12 @@ sealed class NarrationPanel : UserControl
     {
         string? file = await _window.PickOneFile("Choose a recording", new[] { "*.wav", "*.mp3", "*.ogg", "*.flac" }, "Recordings");
         if (file is null) return;
-        string name = _state.Project!.Import(file, "voice", $"p{_page + 1}-s{_index + 1}{Path.GetExtension(file)}");
+        string name = _state.Project!.Import(file, "voice", $"{_fileStem}{Path.GetExtension(file)}");
         _state.Change("Add a recording", () =>
         {
-            _stop.Voice = new Voice { File = name };
+            _set(new Voice { File = name });
         }, structure: true);
-        _window.Say("Added the recording. Trim it if needed, then press Tap along to time the words.");
+        _window.Say("Added the recording. Trim it if needed, then press \"Time words automatically\" (or Tap along).");
     }
 
     void StartRecording()
@@ -403,11 +437,11 @@ sealed class NarrationPanel : UserControl
             Build();
             return;
         }
-        string name = _state.Project!.UniqueName($"p{_page + 1}-s{_index + 1}.wav", "voice");
+        string name = _state.Project!.UniqueName($"{_fileStem}.wav", "voice");
         Editor.Core.Wav.Write(_state.Project.PathOf(name)!, samples, Microphone.SampleRate);
         var (start, end) = Editor.Core.Wav.Sounding(samples, Microphone.SampleRate);
-        _state.Change("Record the words", () => _stop.Voice = new Voice { File = name, Start = start > 0.005 ? Math.Round(start, 3) : null, End = Math.Round(end, 3) }, structure: true);
-        _window.Say("Recorded. The quiet at each end was trimmed off. Press Tap along to time the words.");
+        _state.Change("Record the words", () => _set(new Voice { File = name, Start = start > 0.005 ? Math.Round(start, 3) : null, End = Math.Round(end, 3) }), structure: true);
+        _window.Say("Recorded. The quiet at each end was trimmed off. Now press \"Time words automatically\" (or Tap along).");
     }
 }
 

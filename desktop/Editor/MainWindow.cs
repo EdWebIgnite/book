@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -70,6 +71,7 @@ sealed class MainWindow : Window
         if (screenshotMode) MicrophoneProblem = "";
         else if (!Microphone.Available(out string why)) MicrophoneProblem = why;
 
+        Timing = new AutoTiming(this, _state);
         _canvas = new PageCanvas(_state, _images);
         _pages = new PageList(_state, _images, this) { Width = 210 };
         _inspector = new Inspector(_state, this) { Width = 380 };
@@ -102,17 +104,17 @@ sealed class MainWindow : Window
         left.Children[0].VerticalAlignment = VerticalAlignment.Center;
         left.Children[0].Margin = new Thickness(0, 0, 6, 0);
         left.Children.Add(_title);
-        left.Children.Add(Ui.Button("New", () => _ = NewBook(), "Start a new book (Ctrl+N)"));
+        left.Children.Add(NewButton = Ui.Button("New", () => _ = NewBook(), "Start a new book (Ctrl+N)"));
         left.Children.Add(open);
         left.Children.Add(recentButton);
         var right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         right.Children.Add(_status);
         right.Children.Add(_undo);
         right.Children.Add(_redo);
-        right.Children.Add(Ui.Button("▶ Play", () => OpenPreview(fromStop: true), "Play from the selected stop in the reader (P or F5)"));
-        right.Children.Add(Ui.Button("Check book", OpenCheck, "Look for problems (F7)"));
-        right.Children.Add(Ui.Button("Export", OpenExport, "Make a copy ready for the apps (Ctrl+E)"));
-        right.Children.Add(Ui.Button("?", ShowHelp, "Keys and help (F1)"));
+        right.Children.Add(PlayButton = Ui.Button("▶ Play", () => OpenPreview(fromStop: true), "Play from the selected stop in the reader (P or F5)"));
+        right.Children.Add(CheckButton = Ui.Button("Check book", OpenCheck, "Look for problems (F7)"));
+        right.Children.Add(ExportButton = Ui.Button("Export", OpenExport, "Make a copy ready for the apps (Ctrl+E)"));
+        right.Children.Add(HelpButton = Ui.Button("?", ShowHelp, "Help, keys and the step-by-step walkthrough (F1)"));
         right.Children.Add(_save);
         var bar = new DockPanel { Margin = new Thickness(12, 8) };
         DockPanel.SetDock(right, Dock.Right);
@@ -171,7 +173,10 @@ sealed class MainWindow : Window
             Child = new TextBlock { Text = "Drop pictures to add pages, a sound to use it as the selected stop's recording, or a book folder to open it", FontSize = 20, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 700, TextAlignment = TextAlignment.Center },
         };
 
-        var layers = new Panel { Children = { _workspace, _welcome, _preview, _export, _help, _dialogs, _dropHint, _toast } };
+        _bookFile = BookFileSheet();
+        _bookFile.IsVisible = false;
+        Tour = new Walkthrough(this);
+        var layers = new Panel { Children = { _workspace, _welcome, _preview, _export, _help, _bookFile, Timing.Panel, Tour.Layer, _dialogs, _dropHint, _toast } };
         var rootDock = new DockPanel();
         DockPanel.SetDock(top, Dock.Top);
         rootDock.Children.Add(top);
@@ -207,6 +212,14 @@ sealed class MainWindow : Window
     public PageCanvas Canvas => _canvas;
     public PreviewPanel Preview => _preview;
     public Inspector Inspector => _inspector;
+    public AutoTiming Timing { get; }
+    public Dialogs Dialogs => _dialogs;
+    public Walkthrough Tour { get; }
+    public PageList Pages => _pages;
+    public ExportPanel ExportScreen => _export;
+    public bool CheckShowing => _check.IsVisible;
+    public bool ExportShowing => _export.IsVisible;
+    public bool PreviewShowing => _preview.IsVisible;
 
     // ---------------------------------------------------------------- keeping the screens up to date
 
@@ -298,6 +311,39 @@ sealed class MainWindow : Window
 
     // ---------------------------------------------------------------- the welcome screen
 
+    /// <summary>The welcome screen's "Start a new book", for the walkthrough to point at.</summary>
+    public Button? WelcomeNew { get; private set; }
+
+    // On the very first run, the welcome screen offers the walkthrough.
+    readonly Border _offer = new() { IsVisible = false };
+
+    /// <summary>The first run with a book given to open: ask about the walkthrough in a question instead.</summary>
+    public async Task AskAboutTour()
+    {
+        int a = await _dialogs.Ask("New to the Book Editor?", "A short walkthrough shows you how to make a book, one step at a time. You can stop it whenever you like and carry on later from the ? button.",
+            new[] { "Show me how", "No thanks" }, 0, 1);
+        if (a == 0) Tour.Start(0); else Tour.Decline();
+    }
+
+    public void OfferTour()
+    {
+        _offer.Child = new Border
+        {
+            Background = Ui.Brush("#2a2116"), BorderBrush = Ui.Accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 12), Margin = new Thickness(0, 6, 0, 6),
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    Ui.Label("New to the Book Editor?", 15, Ui.Text, FontWeight.Bold),
+                    Ui.Label("A short walkthrough shows you how to make your first book, one step at a time: pictures, stops, words, a voice, and sending it to a phone. You can stop it whenever you like and carry on later from the ? button.", 13, Ui.Text),
+                    Ui.Row(Ui.Button("Show me how", () => { _offer.IsVisible = false; Tour.Start(0); }, primary: true), Ui.Button("No thanks", () => { _offer.IsVisible = false; Tour.Decline(); })),
+                },
+            },
+        };
+        _offer.IsVisible = true;
+    }
+
     Control Welcome()
     {
         var list = new StackPanel { Spacing = 6 };
@@ -308,7 +354,8 @@ sealed class MainWindow : Window
             {
                 Ui.Label("Make a picture book", 26, Ui.Text, FontWeight.ExtraBold),
                 Ui.Label("Each book is a folder holding its pictures, sounds and a book.json file. Start a new one, or open a book folder you already have.", 14, Ui.Muted),
-                Ui.Row(Ui.Button("Start a new book", () => _ = NewBook(), "Ctrl+N", primary: true), Ui.Button("Open a book folder...", () => _ = OpenFolderDialog(), "Ctrl+O")),
+                Ui.Row(WelcomeNew = Ui.Button("Start a new book", () => _ = NewBook(), "Ctrl+N", primary: true), Ui.Button("Open a book folder...", () => _ = OpenFolderDialog(), "Ctrl+O")),
+                _offer,
                 list,
             },
         };
@@ -566,14 +613,7 @@ sealed class MainWindow : Window
     }
 
     /// <summary>Join two page pictures (already in the folder) into a new spread picture, and make the page for it.</summary>
-    Page JoinPage(string left, string right, string stem)
-    {
-        BookProject project = _state.Project!;
-        stem = System.IO.Path.GetFileName(stem);
-        string name = project.UniqueName((stem.Length > 0 ? stem : "spread") + "-spread.jpg");
-        Pictures.JoinSpread(project.PathOf(left)!, project.PathOf(right)!, project.PathOf(name)!);
-        return new Page { Image = name, Spread = new SpreadSource { Left = left, Right = right } };
-    }
+    Page JoinPage(string left, string right, string stem) => _state.Project!.JoinPage(left, right, stem);
 
     /// <summary>Warnings worth giving straight away when a picture comes in.</summary>
     IEnumerable<string> PictureNotes(Page p)
@@ -903,9 +943,15 @@ sealed class MainWindow : Window
         {
             string name = _state.Project!.Import(sounds[0], "voice", $"p{_state.PageIndex + 1}-s{_state.SelIndex + 1}{Path.GetExtension(sounds[0])}");
             _state.Change("Add a recording", () => s.Voice = new Voice { File = name }, structure: true);
-            Say("That sound is now this stop's recording. Press Tap along to time the words.");
+            Say("That sound is now this stop's recording. Press \"Time words automatically\" (or Tap along) to time the words.");
         }
-        else if (sounds.Count > 0) Say("Select a stop first, then drop its recording on the window.");
+        else if (sounds.Count > 0 && _state.Hotspot is Hotspot h)
+        {
+            string name = _state.Project!.Import(sounds[0], "voice", $"p{_state.PageIndex + 1}-find{_state.SelIndex + 1}{Path.GetExtension(sounds[0])}");
+            _state.Change("Add a recording", () => h.Voice = new Voice { File = name }, structure: true);
+            Say("That sound now reads this thing's words when it is found. Press \"Time words automatically\" to time them.");
+        }
+        else if (sounds.Count > 0) Say("Select a stop (or a thing to find) first, then drop its recording on the window.");
         if (paths.Any(BookProject.IsPicture)) AddPictureFiles(paths);
     }
 
@@ -944,7 +990,89 @@ sealed class MainWindow : Window
 
     public void CloseExport() => _export.IsVisible = false;
 
-    void ShowHelp() => _help.IsVisible = !_help.IsVisible;
+    void ShowHelp()
+    {
+        if (!_help.IsVisible) FillTourButtons();
+        _help.IsVisible = !_help.IsVisible;
+    }
+
+    // ---------------------------------------------------------------- the book file, as text
+
+    Control _bookFile = null!;
+    readonly TextBox _bookFileText = new()
+    {
+        IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Cascadia Mono,Consolas,DejaVu Sans Mono,monospace"),
+        FontSize = 12.5, Background = Ui.Field, Foreground = Ui.Text, MinHeight = 400,
+    };
+    readonly TextBlock _bookFileNote = Ui.Help("");
+
+    Control BookFileSheet()
+    {
+        var copy = Ui.Button("Copy all", CopyBookFile, "Copy the text, to paste into an email or a message", primary: true, small: true);
+        var body = new DockPanel();
+        var head = new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                new DockPanel { Children = { new Border { [DockPanel.DockProperty] = Dock.Right, Child = Ui.Button("Close", () => _bookFile.IsVisible = false, "Esc", small: true) }, Ui.Label("The book file", 18, Ui.Text, FontWeight.Bold) } },
+                Ui.Help("This is the book as the editor writes it to book.json in the book's folder. It's here to help sort out problems, for example to send to someone who is helping you. It can't be changed here."),
+                _bookFileNote,
+                Ui.Row(copy),
+            },
+        };
+        DockPanel.SetDock(head, Dock.Top);
+        body.Children.Add(head);
+        body.Children.Add(new ScrollViewer { Content = _bookFileText, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto });
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
+            Child = new Border
+            {
+                Width = 820, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Padding = new Thickness(20), Margin = new Thickness(0, 30),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Stretch, Child = body,
+            },
+        };
+    }
+
+    public void ShowBookFile()
+    {
+        if (!_state.HasBook) { Say("Open a book first."); return; }
+        _help.IsVisible = false;
+        string json = _state.Project!.ToJson();
+        _bookFileText.Text = json;
+        int lines = json.Count(c => c == '\n') + 1;
+        _bookFileNote.Text = (_state.Dirty ? "Shown with the changes that aren't saved yet: Save writes exactly this." : "This is what is saved now.") + $"  {lines} lines, {Exporter.Size(System.Text.Encoding.UTF8.GetByteCount(json))}.  Folder: {_state.Project.Folder}";
+        _bookFile.IsVisible = true;
+    }
+
+    async void CopyBookFile()
+    {
+        try
+        {
+            if (Clipboard is not Avalonia.Input.Platform.IClipboard clipboard) throw new InvalidOperationException();
+            await clipboard.SetTextAsync(_bookFileText.Text ?? "");
+            Say("Copied the book file. Paste it wherever it's wanted.", 3);
+        }
+        catch (Exception) { Say("The text couldn't be copied. Select it with the mouse and press Ctrl+C instead."); }
+    }
+
+    readonly WrapPanel _tourButtons = new() { Margin = new Thickness(0, 4, 0, 6) };
+
+    /// <summary>The walkthrough buttons at the top of the help, which change with how far the walkthrough has got.</summary>
+    void FillTourButtons()
+    {
+        _tourButtons.Children.Clear();
+        int at = Tour.SavedStep;
+        if (at > 0 && at < Tour.Count)
+        {
+            _tourButtons.Children.Add(Ui.Button($"Carry on the walkthrough (step {at + 1} of {Tour.Count})", () => { _help.IsVisible = false; Tour.Start(at); }, primary: true));
+            _tourButtons.Children.Add(Ui.Button("Start it again", () => { _help.IsVisible = false; Tour.Start(0); }));
+        }
+        else _tourButtons.Children.Add(Ui.Button("Show me step by step how to make a book", () => { _help.IsVisible = false; Tour.Start(0); }, "A short walk through making a first book, pointing at each thing to click", primary: true));
+        _tourButtons.Children.Add(Ui.Button("Show the book file", ShowBookFile, "The book's book.json as text, for sorting out problems", small: false));
+        foreach (Control c in _tourButtons.Children) c.Margin = new Thickness(0, 0, 8, 6);
+    }
 
     Control HelpSheet()
     {
@@ -975,12 +1103,13 @@ sealed class MainWindow : Window
             Children =
             {
                 new DockPanel { Children = { new Border { [DockPanel.DockProperty] = Dock.Right, Child = Ui.Button("Close", ShowHelp, "Esc or F1", small: true) }, Ui.Label("Keys and tips", 18, Ui.Text, FontWeight.Bold) } },
+                _tourButtons,
                 grid,
                 Ui.Heading("How a book is made"),
                 Ui.Help("1. Add the page pictures. A picture can be a whole spread, or add a left and a right page and the editor joins them into one spread picture (it remembers the two halves, so either can be replaced later)."),
                 Ui.Help("2. On each page, drag to draw where the camera stops, in reading order. Type the words for each stop. Add a pan, effects, pictures on top or sounds if the page wants them."),
-                Ui.Help("3. Record or add the voice reading each stop's words, then Tap along to time the words so they light up as they are read."),
-                Ui.Help("4. Press Play to see it in the real reader, on a phone or a computer. Check book lists anything that will go wrong. Export makes the copy for the apps."),
+                Ui.Help("3. Record or add the voice reading each stop's words, then press \"Time words automatically\" so they light up as they are read. Click a word to nudge it, or Tap along to time them by hand. Things to find can have a voice too."),
+                Ui.Help("4. Press Play to see it in the real reader, on a phone or a computer. Check book lists anything that will go wrong. Export makes the copy for the apps, and a .picturebook file to send to a phone: open it there and the Book Reader app adds it to the shelf."),
                 Ui.Help("Changes are kept in a safety copy every few seconds, so if the computer stops before you save, the book offers them back next time."),
             },
         };
@@ -1014,6 +1143,7 @@ sealed class MainWindow : Window
             return;   // everything else goes to the reader
         }
         if (_help.IsVisible && e.Key is Key.Escape or Key.F1) { _help.IsVisible = false; e.Handled = true; return; }
+        if (_bookFile.IsVisible) { if (e.Key == Key.Escape) { _bookFile.IsVisible = false; e.Handled = true; } return; }
         if (_export.IsVisible) { if (e.Key == Key.Escape) { CloseExport(); e.Handled = true; } return; }
         if (e.Key == Key.F1) { ShowHelp(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.N) { _ = NewBook(); e.Handled = true; return; }
@@ -1061,7 +1191,14 @@ sealed class MainWindow : Window
 
     public void ShowExportNow() => OpenExport();
     public void ShowCheckNow() => OpenCheck();
-    public void ShowHelpNow() => _help.IsVisible = true;
+    public void ShowHelpNow() { FillTourButtons(); _help.IsVisible = true; }
+    public void ShowBookFileNow() => ShowBookFile();
+    public Button? PlayButton { get; private set; }
+    public Button? CheckButton { get; private set; }
+    public Button? ExportButton { get; private set; }
+    public Button? HelpButton { get; private set; }
+    public Button? NewButton { get; private set; }
+    public Control Welcome_ => _welcome;
 }
 
 /// <summary>The real sound output, passed through so the editor can tell whether a device is working.</summary>

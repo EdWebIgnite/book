@@ -50,6 +50,9 @@ public sealed class PhoneApp : Avalonia.Application
                 SaveSettings = true,
                 DeviceReducedMotion = PhoneDevice.ReducedMotion,
                 UnitsPerCm = PhoneDevice.UnitsPerCm,
+                // Books added from book files: in the app's own storage, apart from the books packed in the
+                // app (which are unpacked again after each update), so they survive updates.
+                ImportFolder = Path.Combine(Android.App.Application.Context.FilesDir!.AbsolutePath, "imported"),
             };
             var view = new AppView(setup, settings, new DesktopSound());
             View = view;
@@ -64,9 +67,38 @@ public sealed class PhoneApp : Avalonia.Application
             {
                 setup.Content = t.IsCompletedSuccessfully ? t.Result : null;
                 view.LoadShelf();
+                _shelfReady = true;
+                if (_waiting is { } next) { _waiting = null; next(); }
             }));
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    static bool _shelfReady;
+    static Action? _waiting;
+
+    /// <summary>
+    /// A book file opened with the app, or sent to it. It is read through Android's content system (the
+    /// sending app grants that for this one file), so the app needs no storage permission. If the shelf
+    /// isn't ready yet (the app is just starting), it waits for it.
+    /// </summary>
+    internal static void OpenBookFile(Android.Content.Context context, Android.Net.Uri uri)
+    {
+        void Go()
+        {
+            if (View is not AppView view) return;
+            Android.Content.ContentResolver? resolver = context.ContentResolver;
+            _ = view.ImportBook(() =>
+            {
+                Stream? s = resolver?.OpenInputStream(uri);
+                return s is null ? throw new IOException("no stream") : Task.FromResult(s);
+            });
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_shelfReady && View is not null) Go();
+            else _waiting = Go;
+        });
     }
 
     /// <summary>Once on screen: draw behind the system bars and keep clear of them, and take the Back button.</summary>

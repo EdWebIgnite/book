@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.Json.Nodes;
 using Reader.Core;
 
@@ -15,8 +14,11 @@ public sealed record ExportOptions
     /// <summary>Page pictures with no see-through parts become JPEG, which is far smaller than PNG for paintings.</summary>
     public bool PagesAsJpeg { get; init; } = true;
     public int JpegQuality { get; init; } = 85;
-    /// <summary>Also pack the exported folder into a zip file beside it.</summary>
-    public bool Zip { get; init; } = true;
+    /// <summary>
+    /// Also pack the exported folder into one book file beside it (a zip ending in .picturebook), to send
+    /// to a phone: the phone app adds it to its shelf when it is opened there.
+    /// </summary>
+    public bool BookFile { get; init; } = true;
 
     public static readonly ExportOptions Phone = new();
     public static readonly ExportOptions SmallDownload = new() { PageMaxSide = 2560, CoverMaxSide = 1400, LayerMaxSide = 1600, JpegQuality = 80 };
@@ -24,7 +26,7 @@ public sealed record ExportOptions
 }
 
 /// <summary>What Export did.</summary>
-public sealed record ExportResult(string Folder, string? ZipFile, int Files, long BytesBefore, long BytesAfter, List<string> Notes);
+public sealed record ExportResult(string Folder, string? BookFile, int Files, long BytesBefore, long BytesAfter, List<string> Notes);
 
 /// <summary>
 /// Export: a copy of the book ready for the apps. Pictures are made a sensible size for phones (big
@@ -125,7 +127,11 @@ public static class Exporter
                 if (!string.IsNullOrEmpty(s.Sound)) s.Sound = Present(s.Sound) ? Copy(s.Sound) : Note(s.Sound);
                 if (s.Voice is Voice v) { if (Present(v.File)) v.File = Copy(v.File); else { Note(v.File); s.Voice = null; } }
             }
-            foreach (Hotspot h in p.Hotspots) if (!string.IsNullOrEmpty(h.Sound)) h.Sound = Present(h.Sound) ? Copy(h.Sound) : Note(h.Sound);
+            foreach (Hotspot h in p.Hotspots)
+            {
+                if (!string.IsNullOrEmpty(h.Sound)) h.Sound = Present(h.Sound) ? Copy(h.Sound) : Note(h.Sound);
+                if (h.Voice is Voice v) { if (Present(v.File)) v.File = Copy(v.File); else { Note(v.File); h.Voice = null; } }
+            }
         }
         string? Note(string name) { notes.Add("Missing, left out: " + name); return null; }
 
@@ -133,18 +139,17 @@ public static class Exporter
         if (Directory.Exists(final)) Directory.Delete(final, true);
         Directory.Move(work, final);
 
-        string? zip = null;
-        if (options.Zip)
+        string? package = null;
+        if (options.BookFile)
         {
-            progress?.Report("Packing the zip file");
-            zip = final + ".zip";
-            if (File.Exists(zip)) File.Delete(zip);
-            // The zip holds the book's folder, so unzipping it anywhere gives a folder named after the book.
-            ZipFile.CreateFromDirectory(final, zip, CompressionLevel.Optimal, includeBaseDirectory: true);
+            progress?.Report("Making the book file");
+            package = final + BookPackage.Extension;
+            // The file holds the book's folder, so unzipping it anywhere gives a folder named after the book.
+            BookPackage.Create(final, package);
         }
         long after = Directory.EnumerateFiles(final, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
         int files = Directory.EnumerateFiles(final, "*", SearchOption.AllDirectories).Count();
-        return new ExportResult(final, zip, files, before, after, notes);
+        return new ExportResult(final, package, files, before, after, notes);
     }
 
     /// <summary>

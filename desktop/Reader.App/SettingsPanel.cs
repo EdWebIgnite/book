@@ -110,6 +110,9 @@ public sealed class SettingsPanel : UserControl
     bool _building;
 
     readonly bool _parentsOnly;
+
+    /// <summary>Room under the settings for more for the grown-ups (the books added from files).</summary>
+    public StackPanel Extra { get; } = new();
     readonly StackPanel _body;
 
     /// <param name="parentsOnly">
@@ -160,7 +163,7 @@ public sealed class SettingsPanel : UserControl
             actions.Children.Remove(copy);
             keys.IsVisible = false;
         }
-        var body = _body = new StackPanel { Margin = new Thickness(18, 16, 18, 24), Children = { new Panel { Children = { heading, close } }, sub, _rows, actions, keys } };
+        var body = _body = new StackPanel { Margin = new Thickness(18, 16, 18, 24), Children = { new Panel { Children = { heading, close } }, sub, _rows, Extra, actions, keys } };
         Content = new Border
         {
             Background = Brushes.White,

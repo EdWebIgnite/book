@@ -203,6 +203,9 @@ sealed class EditorState
     {
         if (Project is null) return;
         Project.Save();
+        // Spread pictures the editor joined and nothing needs any more (a half was replaced) don't pile up.
+        try { Project.TidyJoinedPictures(History.Remembered()); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* tidied next time */ }
         Dirty = false;
         SavedAt = DateTime.Now;
         Changed?.Invoke(Why.Saved, null);
