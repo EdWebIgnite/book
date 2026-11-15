@@ -6,6 +6,7 @@ using Android.Runtime;
 using Android.Views;
 using Avalonia;
 using Avalonia.Android;
+using AndroidX.Core.View;
 
 namespace Phone;
 
@@ -96,7 +97,51 @@ public sealed class MainActivity : AvaloniaMainActivity
     protected override void OnResume()
     {
         base.OnResume();
+        ApplyFullScreen();
         PhoneApp.View?.Resume();
+    }
+
+    public override void OnWindowFocusChanged(bool hasFocus)
+    {
+        base.OnWindowFocusChanged(hasFocus);
+        // Back from a dialog, the notification shade or another app: hide the bars again.
+        if (hasFocus) ApplyFullScreen();
+    }
+
+    bool _fullScreen;
+
+    /// <summary>
+    /// While a book is open the story has the whole screen: the status bar and the navigation bar are
+    /// hidden. A swipe in from the edge brings them back for a moment, over the picture, and they hide
+    /// again by themselves. On the shelf they show as usual.
+    /// </summary>
+    internal void FullScreen(bool on)
+    {
+        _fullScreen = on;
+        ApplyFullScreen();
+    }
+
+    void ApplyFullScreen()
+    {
+        try
+        {
+            if (Window is not Window window || window.DecorView is not View decor) return;
+            WindowInsetsControllerCompat? bars = WindowCompat.GetInsetsController(window, decor);
+            if (bars is null) return;
+            if (_fullScreen)
+            {
+                bars.SystemBarsBehavior = WindowInsetsControllerCompat.BehaviorShowTransientBarsBySwipe;
+                bars.Hide(WindowInsetsCompat.Type.SystemBars());
+            }
+            else
+            {
+                bars.Show(WindowInsetsCompat.Type.SystemBars());
+            }
+        }
+        catch (Exception)
+        {
+            // A phone that won't hide its bars just keeps them; the reader keeps clear of them either way.
+        }
     }
 
     public override void OnTrimMemory([GeneratedEnum] TrimMemory level)

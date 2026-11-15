@@ -90,6 +90,18 @@ public static class Easings
     public static double OutCubic(double t) => 1 - Math.Pow(1 - t, 3);
     public static double InOutSine(double t) => -(Math.Cos(Math.PI * t) - 1) / 2;
 
+    /// <summary>
+    /// Starts as gently as <see cref="InOutSine"/> but lands more softly: the speed and how fast it is
+    /// falling both reach nothing at the end, so the last frames creep to rest instead of stopping short.
+    /// Used for the page turn. Half way through the time it is a little past half way (0.58).
+    /// </summary>
+    public static double SoftLanding(double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        double u = 1 - t * t;
+        return 1 - u * u * u;
+    }
+
     public static double OutBack(double t)
     {
         const double c1 = 1.4, c3 = c1 + 1;

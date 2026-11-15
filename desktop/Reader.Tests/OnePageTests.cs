@@ -245,3 +245,51 @@ public class OnePageTests
         Assert.Equal(0, rig.Engine.StepIndex);
     }
 }
+
+/// <summary>A phone held sideways: the open book is framed by its pictures, so they fill nearly the whole height.</summary>
+public class SidewaysPhoneTests
+{
+    [Fact]
+    public void The_pictures_fill_nearly_the_whole_height_and_only_the_board_runs_off()
+    {
+        Rig rig = Kit.Open(Kit.OnePage(Kit.StopAt(0.1, 0.3, 0.25, 0.3)));
+        ReaderEngine e = rig.Engine;
+        e.SetViewSize(882, 411);
+        e.SetInsets(0, 0);
+        RectD page = e.PageRects[0];
+
+        double PictureShare() => e.ViewFor(e.WholeCam(0)).Scale * page.H / 411;
+        double usual = PictureShare();
+        e.PictureFillsHeight = true;
+        double filled = PictureShare();
+        Assert.InRange(usual, 0.9, 0.94);                                     // board, page edges and air round it
+        Assert.InRange(filled, 0.97, 0.99);                                   // the picture nearly to the edges
+
+        // The whole picture still shows; the board's top and bottom edges are off the screen.
+        ViewTransform v = e.ViewFor(e.WholeCam(0));
+        RectD onScreen = v.ToScreen(page), book = v.ToScreen(BookLayout.Book(page));
+        Assert.True(onScreen.Y > 0 && onScreen.Bottom < 411 && onScreen.X > 0 && onScreen.Right < 882);
+        Assert.True(book.Y < 0 && book.Bottom > 411);
+    }
+
+    [Fact]
+    public void Turning_on_the_fill_glides_the_camera_to_it_and_page_turns_use_it()
+    {
+        Rig rig = Kit.Open("biggest-puddle");
+        ReaderEngine e = rig.Engine;
+        e.SetViewSize(882, 411);
+        Assert.True(rig.JumpToClosing(1));
+        RectD before = e.Shown.Cam;
+        e.SetTime(rig.Now);
+        e.PictureFillsHeight = true;
+        e.Refresh();
+        rig.RunUntilStill();
+        Assert.Equal(e.WholeCam(1), e.Shown.Cam);
+        Assert.True(e.Shown.Cam.H < before.H, "closer in than before");
+        Assert.Equal(1, e.CreaseStrength(), 6);                              // still the whole book: the crease shows fully
+
+        rig.Next();
+        FlipDraw flip = Assert.IsType<FlipDraw>(e.GetFlip());
+        Assert.Equal(e.WholeCam(flip.UnderPage), flip.UnderCam);
+    }
+}

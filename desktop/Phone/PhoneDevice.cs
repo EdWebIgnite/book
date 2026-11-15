@@ -46,6 +46,32 @@ static class PhoneDevice
     }
 
     /// <summary>
+    /// The room the phone keeps for itself (<paramref name="safe"/>: system bars and the camera's cutout,
+    /// in screen units) with enough added at the sides for the screen's rounded corners, so the corner
+    /// buttons (about 10 units in from each edge) stay clear of the curve. Android 12 and newer say how
+    /// round the corners are; older phones add nothing.
+    /// </summary>
+    public static Avalonia.Thickness WithCorners(Avalonia.Thickness safe, double scaling)
+    {
+        try
+        {
+            if (!OperatingSystem.IsAndroidVersionAtLeast(31) || scaling <= 0) return safe;
+            if (MainActivity.Current?.Window?.DecorView?.RootWindowInsets is not Android.Views.WindowInsets insets) return safe;
+            double Radius(Android.Views.RoundedCornerPosition at) => (insets.GetRoundedCorner((int)at)?.Radius ?? 0) / scaling;
+            // The curve of a corner of radius r is 0.29 r in from both edges where it is furthest in.
+            // Buttons sit about 10 units in, so only what is beyond that needs keeping clear.
+            double Room(double r) => Math.Max(0, 0.3 * r - 10);
+            double left = Math.Max(Room(Radius(Android.Views.RoundedCornerPosition.TopLeft)), Room(Radius(Android.Views.RoundedCornerPosition.BottomLeft)));
+            double right = Math.Max(Room(Radius(Android.Views.RoundedCornerPosition.TopRight)), Room(Radius(Android.Views.RoundedCornerPosition.BottomRight)));
+            return new Avalonia.Thickness(Math.Max(safe.Left, left), safe.Top, Math.Max(safe.Right, right), safe.Bottom);
+        }
+        catch (Exception)
+        {
+            return safe;
+        }
+    }
+
+    /// <summary>
     /// How many full-size page pictures to keep at once. The page being read and the next one always fit;
     /// phones with more room keep the one before as well, so going back is instant too.
     /// </summary>

@@ -71,6 +71,27 @@ public class GeometryTests
     }
 
     [Fact]
+    public void The_page_turns_landing_starts_like_the_sine_and_creeps_to_rest()
+    {
+        Near(0, Easings.SoftLanding(0), 1e-12);
+        Near(1, Easings.SoftLanding(1), 1e-12);
+        Near(Easings.SoftLanding(0.5), 0.578, 1e-3);
+        // It only ever goes forward.
+        for (double t = 0; t < 1; t += 0.01) Assert.True(Easings.SoftLanding(t + 0.01) >= Easings.SoftLanding(t));
+        // The start is as gentle as the sine's (both lift with a speed growing from nothing) ...
+        Assert.InRange(Easings.SoftLanding(0.1) / Easings.InOutSine(0.1), 0.8, 1.4);
+        // ... and the end much gentler: speed and slowing down both reach nothing, so the step from one
+        // frame to the next shrinks smoothly to nothing instead of stopping short.
+        const double frame = 1.0 / 54;                           // a 900 ms turn at 60 frames a second
+        double lastSine = 1 - Easings.InOutSine(1 - frame), lastSoft = 1 - Easings.SoftLanding(1 - frame);
+        Assert.True(lastSoft < lastSine / 10, $"last frame moves {lastSoft} against the sine's {lastSine}");
+        double[] steps = Enumerable.Range(44, 11).Select(i => Easings.SoftLanding(i * frame) - Easings.SoftLanding((i - 1) * frame)).ToArray();
+        for (int i = 1; i < steps.Length; i++) Assert.True(steps[i] < steps[i - 1], "each of the last frames moves less than the one before");
+        for (int i = 2; i < steps.Length; i++)
+            Assert.True(steps[i - 1] - steps[i] <= steps[i - 2] - steps[i - 1] + 1e-12, "and the slowing down eases off too");
+    }
+
+    [Fact]
     public void The_symmetric_easings_are_halfway_at_half_time_and_an_unknown_name_is_the_cubic()
     {
         Near(0.5, Easings.Apply("easeInOutSine", 0.5));

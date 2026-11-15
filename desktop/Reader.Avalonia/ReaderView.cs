@@ -284,6 +284,9 @@ public sealed partial class ReaderView : Control
             int page = Engine.CurrentStep.Page;
             book.Warm(page);
             book.Warm(page + 1);
+            // The page before too, where there is room for three, so turning back doesn't swap the quick
+            // half-size picture for the sharp one mid-turn or just after it lands.
+            if (LoadedBook.FullPicturesKept >= 3) book.Warm(page - 1);
         }
 
         // Only draw again when something is moving, plus once more after it stops: that last frame is the

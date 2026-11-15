@@ -225,9 +225,9 @@ public class FlipTests
         double half = rig.Engine.GetFlip()!.Value.Fold;
         rig.Run(360, 2);
         double late = rig.Engine.GetFlip()!.Value.Fold;
-        Assert.Equal(0.5, half, 2);                              // half way at half time
+        Assert.Equal(Easings.SoftLanding(0.5), half, 2);         // a little past half way at half time
         Assert.True(early < 0.04, "a tenth of the time in, it has barely lifted");
-        Assert.True(late > 0.96, "and it settles gently");
+        Assert.True(late > 0.99, "and it creeps the last bit to rest");
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public class FlipTests
         Assert.Equal(1, f.UnderPage);
         Assert.Equal(1, f.Fold, 9);
         rig.Run(450, 2);
-        Assert.Equal(0.5, e.GetFlip()!.Value.Fold, 2);
+        Assert.Equal(1 - Easings.SoftLanding(0.5), e.GetFlip()!.Value.Fold, 2);
         rig.RunUntilStill();
         Assert.Null(e.GetFlip());
         Assert.Equal(e.WholeCam(0), e.Shown.Cam);

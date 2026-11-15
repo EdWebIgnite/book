@@ -122,6 +122,60 @@ public class CreaseTests
 public class CurlTests
 {
     [Fact]
+    public void The_roll_is_where_the_page_bends()
+    {
+        foreach (double f in new[] { 0.02, 0.2, 0.5, 0.8, 0.98, 0.9999 })
+        {
+            var (start, end) = Curl.Roll(f);
+            Assert.True(start < end);
+            Assert.Equal(0, Curl.Sheet(f, start).Angle, 9);                    // flat up to the roll
+            Assert.Equal(Math.PI, Curl.Sheet(f, end).Angle, 6);                // lying back after it
+            double mid = Curl.Sheet(f, (start + end) / 2).Angle;
+            Assert.InRange(mid, 0.1, Math.PI - 0.1);                          // bending in between
+        }
+        Assert.Equal(Curl.Roll(0).Start, Curl.Roll(0).End, 12);              // no roll at the ends
+        Assert.Equal(Curl.Roll(1).Start, Curl.Roll(1).End, 12);
+    }
+
+    [Fact]
+    public void With_no_roll_left_the_spine_end_lies_back_with_the_rest()
+    {
+        // Lying face up at the spine and face down a strip away made that strip stand on edge, drawn dark.
+        Assert.Equal((0.0, 0.0, Math.PI), Curl.Sheet(1, 0));
+        Assert.Equal((0.0, 0.0, 0.0), Curl.Sheet(0, 0));
+    }
+
+    [Fact]
+    public void The_page_is_cut_evenly_and_closely_through_the_roll()
+    {
+        double[] even = Curl.Cuts(48, 0);
+        Assert.Equal(49, even.Length);
+        Assert.Equal(0, even[0]);
+        Assert.Equal(1, even[^1]);
+
+        // Late in the turn, the roll is far narrower than one even strip: it is still cut into many pieces,
+        // at both edges of the leaning fold, and no strip reaches from the flat part over to the part lying back.
+        foreach (double f in new[] { 0.3, 0.9, 0.97, 0.995, 0.99999, 0.9999999 })
+        {
+            double top = Curl.Leaning(f, 0), bottom = Curl.Leaning(f, 1);
+            double[] cuts = Curl.Cuts(48, 14, top, bottom);
+            for (int i = 1; i < cuts.Length; i++) Assert.True(cuts[i] > cuts[i - 1], "in order, with no repeats");
+            Assert.Equal(0, cuts[0]);
+            Assert.Equal(1, cuts[^1]);
+            foreach (double turned in new[] { top, bottom })
+            {
+                var (start, end) = Curl.Roll(turned);
+                Assert.True(cuts.Count(t => t >= start - 1e-12 && t <= end + 1e-12) >= 15, $"the roll at {turned} is cut finely");
+                for (int i = 1; i < cuts.Length; i++)
+                {
+                    double a0 = Curl.Sheet(turned, cuts[i - 1]).Angle, a1 = Curl.Sheet(turned, cuts[i]).Angle;
+                    Assert.True(Math.Abs(a1 - a0) < Math.PI / 4, $"a strip turns {a1 - a0:F2} at {turned}");
+                }
+            }
+        }
+    }
+
+    [Fact]
     public void The_page_starts_flat_on_one_side_and_ends_flat_on_the_other()
     {
         for (double t = 0; t <= 1; t += 0.125)

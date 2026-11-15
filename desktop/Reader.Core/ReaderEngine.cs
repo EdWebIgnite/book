@@ -249,6 +249,14 @@ public sealed class ReaderEngine
     /// </summary>
     public bool OnePage { get; set; }
 
+    /// <summary>
+    /// A phone held sideways: the screen is so short that the whole open book is framed by its picture
+    /// rather than by its cover board, so the picture takes nearly the full height and only the board and
+    /// page edges run off the top and bottom. Both pages still show whole. Call <see cref="Refresh"/>
+    /// after changing it so the camera glides to the new framing.
+    /// </summary>
+    public bool PictureFillsHeight { get; set; }
+
     /// <summary>True when this page is read one page at a time right now.</summary>
     bool OnePageFor(int page) => OnePage && ShownAsBook(page);
 
@@ -561,7 +569,10 @@ public sealed class ReaderEngine
     public RectD WholeCam(int page, int half)
     {
         if (!ShownAsBook(page)) return Inflate(_pageRects[page], 0.03);
-        if (half == Step.Both) return Inflate(BookLayout.Book(_pageRects[page]), BookLayout.Air);
+        if (half == Step.Both)
+            return PictureFillsHeight
+                ? Inflate(BookLayout.Spread(_pageRects[page]), BookLayout.TightAir)
+                : Inflate(BookLayout.Book(_pageRects[page]), BookLayout.Air);
         RectD one = HalfRect(page, half);
         double side = BookLayout.StackRoom + BookLayout.Board + BookLayout.Air, edge = BookLayout.Board + BookLayout.Air;
         return new RectD(one.X - side, one.Y - edge, one.W + 2 * side, one.H + 2 * edge);
@@ -1652,7 +1663,7 @@ public sealed class ReaderEngine
     {
         if (_anim is not { Kind: AnimKind.Flip } a) return null;
         double raw = a.Ms <= 0 ? 1 : Clamp((_now - a.Start) / a.Ms, 0, 1);
-        double eased = Easings.InOutSine(raw);          // slow to lift, slow to settle
+        double eased = Easings.SoftLanding(raw);        // slow to lift, slower still to settle
         return a.Forward
             ? new FlipDraw(a.FromPage, a.ToPage, eased, true, WholeCam(a.FromPage, a.FromHalf), WholeCam(a.ToPage, a.ToHalf), a.FromHalf, a.ToHalf)
             : new FlipDraw(a.ToPage, a.FromPage, 1 - eased, false, WholeCam(a.ToPage, a.ToHalf), WholeCam(a.FromPage, a.FromHalf), a.ToHalf, a.FromHalf);

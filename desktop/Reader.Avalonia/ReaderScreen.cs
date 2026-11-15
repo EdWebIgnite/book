@@ -51,9 +51,16 @@ public sealed class ReaderScreen : UserControl
     /// A phone on its side: the screen is so short that the picture takes nearly the whole height, and the
     /// buttons shrink, turn see-through and sit over the corners of the picture instead of above and below it.
     /// </summary>
-    bool Compact => _autoOnePage && Bounds.Height > 0 && Bounds.Height <= 519;
+    bool Compact => IsCompact(Bounds.Size);
 
-    const double CompactTop = 8, CompactBottom = 8;
+    bool IsCompact(Size size) => _autoOnePage && size.Height > 0 && size.Height <= 519;
+
+    /// <summary>
+    /// No room is kept above and below the picture on a phone on its side, beyond what the phone itself
+    /// keeps: the book is framed by its pictures there (<see cref="ReaderEngine.PictureFillsHeight"/>) and
+    /// fills the height, its board running off the top and bottom.
+    /// </summary>
+    const double CompactTop = 0, CompactBottom = 0;
 
     /// <summary>The see-through white of the buttons when they sit over the picture.</summary>
     static readonly IBrush GlassPaper = new ImmutableSolidColorBrush(Color.FromArgb(140, 255, 255, 255));
@@ -256,8 +263,10 @@ public sealed class ReaderScreen : UserControl
     void UpdateOnePage(Size size)
     {
         bool one = _autoOnePage && size.Height > size.Width;
-        if (one == View.Engine.OnePage) return;
+        bool fill = IsCompact(size);
+        if (one == View.Engine.OnePage && fill == View.Engine.PictureFillsHeight) return;
         View.Engine.OnePage = one;
+        View.Engine.PictureFillsHeight = fill;
         if (View.Engine.Book is not null) View.Do(e => e.Refresh());
     }
 
@@ -268,6 +277,7 @@ public sealed class ReaderScreen : UserControl
     {
         Title = book.Book.Title;
         View.Engine.OnePage = _autoOnePage && Bounds.Height > Bounds.Width;
+        View.Engine.PictureFillsHeight = Compact;
         View.SetBook(book, startStep);
         View.Focus();
     }

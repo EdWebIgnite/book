@@ -56,7 +56,11 @@ public sealed class PhoneApp : Avalonia.Application
             };
             var view = new AppView(setup, settings, new DesktopSound());
             View = view;
-            view.ReadingChanged += reading => MainActivity.Current?.KeepScreenOn(reading);
+            view.ReadingChanged += reading =>
+            {
+                MainActivity.Current?.KeepScreenOn(reading);
+                MainActivity.Current?.FullScreen(reading);
+            };
             view.AttachedToVisualTree += (_, _) => Attach(view);
             single.MainView = view;
 
@@ -109,8 +113,10 @@ public sealed class PhoneApp : Avalonia.Application
         if (top.InsetsManager is { } insets)
         {
             insets.DisplayEdgeToEdgePreference = true;
-            view.SafeArea = insets.SafeAreaPadding;
-            insets.SafeAreaChanged += (_, e) => view.SafeArea = e.SafeAreaPadding;
+            // The system bars and the camera's cutout, as the phone reports them (bars that are hidden take
+            // no room), and room for the screen's rounded corners on top.
+            view.SafeArea = PhoneDevice.WithCorners(insets.SafeAreaPadding, top.RenderScaling);
+            insets.SafeAreaChanged += (_, e) => view.SafeArea = PhoneDevice.WithCorners(e.SafeAreaPadding, top.RenderScaling);
         }
         // Back: closes the settings, or leaves the book for the shelf. Only from the shelf does it leave the app,
         // so a child is never thrown out of the middle of a story.

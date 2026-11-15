@@ -29,6 +29,15 @@ public sealed partial class ReaderView
     /// <summary>How many strips a bending sheet is cut into.</summary>
     const int LeafStrips = 48, CoverStrips = 32;
 
+    /// <summary>How many strips the roll of a turning page is cut into, for each edge of the leaning fold.</summary>
+    const int RollStrips = 14;
+
+    static readonly double[] CoverCuts = Curl.Cuts(CoverStrips, 0);
+
+    /// <summary>Where to cut the turning page: evenly, and closely through the roll at its top and bottom edges.</summary>
+    static double[] LeafCuts(double turned) =>
+        Curl.Cuts(LeafStrips, RollStrips, Curl.Leaning(turned, 0), Curl.Leaning(turned, 1));
+
     readonly Dictionary<(int Shape, int Left, int Right), BookFrame> _frames3 = new();
     Bitmap? _coverFace, _coverInside;
 
@@ -212,6 +221,24 @@ public sealed partial class ReaderView
         return new Half(p, 0, p.Size.Width, right);
     }
 
+    /// <summary>
+    /// One half of a spread lying in place, for the page turn. Half of a landscape picture is drawn as the
+    /// whole picture cut off at the spine, so that its outer edges come out exactly as the open book draws
+    /// them: drawn as a part of the picture, the edge pixels came out a shade different, and the outline of
+    /// the pages flickered as the turn ended.
+    /// </summary>
+    static void DrawHalfInPlace(DrawingContext ctx, Half half, Rect dest)
+    {
+        if (half.Picture is not Bitmap picture || Math.Abs(half.X1 - half.X0 - picture.Size.Width / 2) > 0.5)
+        {
+            DrawHalf(ctx, half, dest);
+            return;
+        }
+        var whole = new Rect(half.RightHand ? dest.X - dest.Width : dest.X, dest.Y, dest.Width * 2, dest.Height);
+        var keep = half.RightHand ? new Rect(dest.X, -1e5, 2e5, 2e5) : new Rect(-1e5, -1e5, dest.Right + 1e5, 2e5);
+        using (ctx.PushClip(keep)) ctx.DrawImage(picture, whole);
+    }
+
     static void DrawHalf(DrawingContext ctx, Half half, Rect dest)
     {
         if (half.Picture is not Bitmap picture || half.X1 - half.X0 < 0.5) { ctx.FillRectangle(Paper, dest); return; }
@@ -314,7 +341,8 @@ public sealed partial class ReaderView
         var place = new SheetPlace(hinge, width, pageRect.Y, pageRect.H, 1, LeafEye * pageRect.H);
         using (ctx.PushClip(new Rect(hinge, -1e5, 2e5, 2e5)))
         using (ctx.PushRenderOptions(Quick))
-            DrawSheet(ctx, place, front, back, LeafStrips, (t, row) => Curl.Sheet(Curl.Leaning(turned, row), t), backDarker: 0.05 * lift);
+            DrawSheet(ctx, place, front, back, LeafCuts(turned), (t, row) => Curl.Sheet(Curl.Leaning(turned, row), t), backDarker: 0.05 * lift,
+                shading: RollShading(lift));
 
         // The pictures-on-top and weather of the page being turned stay on it while it lies flat.
         double flatAtStart = 1 - SmoothStep(0, 0.12, turned);
@@ -343,35 +371,30 @@ public sealed partial class ReaderView
     /// above the page, and how far it has turned. A strip running away from the spine shows the front;
     /// running back towards it, the back.
     /// </summary>
-    void DrawSheet(DrawingContext ctx, SheetPlace at, Face front, Face back, int strips,
-        Func<double, double, (double X, double Z, double Angle)> shape, Action? underTheLiftedPart = null, double backDarker = 0.05)
+    void DrawSheet(DrawingContext ctx, SheetPlace at, Face front, Face back, double[] cuts,
+        Func<double, double, (double X, double Z, double Angle)> shape, Action? underTheLiftedPart = null, double backDarker = 0.05,
+        double shading = 1)
     {
         double eye = at.Eye, cy = at.Top + at.Height / 2, bottom0 = at.Top + at.Height;
+        int strips = cuts.Length - 1;
         // Each point along the sheet is worked out twice, for its top edge and its bottom edge, so that the
         // fold can lean (the top corner leading). A strip is then the four-sided piece between two of them.
         var top = new Point[strips + 1];
         var bottom = new Point[strips + 1];
-        var angle = new double[strips + 1];
         var lifted = new bool[strips + 1];
+        var flatKind = new int[strips + 1];
         for (int i = 0; i <= strips; i++)
         {
-            double t = (double)i / strips;
+            double t = cuts[i];
             var (xt, zt, at0) = shape(t, 0);
             var (xb, zb, ab) = shape(t, 1);
             top[i] = Project(at, eye, cy, xt, zt, at.Top);
             bottom[i] = Project(at, eye, cy, xb, zb, bottom0);
-            angle[i] = (at0 + ab) / 2;
             lifted[i] = zt > 1e-6 || zb > 1e-6;
-        }
-        // Where the sheet lies flat (on the page, or lying back over the top) one piece does for many strips.
-        var flatKind = new int[strips + 1];
-        for (int i = 0; i <= strips; i++)
-        {
-            var (_, zt, at0) = shape((double)i / strips, 0);
-            var (_, zb, ab) = shape((double)i / strips, 1);
+            // Where the sheet lies flat (on the page, or lying back over the top) one piece does for many strips.
             flatKind[i] = at0 == 0 && ab == 0 && zt == 0 && zb == 0 ? 1 : at0 == Math.PI && ab == Math.PI && Math.Abs(zt - zb) < 1e-12 ? 2 : 0;
         }
-        bool shadowDrawn = underTheLiftedPart is null;
+        bool shadowDrawn = underTheLiftedPart is null, drewLast = false;
         for (int i = 0, next; i < strips; i = next)
         {
             next = i + 1;
@@ -384,16 +407,23 @@ public sealed partial class ReaderView
             }
             Point tl = top[i], tr = top[next], bl = bottom[i], br = bottom[next];
             double across = (tr.X - tl.X + br.X - bl.X) / 2;
-            if (Math.Abs(across) < 0.02) continue;                   // seen edge on
+            if (Math.Abs(across) < 0.02) { drewLast = false; continue; }   // seen edge on
             bool showsFront = across * at.Direction > 0;
             Face face = showsFront ? front : back;
 
-            // The strip as an affine piece: its top edge runs from tl to tr and its left side from tl to bl.
-            // A whisker wider than its place, so that no hairline shows between strips.
-            double grow = 0.4 / Math.Abs(across);
+            // The strip as an affine piece: its top edge runs from tl to tr and its sides lean as its two sides
+            // do on average. A whisker wider than its place where it meets another strip (at most a third of
+            // its width, or a strip seen nearly edge on was stretched far beyond its place), so that no
+            // hairline shows between strips. Not where nothing is drawn beside it (the spine, the free edge, a
+            // strip seen edge on): there the whisker reached past the sheet, and at the spine it covered the
+            // crease with a bright line until the page landed.
+            double grow = Math.Min(0.4 / Math.Abs(across), 0.3);
+            bool edgeOnAfter = next == strips || Math.Abs(top[next + 1].X - top[next].X + bottom[next + 1].X - bottom[next].X) / 2 < 0.02;
+            double growStart = i == 0 || !drewLast ? 0 : grow, growEnd = edgeOnAfter ? 0 : grow;
+            drewLast = true;
             var shape2 = new Matrix(tr.X - tl.X, tr.Y - tl.Y, (bl.X - tl.X + br.X - tr.X) / 2, (bl.Y - tl.Y + br.Y - tr.Y) / 2, tl.X, tl.Y);
-            var unit = new Rect(-grow, 0, 1 + 2 * grow, 1);
-            double c0 = face.Column((double)i / strips), c1 = face.Column((double)next / strips);
+            var unit = new Rect(-growStart, 0, 1 + growStart + growEnd, 1);
+            double c0 = face.Column(cuts[i]), c1 = face.Column(cuts[next]);
             using (ctx.PushTransform(shape2))
             {
                 if (face.Picture is Bitmap picture && Math.Abs(c1 - c0) > 1e-4)
@@ -401,9 +431,11 @@ public sealed partial class ReaderView
                     // Along the strip (left to right in its own square) the columns may count down; then the
                     // square is turned round first so the picture still lands the right way.
                     double width = Math.Abs(c1 - c0);
-                    var source = new Rect(Math.Min(c0, c1) - grow * width, face.Y0, Math.Max(0.01, width * (1 + 2 * grow)), face.Y1 - face.Y0);
+                    double before = c1 < c0 ? growEnd : growStart, after = c1 < c0 ? growStart : growEnd;
+                    var source = new Rect(Math.Min(c0, c1) - before * width, face.Y0, Math.Max(0.01, width * (1 + before + after)), face.Y1 - face.Y0);
+                    var dest = new Rect(-before, 0, 1 + before + after, 1);
                     using (ctx.PushTransform(c1 < c0 ? new Matrix(-1, 0, 0, 1, 1, 0) : Matrix.Identity))
-                        ctx.DrawImage(picture, source, unit);
+                        ctx.DrawImage(picture, source, dest);
                 }
                 else
                 {
@@ -412,10 +444,13 @@ public sealed partial class ReaderView
 
                 // Light from above: paper facing up is bright, paper tipped up on edge is darker, and there is
                 // a gleam where the sheet curves over.
-                double theta = (angle[i] + angle[next]) / 2;
+                // How it faces is taken at the middle of the strip: the average of its two ends was wrong for a
+                // strip with one end still flat and the other already lying back, which came out dark.
+                double mid = (cuts[i] + cuts[next]) / 2;
+                double theta = (shape(mid, 0).Angle + shape(mid, 1).Angle) / 2;
                 double facing = Math.Abs(Math.Cos(theta));
-                double dark = 0.6 * Math.Pow(1 - facing, 0.9) + (showsFront ? 0 : backDarker);
-                double gleam = 0.22 * Math.Exp(-Math.Pow((theta - 0.8) / 0.3, 2)) + 0.2 * Math.Exp(-Math.Pow((theta - (Math.PI - 0.7)) / 0.3, 2));
+                double dark = shading * 0.6 * Math.Pow(1 - facing, 0.9) + (showsFront ? 0 : backDarker);
+                double gleam = shading * (0.22 * Math.Exp(-Math.Pow((theta - 0.8) / 0.3, 2)) + 0.2 * Math.Exp(-Math.Pow((theta - (Math.PI - 0.7)) / 0.3, 2)));
                 if (dark > 0.01) ctx.FillRectangle(Brush(Rgba(25, 18, 10, dark)), unit);
                 if (gleam > 0.01) ctx.FillRectangle(Brush(Rgba(255, 255, 250, gleam)), unit);
             }
@@ -496,6 +531,7 @@ public sealed partial class ReaderView
         double half = spread.W / 2, spine = spread.X + half;
         var leftHalf = new Rect(spread.X, spread.Y, half, spread.H);
         var rightHalf = new Rect(spine, spread.Y, half, spread.H);
+        Rect pages = ToRect(spread);
 
         // How far over the sheet is, 0 to 1, counted from the side it starts on.
         int direction = flip.Forward ? 1 : -1;
@@ -524,13 +560,43 @@ public sealed partial class ReaderView
         // drawn once the book lies open, so that nothing about them changes when the leaf lands.
         Half earlierLeft = HalfOf(book, earlier, right: false, pixels), earlierRight = HalfOf(book, earlier, right: true, pixels);
         Half laterLeft = HalfOf(book, later, right: false, pixels), laterRight = HalfOf(book, later, right: true, pixels);
+        // How far the leaf's free edge still has to go, in pixels. Within the last twentieth of a pixel the leaf
+        // has landed: the picture it carries takes its place, drawn lying flat exactly as the open book draws
+        // it, so the leaf's own soft outline and its slightly different sampling of the picture don't change
+        // the last frame. (Fading from one to the other instead showed the overlaps between strips as lines.)
+        double gap = 2 * (1 - turned) * half * scaling;
+        bool landed = gap < 0.05;
+        Rect departing = flip.Forward ? rightHalf : leftHalf, landing = flip.Forward ? leftHalf : rightHalf;
+
+        // The open book puts white under a page picture that may have see-through parts; so must the turn,
+        // or the soft outline of the pages comes out darker than the open book's. Each half has what the
+        // page it shows has: the half the leaf leaves changes over at once, the half it lands on as it lands.
+        if (!BookLayout.IsPortrait(e.PageRects[later]))
+        {
+            int first = flip.Forward ? earlier : later, last = flip.Forward ? later : earlier;
+            bool white0 = !book.PageIsOpaque(first), white1 = !book.PageIsOpaque(last);
+            bool whiteDeparting = turned > 0.0005 ? white1 : white0, whiteLanding = landed ? white1 : white0;
+            if (whiteDeparting && whiteLanding) ctx.FillRectangle(White, pages);
+            else if (whiteDeparting) ctx.FillRectangle(White, departing);
+            else if (whiteLanding) ctx.FillRectangle(White, landing);
+        }
+        Half landingOld = flip.Forward ? earlierLeft : laterRight, landingNew = flip.Forward ? laterLeft : earlierRight;
+        Half departingHalf = flip.Forward ? laterRight : earlierLeft;
         using (ctx.PushRenderOptions(Quick))
         {
-            DrawHalf(ctx, earlierLeft, leftHalf);
-            DrawHalf(ctx, laterRight, rightHalf);
+            DrawHalfInPlace(ctx, departingHalf, departing);
+            DrawHalfInPlace(ctx, landed ? landingNew : landingOld, landing);
         }
-        DrawOnTop(ctx, book, earlier, earlierPage, leftHalf, 1);
-        DrawOnTop(ctx, book, later, laterPage, rightHalf, 1);
+        if (flip.Forward)
+        {
+            if (!landed) DrawOnTop(ctx, book, earlier, earlierPage, leftHalf, 1);
+            DrawOnTop(ctx, book, later, laterPage, rightHalf, 1);
+        }
+        else
+        {
+            DrawOnTop(ctx, book, earlier, earlierPage, leftHalf, 1);
+            if (!landed) DrawOnTop(ctx, book, later, laterPage, rightHalf, 1);
+        }
         using (ctx.PushTransform(space)) to.DrawCrease(ctx, 1);
 
         Face front = Face.Of(flip.Forward ? earlierRight : laterLeft), back = Face.Of(flip.Forward ? laterLeft : earlierRight);
@@ -543,22 +609,22 @@ public sealed partial class ReaderView
             outermost = Math.Max(outermost, x * LeafEye * spread.H / (LeafEye * spread.H - z * half));
         }
         var (edgeX, edgeZ, _) = Curl.Sheet(turned, 1);
-        Rect pages = ToRect(spread);
         using (ctx.PushClip(pages))
             DrawShadowBand(ctx, spine + direction * outermost * half, direction * half * (0.05 + 0.9 * radius), spread.Y, spread.H, 0.5 * lift);
 
         // The sheet is not clipped to the pages: lifted off them, it is nearer the eye and looks a little bigger.
         // It is drawn right to the end, lying flat as it lands, so it never vanishes before the open book takes over.
         var place = new SheetPlace(spine, half, spread.Y, spread.H, direction, LeafEye * spread.H);
+        if (!landed)
         using (ctx.PushRenderOptions(Quick))
         {
-            DrawSheet(ctx, place, front, back, LeafStrips, (t, row) => Curl.Sheet(Curl.Leaning(turned, row), t), () =>
+            DrawSheet(ctx, place, front, back, LeafCuts(turned), (t, row) => Curl.Sheet(Curl.Leaning(turned, row), t), () =>
             {
                 // The part lying back over the top throws a shadow beyond its free edge, on the pages below.
                 if (edgeZ > 1e-4)
                     using (ctx.PushClip(pages))
                         DrawShadowBand(ctx, spine + direction * edgeX * half, -direction * half * (0.02 + 1.4 * edgeZ), spread.Y, spread.H, 0.38 * lift);
-            }, backDarker: 0.05 * lift);
+            }, backDarker: 0.05 * lift, shading: RollShading(lift));
         }
 
         // Things that belong on top of the leaf when it lies flat: the pictures-on-top and weather of the page
@@ -577,14 +643,21 @@ public sealed partial class ReaderView
         }
         // The crease goes back over the leaf only on the half the leaf covers: the other half already has it,
         // from underneath, and doubling it there made the spine darker for the last frames of the turn.
-        Rect departing = flip.Forward ? rightHalf : leftHalf, landing = flip.Forward ? leftHalf : rightHalf;
         if (flatAtStart > 0.005)
             using (ctx.PushClip(departing.Inflate(new Thickness(0, spread.H, 0, spread.H))))
             using (ctx.PushTransform(space)) to.DrawCrease(ctx, flatAtStart);
-        if (flatAtEnd > 0.005)
+        // Once the leaf has landed, the picture lying in its place has the crease from underneath already.
+        if (flatAtEnd > 0.005 && !landed)
             using (ctx.PushClip(landing.Inflate(new Thickness(0, spread.H, 0, spread.H))))
             using (ctx.PushTransform(space)) to.DrawCrease(ctx, flatAtEnd);
     }
+
+    /// <summary>
+    /// How strongly the roll of a turning page is shaded. As the page lands the roll shrinks to a line at
+    /// the spine; shaded fully, that line was a bright and dark streak down the crease that stayed until
+    /// the last frame. Fading the shading with the lift lets it melt into the crease instead.
+    /// </summary>
+    static double RollShading(double lift) => SmoothStep(0, 0.35, lift);
 
     /// <summary>Goes smoothly from 0 at <paramref name="from"/> to 1 at <paramref name="to"/>.</summary>
     static double SmoothStep(double from, double to, double x)
@@ -603,9 +676,14 @@ public sealed partial class ReaderView
         if (opacity < 0.005) return;
         Page p = book.Book.Pages[page];
         if (p.Layers.Count == 0 && p.Effects.Count == 0) return;
-        Rect inside = area.Intersect(ToRect(pageOnScreen));
+        Rect pageRect = ToRect(pageOnScreen);
+        Rect inside = area.Intersect(pageRect);
         if (inside.Width <= 0.5) return;
-        using (ctx.PushClip(inside))
+        // Cut off only where the area ends inside the page (at the spine). Cut at the page's own edges too,
+        // the soft edge of the cut made those edges a shade different from the open book's.
+        double l = Math.Abs(inside.X - pageRect.X) < 1 ? -1e5 : inside.X, r = Math.Abs(inside.Right - pageRect.Right) < 1 ? 1e5 : inside.Right;
+        double t = Math.Abs(inside.Y - pageRect.Y) < 1 ? -1e5 : inside.Y, b = Math.Abs(inside.Bottom - pageRect.Bottom) < 1 ? 1e5 : inside.Bottom;
+        using (ctx.PushClip(new Rect(l, t, r - l, b - t)))
         using (ctx.PushOpacity(opacity))
         {
             DrawLayers(ctx, book, page, pageOnScreen, Quick);
@@ -761,7 +839,7 @@ public sealed partial class ReaderView
         Bitmap inside = CoverInside(book, boardInUnits, HalfOf(book, cover.Page, right: false, spread.W * scaling * 1.5));
         var place = new SheetPlace(spine, board.W, board.Y, board.H, 1, CoverEye * spread.H);
         using (ctx.PushRenderOptions(Quick))
-            DrawSheet(ctx, place, Face.Whole(face, spineAtLeft: true), Face.Whole(inside, spineAtLeft: false), CoverStrips,
+            DrawSheet(ctx, place, Face.Whole(face, spineAtLeft: true), Face.Whole(inside, spineAtLeft: false), CoverCuts,
                 (t, _) => Curl.Board(cover.Open, t), backDarker: 0);
 
         // As the cover settles, the open book it is turning into fades in over it, so that the last frame of

@@ -24,6 +24,12 @@ public static class BookLayout
     public const double StackStep = StackRoom / (MostStackLines + 0.5);
     /// <summary>A little air around the book when it is seen whole.</summary>
     public const double Air = 0.018;
+    /// <summary>
+    /// The little room round the pictures themselves when the book is framed by its pages instead (a phone
+    /// held sideways, see <c>ReaderEngine.PictureFillsHeight</c>): less than the board, so the board's
+    /// edge runs off the screen while the picture stays whole.
+    /// </summary>
+    public const double TightAir = 0.012;
     /// <summary>How thick the closed book shows at its right and bottom edges.</summary>
     public const double ClosedThickness = 0.016;
 
@@ -105,11 +111,52 @@ public static class Curl
         double r = MostRadius * Math.Sin(Math.PI * turned);
         double edge = 1 - 2 * turned;                            // where the free edge lies
         double a = Geo.Clamp((edge + 1 - Math.PI * r) / 2, 0, 1); // where the paper leaves the page
+        // With no roll at all the page lies flat on one side or the other, its spine end included: a
+        // spine point lying face up while the rest lay face down made the strip beside it stand on edge,
+        // drawn dark, for the last frame of the turn.
+        if (r <= 1e-9) return turned < 0.5 ? (t, 0, 0) : (-t, 0, Math.PI);
         if (t <= a) return (t, 0, 0);
-        if (r <= 1e-9) return (a - (t - a), 0, Math.PI);
         double theta = (t - a) / r;
         if (theta <= Math.PI) return (a + r * Math.Sin(theta), r * (1 - Math.Cos(theta)), theta);
         return (a - (t - a - Math.PI * r), 2 * r, Math.PI);
+    }
+
+    /// <summary>
+    /// Which part of the turning page is round the roll, as <c>t</c> from the spine (see <see cref="Sheet"/>):
+    /// before <c>Start</c> it lies flat on the page, after <c>End</c> it lies back over the top.
+    /// </summary>
+    public static (double Start, double End) Roll(double turned)
+    {
+        turned = Geo.Clamp(turned, 0, 1);
+        double r = MostRadius * Math.Sin(Math.PI * turned);
+        double a = Geo.Clamp((1 - 2 * turned + 1 - Math.PI * r) / 2, 0, 1);
+        return (a, Geo.Clamp(a + Math.PI * r, 0, 1));
+    }
+
+    /// <summary>
+    /// Where to cut a turning page into strips, as <c>t</c> from the spine (0) to the free edge (1), in
+    /// order: evenly every 1/<paramref name="strips"/>, plus closely round the roll of each of the given
+    /// positions through the turn (one for the top edge and one for the bottom edge of a leaning fold).
+    /// A strip that reached from the flat part right over the roll to the part lying back was drawn as
+    /// one dark flat piece across the spine, which flashed as the page landed; cut at the roll and
+    /// through it, every strip is a small piece of one bend.
+    /// </summary>
+    public static double[] Cuts(int strips, int perRoll, params double[] turns)
+    {
+        var all = new List<double>(strips + 1 + turns.Length * (perRoll + 1));
+        for (int i = 0; i <= strips; i++) all.Add((double)i / strips);
+        foreach (double turned in turns)
+        {
+            var (start, end) = Roll(turned);
+            if (end - start < 1e-9) { all.Add(start); continue; }
+            for (int k = 0; k <= perRoll; k++) all.Add(start + (end - start) * k / perRoll);
+        }
+        all.Sort();
+        var cuts = new List<double>(all.Count);
+        foreach (double t in all)
+            if (cuts.Count == 0 || t - cuts[^1] > 1e-9) cuts.Add(t);
+        cuts[^1] = 1;
+        return cuts.ToArray();
     }
 
     /// <summary>How much the fold leans: the top of the page is this much further through the turn than the middle.</summary>
