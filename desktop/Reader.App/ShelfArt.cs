@@ -10,8 +10,8 @@ namespace Reader.App;
 
 /// <summary>
 /// The shelf's hand-made art, all drawn in code: the wood grain and the paper texture are made once as
-/// small pictures from a seeded noise (so they are the same every run), and the leaves, the plant pot and
-/// the books lying on their sides are little vector shapes.
+/// small pictures from a seeded noise (so they are the same every run), and the potted plant and the
+/// books lying on their sides are little vector shapes.
 /// </summary>
 static class ShelfArt
 {
@@ -190,35 +190,5 @@ static class ShelfArt
             ctx.DrawRectangle(new ImmutableSolidColorBrush(Colors.White, 0.22), null, new Rect(r.X + h * 0.2, r.Y + h * 0.12, w - h * 0.4, h * 0.16), h * 0.08, h * 0.08);
             y -= h;
         }
-    }
-
-    static readonly (Color Face, string Letter)[] BlockFaces =
-    {
-        (Color.Parse("#ffd25e"), "A"), (Color.Parse("#8fcf6c"), "B"), (Color.Parse("#f4a98d"), "C"),
-    };
-
-    /// <summary>Three toy letter blocks, two side by side and one on top, the pile's bottom middle at <paramref name="foot"/>.</summary>
-    public static void Blocks(DrawingContext ctx, Point foot, double size)
-    {
-        void Block(double x, double y, int i, double tilt)
-        {
-            var (face, letter) = BlockFaces[i];
-            var r = new Rect(-size / 2, -size, size, size);
-            using (ctx.PushTransform(Matrix.CreateRotation(tilt * Math.PI / 180) * Matrix.CreateTranslation(x, y)))
-            {
-                double c = size * 0.12;
-                ctx.DrawRectangle(new ImmutableSolidColorBrush(face), null, r, c, c,
-                    new BoxShadows(new BoxShadow { OffsetX = 1, OffsetY = 2, Blur = 4, Color = Palette.ShadowOf(0.2) }));
-                ctx.DrawRectangle(new ImmutableSolidColorBrush(Colors.White, 0.3), null, new Rect(r.X + c * 0.6, r.Y + c * 0.5, size - c * 1.2, size * 0.1), c * 0.4, c * 0.4);
-                ctx.DrawRectangle(null, new ImmutablePen(new ImmutableSolidColorBrush(Colors.White, 0.75), Math.Max(1, size * 0.05)),
-                    r.Deflate(size * 0.14), c * 0.6, c * 0.6);
-                var text = new FormattedText(letter, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-                    new Typeface(Palette.Font, FontStyle.Normal, FontWeight.Black), size * 0.55, new ImmutableSolidColorBrush(Colors.White));
-                ctx.DrawText(text, new Point(-text.Width / 2, -size / 2 - text.Height / 2));
-            }
-        }
-        Block(foot.X - size * 0.54, foot.Y, 0, 0);
-        Block(foot.X + size * 0.54, foot.Y, 1, 0);
-        Block(foot.X, foot.Y - size, 2, -6);
     }
 }

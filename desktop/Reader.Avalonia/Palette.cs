@@ -26,8 +26,8 @@ public static class Palette
     // Light.
     public static readonly Color Cream = Color.Parse("#fffaf0");
     public static readonly Color Paper = Color.Parse("#ffffff");
-    public static readonly Color Wall = Color.Parse("#f4f9ea");          // top of the shelf's wall
-    public static readonly Color WallLow = Color.Parse("#e3efd2");       // bottom of the shelf's wall
+    public static readonly Color Wall = Color.Parse("#f8f6ee");          // top of the shelf's wall: warm cream with a breath of sage
+    public static readonly Color WallLow = Color.Parse("#ebebdd");       // bottom of the shelf's wall
 
     // Sun.
     public static readonly Color Sun = Color.Parse("#ffcf4a");
@@ -74,7 +74,7 @@ public static class Palette
 }
 
 /// <summary>
-/// The little bits of movement round the reader (covers lifting, the shelf settling, leaves swaying).
+/// The little bits of movement round the reader (covers lifting, the books settling on the shelf).
 /// Each runs for a moment and stops, so nothing is redrawn while nothing is happening.
 /// </summary>
 public static class Motion

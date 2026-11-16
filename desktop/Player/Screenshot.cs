@@ -27,7 +27,7 @@ static class Screenshot
             // Book files are taken into a folder of the screenshot's own, never the real one.
             string shotBooks = Path.Combine(Path.GetTempPath(), "book-reader-shot-" + Environment.ProcessId);
             o.ImportFolder ??= shotBooks;
-            // Little animations (covers lifting, the shelf settling, leaves swaying) land at once, so the picture shows where they end up.
+            // Little animations (covers lifting, the books settling) land at once, so the picture shows where they end up.
             Motion.Instant = !o.Animate;
             var settings = new ReaderSettings();
             if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());

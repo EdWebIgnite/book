@@ -21,10 +21,10 @@ namespace Reader.App;
 public enum NoteKind { Info, Busy, Good, Problem }
 
 /// <summary>
-/// The bookshelf: a painted green bookcase with light wooden shelves on a soft green wall, and every book
-/// standing face out on them so its cover shows, as on a nursery shelf. A cover lifts and tilts a little
-/// under the pointer or a finger; the shelf settles in when it appears, and the leaves along its top sway
-/// for a moment. Each of those stops by itself, so a shelf that is just sitting there draws nothing.
+/// The bookshelf: a light wooden bookcase on a soft wall, and every book standing face out on its shelves
+/// so its cover shows, as on a nursery shelf. A cover lifts and tilts a little under the pointer or a
+/// finger, and the books settle in when the shelf appears. Each of those stops by itself, so a shelf that
+/// is just sitting there draws nothing.
 /// </summary>
 public sealed class ShelfView : UserControl
 {
@@ -79,7 +79,6 @@ public sealed class ShelfView : UserControl
 
         _note = new NoteCard { IsVisible = false, Margin = new Thickness(4, 0, 4, 12), HorizontalAlignment = HorizontalAlignment.Left };
         _case = new Bookcase(forTouch);
-        _case.CoverEntered += () => _case.Rustle(2600);
 
         _scroll = new ScrollViewer
         {
@@ -166,7 +165,7 @@ public sealed class ShelfView : UserControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        // Back from a book: the shelf settles in again and the leaves sway for a moment.
+        // Back from a book: the books settle in again.
         if (change.Property == IsVisibleProperty && IsVisible) _case.SettleIn();
     }
 
@@ -383,8 +382,6 @@ public sealed class ShelfView : UserControl
         }
 
         public event Action? Click;
-        /// <summary>The pointer came onto the book.</summary>
-        public event Action? Entered;
 
         public Bitmap? Cover
         {
@@ -423,7 +420,6 @@ public sealed class ShelfView : UserControl
             base.OnPointerEntered(e);
             _over = true;
             Apply();
-            Entered?.Invoke();
         }
 
         protected override void OnPointerExited(PointerEventArgs e)

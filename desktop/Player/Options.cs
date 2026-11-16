@@ -23,7 +23,7 @@ sealed class Options
     public int Width = 1280, Height = 800;
     public double Scale = 1;
     public bool ShowSettings, Finish;
-    /// <summary>Screenshots: let the shelf's little animations run in reader time instead of landing at once (for checking them with record).</summary>
+    /// <summary>Screenshots: let the shelf's little animations run instead of landing at once (for checking them with record).</summary>
     public bool Animate;
     /// <summary>Start with the frame-rate readout showing (the F key toggles it).</summary>
     public bool ShowFrameRate;
@@ -83,7 +83,7 @@ sealed class Options
             --look <x,y>         exploring: centre the view here (fractions of the page, like book.json)
             --find <n>           exploring: tap the nth thing to find (may be given more than once)
             --finish             show The End
-            --animate            let the shelf's little animations run (covers lifting, leaves swaying), for record
+            --animate            let the shelf's little animations run (covers lifting, books settling), for record
             --set <key>=<value>  change a setting for this picture, for example --set reduceMotion=on
             --do "<steps>"       act these out first, as real touches and key presses, separated by semicolons:
                                    tap 900,400          press and let go at that point
