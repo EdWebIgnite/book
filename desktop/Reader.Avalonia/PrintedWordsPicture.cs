@@ -27,8 +27,11 @@ namespace Reader.Ui;
 /// <summary>Lays out and measures a page's printed words.</summary>
 public static class WordsLayout
 {
-    /// <summary>The bundled apps carry no font of their own, so the words use the system's, as the pop-up does, a little heavier.</summary>
-    public static readonly Typeface Face = new(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold);
+    /// <summary>
+    /// The app's own rounded font (<see cref="Palette.Font"/>), as the pop-up uses, a little heavier. It is
+    /// bundled, so the words break in the same places on every computer and phone, and in the editor.
+    /// </summary>
+    public static readonly Typeface Face = new(Palette.Font, FontStyle.Normal, FontWeight.SemiBold);
 
     /// <summary>The words laid out for a page <paramref name="aspect"/> times as wide as tall, in reference units.</summary>
     public static FormattedText Layout(PageText text, string content, double aspect, IBrush ink)

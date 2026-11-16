@@ -21,8 +21,8 @@ public sealed class ReaderScreen : UserControl
     const double BaseBottom = 104;
     const double TopInset = 64;
 
-    static readonly IBrush BackdropBrush = new ImmutableSolidColorBrush(Color.Parse("#1c1b22"));
-    static readonly IBrush Yellow = new ImmutableSolidColorBrush(Color.Parse("#ffd23f"));
+    static readonly IBrush BackdropBrush = Palette.ForestBrush;
+    static readonly IBrush Yellow = Palette.SunBrush;
 
     readonly ReaderSettings _settings;
     readonly Panel _root = new();
@@ -64,17 +64,21 @@ public sealed class ReaderScreen : UserControl
 
     /// <summary>The see-through white of the buttons when they sit over the picture.</summary>
     static readonly IBrush GlassPaper = new ImmutableSolidColorBrush(Color.FromArgb(140, 255, 255, 255));
-    static readonly IBrush GlassYellow = new ImmutableSolidColorBrush(Color.FromArgb(170, 255, 210, 63));
+    static readonly IBrush GlassYellow = Palette.Brush(Palette.Sun, 0.67);
     static readonly IBrush Paper = new ImmutableSolidColorBrush(Color.FromArgb(235, 255, 255, 255));
-    static readonly BoxShadow GlassShadow = new() { OffsetY = 1, Blur = 4, Color = Color.FromArgb(40, 0, 0, 0) };
-    static readonly BoxShadow RoundShadow = new() { OffsetY = 2, Blur = 8, Color = Color.FromArgb(77, 0, 0, 0) };
-    static readonly BoxShadow ArrowShadow = new() { OffsetY = 2, Blur = 10, Color = Color.FromArgb(89, 0, 0, 0) };
+    /// <summary>The Next arrow, the button children press most, is leaf green (see-through over the picture on a phone on its side).</summary>
+    static readonly IBrush NextLeaf = Palette.Brush(Palette.Leaf, 0.96);
+    static readonly IBrush GlassLeaf = Palette.Brush(Palette.Leaf, 0.62);
+    static readonly BoxShadow GlassShadow = new() { OffsetY = 1, Blur = 4, Color = Palette.ShadowOf(0.16) };
+    static readonly BoxShadow RoundShadow = new() { OffsetY = 2, Blur = 9, Color = Palette.ShadowOf(0.32) };
+    static readonly BoxShadow ArrowShadow = new() { OffsetY = 3, Blur = 12, Color = Palette.ShadowOf(0.38) };
 
     public ReaderScreen(ReaderSettings settings, ISoundOutput? sound = null)
     {
         _settings = settings;
         Background = BackdropBrush;
         Focusable = false;
+        FontFamily = Palette.Font;
 
         View = new ReaderView(settings, sound);
         View.Engine.SetInsets(TopInset, BaseBottom);
@@ -95,10 +99,10 @@ public sealed class ReaderScreen : UserControl
 
         _title = new TextBlock
         {
-            Foreground = Brushes.White, FontWeight = FontWeight.Bold, FontSize = 20,
+            Foreground = Brushes.White, FontWeight = FontWeight.ExtraBold, FontSize = 21,
             TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
             VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false,
-            Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 5, Color = Colors.Black, Opacity = 0.8 },
+            Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 6, Color = Palette.Forest, Opacity = 0.9 },
         };
 
         // Zoom, whole page and Show me: a column on the right, half way up.
@@ -106,7 +110,7 @@ public sealed class ReaderScreen : UserControl
         _zoomOut = Button("Zoom out", Icons.Minus, 28, () => View.Do(e => e.ZoomStep(1 / 1.7)));
         _whole = Button("Whole page", Icons.Whole, 28, () => View.Do(e => e.ToggleOverview()));
         _showMe = new RoundButton("Show me") { Background = Yellow };
-        _showMe.SetIcon(Icons.Star, 28, new ImmutableSolidColorBrush(Color.Parse("#5a3b00")), filled: true);
+        _showMe.SetIcon(Icons.Star, 28, Palette.SunInkBrush, filled: true);
         _showMe.Click += () => View.Do(e => e.ShowMe());
         _side = new StackPanel
         {
@@ -115,7 +119,7 @@ public sealed class ReaderScreen : UserControl
         };
 
         // Words: the caption, and above it an optional question for the adult.
-        _askBadge = new TextBlock { Text = "ASK", FontWeight = FontWeight.Bold, FontSize = 12, LetterSpacing = 0.48, Foreground = new ImmutableSolidColorBrush(Color.Parse("#3a2a00")) };
+        _askBadge = new TextBlock { Text = "ASK", FontWeight = FontWeight.Black, FontSize = 12, LetterSpacing = 0.6, Foreground = Palette.SunInkBrush };
         _askText = new TextBlock { Foreground = Brushes.White, FontSize = 15, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         var askRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
         var badge = new Border { Background = Yellow, CornerRadius = new CornerRadius(6), Padding = new Thickness(7, 1), VerticalAlignment = VerticalAlignment.Top, Child = _askBadge };
@@ -124,15 +128,16 @@ public sealed class ReaderScreen : UserControl
         askRow.Children.Add(_askText);
         _askBox = new Border
         {
-            Background = new ImmutableSolidColorBrush(Color.FromArgb(224, 40, 32, 58)), CornerRadius = new CornerRadius(12),
+            Background = Palette.Brush(Palette.LeafDeep, 0.9), CornerRadius = new CornerRadius(14),
             Padding = new Thickness(14, 7), HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false, Child = askRow,
         };
-        _caption = new TextBlock { Foreground = new ImmutableSolidColorBrush(Color.Parse("#222222")), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+        _caption = new TextBlock { Foreground = Palette.InkBrush, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
         _captionBox = new Border
         {
-            Background = new ImmutableSolidColorBrush(Color.FromArgb(245, 255, 255, 255)), CornerRadius = new CornerRadius(16),
-            Padding = new Thickness(20, 12), HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false, Child = _caption,
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 4, Blur = 16, Color = Color.FromArgb(77, 0, 0, 0) }),
+            Background = Palette.Brush(Palette.Cream, 0.97), CornerRadius = new CornerRadius(20),
+            BorderBrush = Palette.Brush(Palette.LeafPale, 0.9), BorderThickness = new Thickness(0, 0, 0, 4),
+            Padding = new Thickness(22, 12), HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false, Child = _caption,
+            BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 5, Blur = 18, Color = Palette.ShadowOf(0.32) }),
         };
         _words = new StackPanel
         {
@@ -143,10 +148,11 @@ public sealed class ReaderScreen : UserControl
         // The next and back arrows sit in the bottom corners, lifted clear of the edge where wrists rest.
         _prev = Button("Back", Icons.Back, 38, () => View.Do(e => e.Prev()), 76);
         _next = Button("Next", Icons.Forward, 38, () => View.Do(e => e.Next()), 76);
+        _next.SetIcon(Icons.Forward, 38, Brushes.White);
         foreach (RoundButton arrow in new[] { _prev, _next })
         {
             arrow.DisabledOpacity = 0.3;
-            arrow.Shadow = new BoxShadow { OffsetY = 2, Blur = 10, Color = Color.FromArgb(89, 0, 0, 0) };
+            arrow.Shadow = ArrowShadow;
             arrow.VerticalAlignment = VerticalAlignment.Bottom;
         }
         _prev.HorizontalAlignment = HorizontalAlignment.Left;
@@ -156,16 +162,18 @@ public sealed class ReaderScreen : UserControl
             Foreground = new ImmutableSolidColorBrush(Color.FromArgb(230, 255, 255, 255)), FontSize = 13,
             TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false,
-            Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 3, Color = Colors.Black, Opacity = 0.8 },
+            FontWeight = FontWeight.Bold,
+            Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 3, Color = Palette.Forest, Opacity = 0.9 },
         };
 
         // Grown-up lock on the gear.
         _gateTip = new Border
         {
-            Background = new ImmutableSolidColorBrush(Color.FromArgb(204, 0, 0, 0)), CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 8),
+            Background = Palette.Brush(Palette.LeafDeep, 0.94), CornerRadius = new CornerRadius(14), Padding = new Thickness(14, 9),
+            BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 3, Blur = 10, Color = Palette.ShadowOf(0.3) }),
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 72, 12, 0),
             IsVisible = false, IsHitTestVisible = false,
-            Child = new TextBlock { Text = "Hold for 2 seconds", Foreground = Brushes.White, FontSize = 14 },
+            Child = new TextBlock { Text = "Hold for 2 seconds", Foreground = Palette.CreamBrush, FontSize = 15, FontWeight = FontWeight.Bold },
         };
 
         // The End.
@@ -175,20 +183,23 @@ public sealed class ReaderScreen : UserControl
         _endBack.Click += () => CloseRequested?.Invoke();
         _end = new Border
         {
-            Background = new ImmutableSolidColorBrush(Color.FromArgb(153, 0, 0, 0)), IsVisible = false,
+            Background = Palette.Brush(Palette.Forest, 0.62), IsVisible = false,
             Child = new Border
             {
-                Background = Brushes.White, CornerRadius = new CornerRadius(24), Padding = new Thickness(40, 32),
+                Background = Palette.CreamBrush, CornerRadius = new CornerRadius(28), Padding = new Thickness(44, 26, 44, 34),
+                BorderBrush = Palette.LeafPaleBrush, BorderThickness = new Thickness(2),
+                BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 10, Blur = 34, Color = Palette.ShadowOf(0.4) }),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 Child = new StackPanel
                 {
                     Spacing = 12,
                     Children =
                     {
+                        new Sprig { Width = 64, Height = 64, HorizontalAlignment = HorizontalAlignment.Center },
                         new TextBlock
                         {
-                            Text = "The End", FontSize = 40, FontWeight = FontWeight.Black, Foreground = new ImmutableSolidColorBrush(Color.Parse("#222222")),
-                            HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 12),
+                            Text = "The End", FontSize = 46, FontWeight = FontWeight.Black, Foreground = Palette.LeafDeepBrush,
+                            HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, -6, 0, 10),
                         },
                         _again, _endBack,
                     },
@@ -448,7 +459,7 @@ public sealed class ReaderScreen : UserControl
         if (_gearHeldSince is double since)
         {
             double held = (now - since) / 2000;
-            _gear.Ring = new BoxShadow { Spread = 10 * Math.Clamp(held, 0, 1), Color = Color.FromArgb(230, 232, 115, 12) };
+            _gear.Ring = new BoxShadow { Spread = 10 * Math.Clamp(held, 0, 1), Color = Color.FromArgb(235, Palette.Sun.R, Palette.Sun.G, Palette.Sun.B) };
             if (held >= 1)
             {
                 _gearHeldSince = null;
@@ -517,7 +528,7 @@ public sealed class ReaderScreen : UserControl
         _prev.Diameter = _next.Diameter = arrow;
         foreach (RoundButton b in new[] { _prev, _next })
         {
-            b.Background = glass ? GlassPaper : Paper;
+            b.Background = b == _next ? (glass ? GlassLeaf : NextLeaf) : glass ? GlassPaper : Paper;
             b.Shadow = glass ? GlassShadow : ArrowShadow;
         }
         _title.IsVisible = !glass;

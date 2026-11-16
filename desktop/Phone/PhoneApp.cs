@@ -2,8 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
-using Avalonia.Styling;
-using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Reader.App;
 using Reader.Audio;
@@ -23,9 +21,8 @@ public sealed class PhoneApp : Avalonia.Application
 
     public override void Initialize()
     {
-        Styles.Add(new FluentTheme());
-        // The shelf and the settings are light, like the browser version, whatever the phone's own theme is.
-        RequestedThemeVariant = ThemeVariant.Light;
+        // The same skin as the Windows program (Reader.App/AppSkin.cs): light, leaf green and cream, whatever the phone's own theme is.
+        AppSkin.Install(this, phone: true);
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -65,7 +62,7 @@ public sealed class PhoneApp : Avalonia.Application
             single.MainView = view;
 
             // The books are unpacked off the screen's thread (only the first time takes a moment).
-            view.Say("Getting the books ready…");
+            view.Say("Getting the books ready…", NoteKind.Busy);
             Android.Content.Context context = Android.App.Application.Context;
             Task.Run(() => BookUnpacker.Unpack(context)).ContinueWith(t => Dispatcher.UIThread.Post(() =>
             {

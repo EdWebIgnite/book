@@ -23,6 +23,8 @@ sealed class Options
     public int Width = 1280, Height = 800;
     public double Scale = 1;
     public bool ShowSettings, Finish;
+    /// <summary>Screenshots: let the shelf's little animations run in reader time instead of landing at once (for checking them with record).</summary>
+    public bool Animate;
     /// <summary>Start with the frame-rate readout showing (the F key toggles it).</summary>
     public bool ShowFrameRate;
     public double Zoom = 1;
@@ -81,9 +83,11 @@ sealed class Options
             --look <x,y>         exploring: centre the view here (fractions of the page, like book.json)
             --find <n>           exploring: tap the nth thing to find (may be given more than once)
             --finish             show The End
+            --animate            let the shelf's little animations run (covers lifting, leaves swaying), for record
             --set <key>=<value>  change a setting for this picture, for example --set reduceMotion=on
             --do "<steps>"       act these out first, as real touches and key presses, separated by semicolons:
                                    tap 900,400          press and let go at that point
+                                   hover 300,400        move the mouse there without pressing (a book on the shelf lifts)
                                    hold 1240,36 2100    press, keep pressing for that many milliseconds, let go
                                    drag 800,400 300,400 press, slide (over 200 ms) and let go
                                    wheel 640,400 -1     turn the wheel one notch (negative is towards you)
@@ -142,6 +146,7 @@ sealed class Options
                 case "--settings": o.ShowSettings = true; break;
                 case "--fps": o.ShowFrameRate = true; break;
                 case "--finish": o.Finish = true; break;
+                case "--animate": o.Animate = true; break;
                 case "--do": o.Do = Value(); break;
                 case "--bench": o.Bench = true; break;
                 case "--pages": o.BenchPages = Int(Value(), a, o) ?? 3; break;

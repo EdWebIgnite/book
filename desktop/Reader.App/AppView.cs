@@ -58,11 +58,13 @@ public sealed class AppView : UserControl
     {
         _setup = setup;
         _settings = settings;
-        Background = new SolidColorBrush(Color.Parse("#1c1b22"));     // the reader's dark backdrop, so nothing flashes white
+        Background = Reader.Ui.Palette.ForestBrush;     // the reader's dark backdrop, so nothing flashes white
 
         _shelf = new ShelfView(forTouch: setup.Touch);
         _screen = new ReaderScreen(settings, sound) { IsVisible = false, AutoOnePage = setup.Touch };
         _screen.Engine.DeviceReducedMotion = setup.DeviceReducedMotion;
+        Motion.Reduced = _screen.Engine.Reduced;
+        FontFamily = Palette.Font;
         if (setup.UnitsPerCm is double perCm) _screen.Engine.UnitsPerCm = perCm;
         // On a touch screen a tap anywhere goes on; going back is a swipe or the back arrow.
         _screen.View.Gestures.TapAnywhereGoesOn = setup.Touch;
@@ -107,7 +109,7 @@ public sealed class AppView : UserControl
     // ---------------------------------------------------------------- the shelf
 
     /// <summary>Show a line of words on the shelf, such as "Getting the books ready". Null clears it.</summary>
-    public void Say(string? message) => _shelf.Say(message);
+    public void Say(string? message, NoteKind kind = NoteKind.Info) => _shelf.Say(message, kind);
 
     /// <summary>List the books in the content folder.</summary>
     public void LoadShelf(bool coversNow = false)
@@ -116,7 +118,7 @@ public sealed class AppView : UserControl
         if (_content is null && (_setup.ImportFolder is null || BookPackage.List(_setup.ImportFolder).Count == 0))
         {
             _shelf.Show(Array.Empty<ShelfEntry>());
-            _shelf.Say(_setup.NoBooksMessage);
+            _shelf.Say(_setup.NoBooksMessage, NoteKind.Problem);
             return;
         }
         ShowContent(_content, coversNow);
@@ -145,7 +147,7 @@ public sealed class AppView : UserControl
         books.AddRange(added);
         if (added.Count > 0 && books.Count == added.Count) message = null;
         _shelf.Show(books, coversNow);
-        _shelf.Say(message);
+        _shelf.Say(message, message is null ? NoteKind.Info : NoteKind.Problem);
     }
 
     /// <summary>A book asked for by name: an id from the library, or a folder.</summary>
@@ -158,7 +160,7 @@ public sealed class AppView : UserControl
         }
         string folder = Path.GetFullPath(book);
         if (File.Exists(Path.Combine(folder, "book.json"))) return folder;
-        _shelf.Say($"Couldn't find the book \"{book}\".");
+        _shelf.Say($"Couldn't find the book \"{book}\".", NoteKind.Problem);
         return null;
     }
 
@@ -172,17 +174,19 @@ public sealed class AppView : UserControl
             if (folder is null) return;
             if (File.Exists(Path.Combine(folder, "book.json"))) await OpenBook(folder);
             else if (File.Exists(Path.Combine(folder, "library.json"))) { _content = folder; ShowContent(folder); }   // a whole shelf of books
-            else _shelf.Say("That folder has no book.json in it, so it isn't a book.");
+            else _shelf.Say("That folder has no book.json in it, so it isn't a book.", NoteKind.Problem);
         }
         catch (Exception e)
         {
-            _shelf.Say("Couldn't open the folder: " + e.Message);
+            _shelf.Say("Couldn't open the folder: " + e.Message, NoteKind.Problem);
         }
     }
 
     // ---------------------------------------------------------------- books from book files
 
     string _bookNote = "";
+    /// <summary>Whether the note under Books is good news (or work in progress) rather than a problem.</summary>
+    bool _bookNoteGood;
 
     /// <summary>Raised after a book file was taken in (or turned down), with what to tell the person.</summary>
     public event Action<BookPackage.Result>? BookImported;
@@ -194,8 +198,9 @@ public sealed class AppView : UserControl
     public async Task<BookPackage.Result> ImportBook(Func<Task<Stream>> open, string? name = null)
     {
         if (_setup.ImportFolder is not string root) return BookPackage.Result.Fail("This app can't add books from files.");
-        _shelf.Say("Adding the book…");
+        _shelf.Say("Adding the book…", NoteKind.Busy);
         _bookNote = "Adding the book…";
+        _bookNoteGood = true;
         if (_panel.IsVisible) BuildBooksSection();
         BookPackage.Result result;
         try
@@ -250,8 +255,9 @@ public sealed class AppView : UserControl
     {
         if (result.Ok && ReaderShowing) CloseBook();
         ShowContent(_content);
-        _shelf.Say(result.Message);
+        _shelf.Say(result.Message, result.Ok ? NoteKind.Good : NoteKind.Problem);
         _bookNote = result.Message;
+        _bookNoteGood = result.Ok;
         if (_setup.ImportFolder is not null) BuildBooksSection();
         BookImported?.Invoke(result);
     }
@@ -277,6 +283,7 @@ public sealed class AppView : UserControl
         catch (Exception)
         {
             _bookNote = "Couldn't open the list of files on this device.";
+            _bookNoteGood = false;
             BuildBooksSection();
             return;
         }
@@ -303,7 +310,7 @@ public sealed class AppView : UserControl
         }
         catch (Exception)
         {
-            _shelf.Say("Couldn't open the list of files.");
+            _shelf.Say("Couldn't open the list of files.", NoteKind.Problem);
         }
     }
 
@@ -313,41 +320,40 @@ public sealed class AppView : UserControl
         if (_setup.ImportFolder is not string root) return;
         var section = _panel.Extra;
         section.Children.Clear();
-        section.Children.Add(new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#f4eee6")), Margin = new Thickness(-18, 22, -18, 0), Padding = new Thickness(18, 10),
-            Child = new StackPanel
-            {
-                Children =
-                {
-                    new TextBlock { Text = "Books", FontSize = 16, FontWeight = FontWeight.ExtraBold, Foreground = new SolidColorBrush(Color.Parse("#222222")) },
-                    new TextBlock { Text = "Add a book someone made for you. Book files end in .picturebook.", FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#6b5b4b")), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap },
-                },
-            },
-        });
-        var add = new Button { Content = "Add a book from a file…", FontSize = 14, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 4), Focusable = false, MinHeight = 40 };
+        section.Children.Add(SettingsPanel.GroupHeading("Books", "Add a book someone made for you. Book files end in .picturebook."));
+        var add = new Button { Content = "Add a book from a file…", FontSize = 14, Margin = new Thickness(0, 14, 0, 4), Focusable = false, MinHeight = 44, CornerRadius = new CornerRadius(22), Padding = new Thickness(20, 8) };
+        add.Classes.Add("primary");
         add.Click += (_, _) => _ = PickBookFile();
         section.Children.Add(add);
         if (_bookNote.Length > 0)
-            section.Children.Add(new TextBlock { Text = _bookNote, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#a0460a")), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6) });
+        {
+            bool good = _bookNoteGood;
+            section.Children.Add(new Border
+            {
+                Background = Palette.Brush(good ? Palette.Mint : Color.Parse("#fff4d6")),
+                BorderBrush = Palette.Brush(good ? Palette.LeafPale : Color.Parse("#f3d58a")), BorderThickness = new Thickness(1.5),
+                CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 8), Margin = new Thickness(0, 6, 0, 6),
+                Child = new TextBlock { Text = _bookNote, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = good ? Palette.LeafDeepBrush : Palette.SunInkBrush, TextWrapping = TextWrapping.Wrap },
+            });
+        }
         section.Children.Add(new TextBlock
         {
             Text = _setup.Touch ? "Or open the book file from WhatsApp, Files, Drive or an email, and choose Book Reader."
                                 : "Or drag a book file onto this window, or open it with BookReader.exe.",
-            FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#777777")), TextWrapping = TextWrapping.Wrap,
+            FontSize = 12, Foreground = Palette.InkSoftBrush, TextWrapping = TextWrapping.Wrap,
         });
         List<ShelfEntry> books = BookPackage.List(root);
         if (books.Count > 0)
         {
-            section.Children.Add(new TextBlock { Text = "ADDED FROM FILES", FontSize = 13, FontWeight = FontWeight.Bold, LetterSpacing = 0.65, Foreground = ShelfView.Orange, Margin = new Thickness(0, 18, 0, 6) });
+            section.Children.Add(SettingsPanel.SectionHeading("Added from files"));
             foreach (ShelfEntry b in books) section.Children.Add(AddedBookRow(root, b));
         }
     }
 
     Control AddedBookRow(string root, ShelfEntry book)
     {
-        var name = new TextBlock { Text = book.Title, FontSize = 14, Foreground = new SolidColorBrush(Color.Parse("#222222")), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        var remove = new Button { Content = "Remove", FontSize = 13, Focusable = false, VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock { Text = book.Title, FontSize = 14, FontWeight = FontWeight.SemiBold, Foreground = Palette.InkBrush, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var remove = new Button { Content = "Remove", FontSize = 13, Focusable = false, VerticalAlignment = VerticalAlignment.Center, CornerRadius = new CornerRadius(18), MinHeight = 36 };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 4) };
         Grid.SetColumn(remove, 1);
         row.Children.Add(name);
@@ -355,8 +361,9 @@ public sealed class AppView : UserControl
         remove.Click += (_, _) =>
         {
             // Asked once more, so a stray tap doesn't take a book away.
-            var yes = new Button { Content = "Yes, remove it", FontSize = 13, Focusable = false, Foreground = Brushes.White, Background = new SolidColorBrush(Color.Parse("#c0392b")) };
-            var no = new Button { Content = "Keep it", FontSize = 13, Focusable = false, Margin = new Thickness(6, 0, 0, 0) };
+            var yes = new Button { Content = "Yes, remove it", FontSize = 13, Focusable = false, CornerRadius = new CornerRadius(18), MinHeight = 36 };
+            yes.Classes.Add("danger");
+            var no = new Button { Content = "Keep it", FontSize = 13, Focusable = false, Margin = new Thickness(6, 0, 0, 0), CornerRadius = new CornerRadius(18), MinHeight = 36 };
             var ask = new StackPanel { Orientation = Orientation.Horizontal, Children = { yes, no } };
             Grid.SetColumn(ask, 1);
             row.Children.Remove(remove);
@@ -370,6 +377,7 @@ public sealed class AppView : UserControl
                 try { gone = BookPackage.Remove(root, Path.GetFileName(book.Folder)); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { gone = false; }
                 ShowContent(_content);
+                _bookNoteGood = gone;
                 _bookNote = gone ? $"Removed \"{book.Title}\"." : "Couldn't remove that book. Try again.";
                 BuildBooksSection();
             };
@@ -384,19 +392,26 @@ public sealed class AppView : UserControl
     {
         if (_opening) return;
         _opening = true;
+        // A big book can take a moment: after a short wait the shelf says it is on its way.
+        bool done = false;
+        DispatcherTimer.RunOnce(() => { if (!done) _shelf.Say("Opening the book…", NoteKind.Busy); }, TimeSpan.FromMilliseconds(300));
         try
         {
             _shelf.Say(null);
             LoadedBook book = await LoadedBook.LoadAsync(folder);
+            done = true;
+            _shelf.Say(null);
             ShowBook(book);
             then?.Invoke();
         }
         catch (Exception e)
         {
-            _shelf.Say("Couldn't open that book. " + e.Message);
+            done = true;
+            _shelf.Say("Couldn't open that book. " + e.Message, NoteKind.Problem);
         }
         finally
         {
+            done = true;
             _opening = false;
         }
     }
@@ -492,6 +507,7 @@ public sealed class AppView : UserControl
     void SettingChanged(string key)
     {
         if (_setup.SaveSettings) SettingsStore.Save(_settings);
+        Motion.Reduced = _screen.Engine.Reduced;
         if (NeedRefresh.Contains(key)) _screen.View.Do(e => e.Refresh());
         if (key.StartsWith("drift", StringComparison.Ordinal)) _screen.View.Do(e => e.RestartRest());
         _screen.Refresh();

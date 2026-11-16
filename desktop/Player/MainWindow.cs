@@ -20,7 +20,7 @@ sealed class MainWindow : Window
     {
         _options = options;
         Title = "Book Reader";
-        Background = new SolidColorBrush(Color.Parse("#1c1b22"));     // the reader's dark backdrop, so nothing flashes white
+        Background = Reader.Ui.Palette.ForestBrush;     // the reader's dark backdrop, so nothing flashes white
         Width = 1280;
         Height = 800;
         // A phone-sized window is allowed as the phone app (--phone), so its screens can be drawn here.

@@ -11,7 +11,7 @@ using Reader.Core;
 namespace Reader.Ui;
 
 /// <summary>The picture icons on the reader's buttons, drawn on the same 24 x 24 grid as the browser version's.</summary>
-static class Icons
+public static class Icons
 {
     public const string Back = "M15 5 l-7 7 7 7";
     public const string Forward = "M9 5 l7 7 -7 7";
@@ -52,7 +52,8 @@ static class Icons
 public class RoundButton : Border
 {
     static readonly IBrush Paper = new ImmutableSolidColorBrush(Color.FromArgb(235, 255, 255, 255));   // rgba(255,255,255,.92)
-    public static readonly IBrush Ink = new ImmutableSolidColorBrush(Color.Parse("#3a2f4a"));
+    /// <summary>The icons' colour: the skin's deep leaf green.</summary>
+    public static readonly IBrush Ink = Palette.LeafDeepBrush;
 
     bool _pressed, _enabled = true;
     BoxShadow _shadow;
@@ -66,7 +67,7 @@ public class RoundButton : Border
         RenderTransformOrigin = RelativePoint.Center;
         AutomationProperties.SetName(this, label);
         ToolTip.SetTip(this, label);
-        _shadow = new BoxShadow { OffsetY = 2, Blur = 8, Color = Color.FromArgb(77, 0, 0, 0) };
+        _shadow = new BoxShadow { OffsetY = 2, Blur = 8, Color = Palette.ShadowOf(0.3) };
         Diameter = diameter;
         ApplyShadow();
     }
@@ -163,17 +164,21 @@ public sealed class PillButton : Border
 
     public PillButton(string text, bool primary)
     {
-        Background = primary ? new ImmutableSolidColorBrush(Color.Parse("#e8730c")) : new ImmutableSolidColorBrush(Color.Parse("#efefef"));
+        Background = primary ? Palette.LeafBrush : Palette.PaperBrush;
+        BorderBrush = primary ? null : Palette.LeafPaleBrush;
+        BorderThickness = new Thickness(primary ? 0 : 2);
+        BoxShadow = primary ? new BoxShadows(new BoxShadow { OffsetY = 3, Blur = 8, Color = Palette.ShadowOf(0.22) }) : default;
         CornerRadius = new CornerRadius(999);
-        Padding = new Thickness(26, 14);
+        Padding = new Thickness(30, 14);
+        MinWidth = 220;
         Cursor = new Cursor(StandardCursorType.Hand);
         Focusable = false;
         RenderTransformOrigin = RelativePoint.Center;
         AutomationProperties.SetName(this, text);
         Child = Label = new TextBlock
         {
-            Text = text, FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = primary ? Brushes.White : Brushes.Black,
+            Text = text, FontSize = 19, FontWeight = FontWeight.ExtraBold, HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = primary ? Brushes.White : Palette.LeafDeepBrush,
         };
     }
 
@@ -187,6 +192,7 @@ public sealed class PillButton : Border
         _pressed = true;
         e.Pointer.Capture(this);
         Opacity = 0.85;
+        RenderTransform = new ScaleTransform(0.97, 0.97);
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -196,6 +202,7 @@ public sealed class PillButton : Border
         if (!_pressed) return;
         _pressed = false;
         Opacity = 1;
+        RenderTransform = null;
         e.Pointer.Capture(null);
         if (new Rect(Bounds.Size).Contains(e.GetPosition(this))) Click?.Invoke();
     }
@@ -205,5 +212,6 @@ public sealed class PillButton : Border
         base.OnPointerCaptureLost(e);
         _pressed = false;
         Opacity = 1;
+        RenderTransform = null;
     }
 }

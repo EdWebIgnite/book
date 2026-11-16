@@ -34,10 +34,10 @@ public sealed class SettingsPanel : UserControl
         new Group("For parents", "These would sit behind the grown-up lock in the app."),
         new Choice("age", "Child's age", new[] { ("3-5", "3 to 5"), ("6-8", "6 to 8"), ("9+", "9 and up") }, s => s.Age, (s, v) => s.Age = v,
             Help: "Sets move speed, how soon hints appear and how big touch areas are.", Preset: true),
-        new Choice("reduceMotion", "Camera movement",
+        new Choice("reduceMotion", "Movement",
             new[] { ("auto", "Follow this device's setting"), ("off", "Full movement"), ("on", "Reduced: fades instead of flying") },
             s => s.ReduceMotion, (s, v) => s.ReduceMotion = v,
-            Help: "Reduced movement helps children who feel dizzy or unwell with zooming."),
+            Help: "Reduced movement helps children who feel dizzy or unwell with zooming. It also keeps the bookshelf still."),
         new Check("sound", "Touch and movement sounds", s => s.Sound, (s, v) => s.Sound = v),
         new Check("readToMe", "Read to me", s => s.ReadToMe, (s, v) => s.ReadToMe = v,
             Help: "In books with a recorded voice, the words are read aloud and light up as they are read. Books without one are not changed."),
@@ -104,9 +104,31 @@ public sealed class SettingsPanel : UserControl
             Help: "Off for younger children, who double-tap by accident. The + and − buttons always work."),
     };
 
-    static readonly IBrush Ink = new ImmutableSolidColorBrush(Color.Parse("#222222"));
-    static readonly IBrush Grey = new ImmutableSolidColorBrush(Color.Parse("#666666"));
-    static readonly IBrush HelpGrey = new ImmutableSolidColorBrush(Color.Parse("#777777"));
+    static readonly IBrush Ink = Reader.Ui.Palette.InkBrush;
+    static readonly IBrush Grey = Reader.Ui.Palette.InkSoftBrush;
+    static readonly IBrush HelpGrey = Reader.Ui.Palette.InkSoftBrush;
+
+    /// <summary>A group's heading: a band of pale green across the panel with a leaf-green edge, its title and a short note.</summary>
+    public static Control GroupHeading(string title, string note) => new Border
+    {
+        Background = Reader.Ui.Palette.MintBrush, Margin = new Thickness(-18, 24, -18, 4), Padding = new Thickness(14, 10, 18, 10),
+        BorderBrush = Reader.Ui.Palette.LeafBrush, BorderThickness = new Thickness(5, 0, 0, 0),
+        Child = new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = title, FontSize = 17, FontWeight = FontWeight.ExtraBold, Foreground = Reader.Ui.Palette.LeafDeepBrush },
+                new TextBlock { Text = note, FontSize = 12, Foreground = Reader.Ui.Palette.InkSoftBrush, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap },
+            },
+        },
+    };
+
+    /// <summary>A small heading inside a group, in leaf green capitals.</summary>
+    public static Control SectionHeading(string title) => new TextBlock
+    {
+        Text = title.ToUpperInvariant(), FontSize = 12.5, FontWeight = FontWeight.ExtraBold, LetterSpacing = 0.9,
+        Foreground = Reader.Ui.Palette.LeafBrush, Margin = new Thickness(0, 20, 0, 4),
+    };
 
     readonly ReaderSettings _settings;
     readonly StackPanel _rows = new();
@@ -129,11 +151,26 @@ public sealed class SettingsPanel : UserControl
         _parentsOnly = parentsOnly;
         HorizontalAlignment = HorizontalAlignment.Right;
 
-        var close = new Button { Content = "Close ✕", FontSize = 14, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Focusable = false };
+        var closeIcon = Reader.Ui.Icons.Make("M7 7 L17 17 M17 7 L7 17", 18, Reader.Ui.Palette.LeafDeepBrush);
+        closeIcon.VerticalAlignment = VerticalAlignment.Center;
+        var close = new Button
+        {
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new TextBlock { Text = "Close", VerticalAlignment = VerticalAlignment.Center }, closeIcon } },
+            FontSize = 14, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Focusable = false,
+            CornerRadius = new CornerRadius(20), MinHeight = 40, Padding = new Thickness(16, 6, 12, 6),
+        };
         ToolTip.SetTip(close, "Close (S or Esc)");
         close.Click += (_, _) => CloseRequested?.Invoke();
 
-        var heading = new TextBlock { Text = "Settings", FontSize = 22, FontWeight = FontWeight.Bold, Foreground = Ink, Margin = new Thickness(0, 0, 0, 4) };
+        var heading = new StackPanel
+        {
+            Margin = new Thickness(0, 0, 0, 4),
+            Children =
+            {
+                new TextBlock { Text = "FOR GROWN-UPS", FontSize = 11.5, FontWeight = FontWeight.ExtraBold, LetterSpacing = 1.1, Foreground = Reader.Ui.Palette.LeafBrush },
+                new TextBlock { Text = "Settings", FontSize = 26, FontWeight = FontWeight.Black, Foreground = Reader.Ui.Palette.LeafDeepBrush },
+            },
+        };
         var sub = new TextBlock
         {
             Text = parentsOnly ? "Changes apply straight away."
@@ -147,13 +184,13 @@ public sealed class SettingsPanel : UserControl
         reset.Click += (_, _) => { _settings.Reset(); Build(); Changed?.Invoke("*"); };
         var copy = new Button { Content = "Copy settings", Focusable = false };
         copy.Click += (_, _) => CopyRequested?.Invoke(_settings.ToJsonString());
-        _copied = new TextBlock { FontSize = 13, Foreground = new ImmutableSolidColorBrush(Color.Parse("#22aa77")), VerticalAlignment = VerticalAlignment.Center };
+        _copied = new TextBlock { FontSize = 13, FontWeight = FontWeight.Bold, Foreground = Reader.Ui.Palette.LeafBrush, VerticalAlignment = VerticalAlignment.Center };
         var actions = new WrapPanel { Margin = new Thickness(0, 18, 0, 0), Children = { replay, reset, copy, _copied } };
         foreach (Control c in actions.Children) c.Margin = new Thickness(0, 0, 8, 8);
 
         var keys = new TextBlock
         {
-            FontSize = 12, Foreground = new ImmutableSolidColorBrush(Color.Parse("#555555")), LineHeight = 21, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
+            FontSize = 12, Foreground = Reader.Ui.Palette.InkSoftBrush, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
             Text = "→ or Space: next.  ←: back.  W: whole page.  S: this panel.  Esc: back to the books.\n" +
                    "F: show how many frames a second are being drawn.\n" +
                    "Mouse wheel moves through stops. Trackpad pinch or Ctrl+wheel zooms out and in.\n" +
@@ -168,11 +205,21 @@ public sealed class SettingsPanel : UserControl
             keys.IsVisible = false;
         }
         var body = _body = new StackPanel { Margin = new Thickness(18, 16, 18, 24), Children = { new Panel { Children = { heading, close } }, sub, _rows, Extra, actions, keys } };
+        FontFamily = Reader.Ui.Palette.Font;
         Content = new Border
         {
-            Background = Brushes.White,
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetX = -4, Blur = 20, Color = Color.FromArgb(77, 0, 0, 0) }),
-            Child = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = body },
+            Background = Reader.Ui.Palette.CreamBrush,
+            BorderBrush = Reader.Ui.Palette.LeafPaleBrush, BorderThickness = new Thickness(1.5, 0, 0, 0),
+            BoxShadow = new BoxShadows(new BoxShadow { OffsetX = -6, Blur = 28, Color = Reader.Ui.Palette.ShadowOf(0.22) }),
+            Child = new Panel
+            {
+                Children =
+                {
+                    // A strip of leaf green along the top, like the painted bookcase.
+                    new Border { Height = 6, VerticalAlignment = VerticalAlignment.Top, Background = Reader.Ui.Palette.LeafBrush, IsHitTestVisible = false },
+                    new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = body },
+                },
+            },
         };
         // A touch on the panel is never a touch on the picture behind it.
         PointerPressed += (_, e) => e.Handled = true;
@@ -211,21 +258,10 @@ public sealed class SettingsPanel : UserControl
                     _building = false;
                     return;
                 case Group g:
-                    _rows.Children.Add(new Border
-                    {
-                        Background = new ImmutableSolidColorBrush(Color.Parse("#f4eee6")), Margin = new Thickness(-18, 22, -18, 0), Padding = new Thickness(18, 10),
-                        Child = new StackPanel
-                        {
-                            Children =
-                            {
-                                new TextBlock { Text = g.Title, FontSize = 16, FontWeight = FontWeight.ExtraBold, Foreground = Ink },
-                                new TextBlock { Text = g.Note, FontSize = 12, Foreground = new ImmutableSolidColorBrush(Color.Parse("#6b5b4b")), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap },
-                            },
-                        },
-                    });
+                    _rows.Children.Add(GroupHeading(g.Title, g.Note));
                     break;
                 case Section s:
-                    _rows.Children.Add(new TextBlock { Text = s.Title.ToUpperInvariant(), FontSize = 13, FontWeight = FontWeight.Bold, LetterSpacing = 0.65, Foreground = ShelfView.Orange, Margin = new Thickness(0, 18, 0, 6) });
+                    _rows.Children.Add(SectionHeading(s.Title));
                     break;
                 case Control_ c when c.ShowIf is null || c.ShowIf(_settings):
                     _rows.Children.Add(BuildControl(c));
@@ -243,11 +279,16 @@ public sealed class SettingsPanel : UserControl
         {
             case Range r:
             {
-                var output = new TextBlock { FontSize = 14, Foreground = new ImmutableSolidColorBrush(Color.Parse("#555555")), HorizontalAlignment = HorizontalAlignment.Right };
+                var output = new TextBlock { FontSize = 13, FontWeight = FontWeight.Bold, Foreground = Reader.Ui.Palette.LeafDeepBrush };
+                var outputChip = new Border
+                {
+                    Background = Reader.Ui.Palette.MintBrush, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 1),
+                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Child = output,
+                };
                 var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-                Grid.SetColumn(output, 1);
+                Grid.SetColumn(outputChip, 1);
                 head.Children.Add(label);
-                head.Children.Add(output);
+                head.Children.Add(outputChip);
                 string Show(double v) => Snap(v, r).ToString("0.######", CultureInfo.InvariantCulture) + r.Unit;
                 var slider = new Slider
                 {

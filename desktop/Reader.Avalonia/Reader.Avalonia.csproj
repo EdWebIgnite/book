@@ -11,6 +11,12 @@
     <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
   </ItemGroup>
 
+  <!-- The app's rounded font, Nunito (SIL Open Font License, see Assets/Fonts/OFL.txt), about 320 KB for five weights. -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/Fonts/*.ttf" />
+    <None Include="Assets/Fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" Link="Licences/Nunito-OFL.txt" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Reader.Core\Reader.Core.csproj" />
   </ItemGroup>

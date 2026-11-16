@@ -28,7 +28,7 @@ namespace Reader.Ui;
  */
 public sealed partial class ReaderView
 {
-    static readonly Color Backdrop = Color.Parse("#1c1b22");
+    static readonly Color Backdrop = Palette.Forest;
     static readonly IImmutableBrush BackdropBrush = new ImmutableSolidColorBrush(Backdrop);
     static readonly IImmutableBrush White = new ImmutableSolidColorBrush(Colors.White);
     static readonly RenderOptions Quick = new() { BitmapInterpolationMode = BitmapInterpolationMode.LowQuality };

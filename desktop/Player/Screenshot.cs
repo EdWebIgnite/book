@@ -27,6 +27,8 @@ static class Screenshot
             // Book files are taken into a folder of the screenshot's own, never the real one.
             string shotBooks = Path.Combine(Path.GetTempPath(), "book-reader-shot-" + Environment.ProcessId);
             o.ImportFolder ??= shotBooks;
+            // Little animations (covers lifting, the shelf settling, leaves swaying) land at once, so the picture shows where they end up.
+            Motion.Instant = !o.Animate;
             var settings = new ReaderSettings();
             if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());
 
@@ -45,7 +47,7 @@ static class Screenshot
             {
                 var r = window.App.ImportBookFileNow(o.Import);
                 window.LoadShelf(coversNow: true);
-                window.App.Say(r.Message);
+                window.App.Say(r.Message, r.Ok ? Reader.App.NoteKind.Good : Reader.App.NoteKind.Problem);
             }
 
             void Pass(double ms)
@@ -180,6 +182,11 @@ static class Screenshot
                     Dispatcher.UIThread.RunJobs();
                     skip(60);
                     window.MouseUp(at, MouseButton.Left);
+                    pass(16);
+                    break;
+                case "hover" when words.Length == 2 && TryPoint(words[1], out Point over_):
+                    // The mouse comes to rest over this point, without pressing: a book on the shelf lifts.
+                    window.MouseMove(over_);
                     pass(16);
                     break;
                 case "hold" when words.Length == 3 && TryPoint(words[1], out Point on)

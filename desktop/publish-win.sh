@@ -31,7 +31,7 @@ Keys: Right or Space goes on. Left goes back. W shows the whole page.
 F shows how many frames a second the program is drawing (top left).
 
 Book files: a book made with the Book Editor can come as one file ending in
-.picturebook. Drop it on the window, press "Open a book file" on the shelf,
+.picturebook. Drop it on the window, press "Add a book file" on the shelf,
 or right-click the file, choose "Open with" and pick BookReader.exe. It is
 added to the shelf (kept in your own app-data folder) and opens. Books added
 this way can be taken off again in the settings (S), under Books.

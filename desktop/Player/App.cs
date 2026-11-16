@@ -1,7 +1,5 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Styling;
-using Avalonia.Themes.Fluent;
 using Reader.Audio;
 using Reader.Core;
 
@@ -14,9 +12,8 @@ sealed class App : Application
 
     public override void Initialize()
     {
-        Styles.Add(new FluentTheme());
-        // The shelf and the settings panel are light, like the browser version, whatever the computer's own theme is.
-        RequestedThemeVariant = ThemeVariant.Light;
+        // The app's skin: the Fluent theme in leaf green and cream, and the app's own font (see Reader.App/AppSkin.cs).
+        Reader.App.AppSkin.Install(this);
     }
 
     public override void OnFrameworkInitializationCompleted()
