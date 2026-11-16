@@ -64,6 +64,7 @@ sealed class Inspector : UserControl
                 case Sel.Hotspot when _state.Hotspot is Hotspot h: _body.Children.Add(HotspotCard(p, h, _state.SelIndex)); break;
                 case Sel.Layer when _state.Layer is Layer l: _body.Children.Add(LayerCard(p, l, _state.SelIndex)); break;
                 case Sel.Dry: _body.Children.Add(DryCard(p)); break;
+                case Sel.Words when p.Text is PageText t: _body.Children.Add(WordsCard(p, t)); break;
                 default: _body.Children.Add(NothingSelected(p)); break;
             }
             _body.Children.Add(Section($"Page {_state.PageIndex + 1}", PageSettings(p)));
@@ -325,11 +326,89 @@ sealed class Inspector : UserControl
         return Ui.CardBox(panel, Ui.Brush("#7fd3f2"));
     }
 
+    // ---------------------------------------------------------------- the words printed on the page
+
+    static readonly List<(string?, string)> InkChoices = new()
+    {
+        (null, "Dark brown (usual)"), ("#111111", "Black"), ("#1f2f4a", "Deep blue"), ("#2d3b1e", "Deep green"), ("#fffaf0", "White, for a dark sky"),
+    };
+
+    Control WordsCard(Page p, PageText t)
+    {
+        var panel = new StackPanel();
+        double aspect = _state.Aspect(p);
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot("T", Color.Parse("#c2255c")), Ui.Label("Words on the page", 14, Ui.Text, FontWeight.Bold) } });
+        panel.Children.Add(Ui.Row(
+            Ui.Button("Take them off", _window.DeleteSelected, "No printed words on this page (Delete)", small: true),
+            Ui.Button("▶ Play", () => _window.OpenPreview(fromStop: false), "See the page in the reader", small: true)));
+        panel.Children.Add(Ui.Help("The page's words, printed on the picture like a book. Drag the box over a calm part of the picture (sky, grass, a wall), away from faces and anything the story points at. Drag a corner to change its width: the words wrap to fit. On a double-page spread keep it on one page, because an upright phone shows one page at a time."));
+
+        var fit = Ui.Help("");
+        void ShowFit()
+        {
+            string content = PrintedWords.Content(p);
+            var (needW, needH) = Reader.Ui.WordsLayout.Measure(t, content, aspect);
+            bool fits = needH <= t.Box.H + 0.005 && needW <= t.Box.W + 0.005;
+            fit.Text = content.Length == 0 ? "Nothing to print yet: give the stops words, or type the words above."
+                : fits ? $"The words fit their box ({ReadAlong.WordCount(content)} words)."
+                : "The words need more room than the box has: make the box taller or the letters smaller. The red line shows where they end.";
+            fit.Foreground = content.Length > 0 && fits ? Ui.Muted : Ui.Warn;
+        }
+
+        panel.Children.Add(Ui.Heading("Words"));
+        panel.Children.Add(Ui.FieldName("What is printed (leave empty to print the stops' words, in order)"));
+        string captions = PrintedWords.Captions(p);
+        panel.Children.Add(Text(t.Content, captions.Length > 0 ? captions : "The words for this page", "Printed words", $"words{_state.PageIndex}", v => t.Content = v, multiline: true, after: _ => ShowFit()));
+        panel.Children.Add(Ui.Help("Press Enter to start a new line. The pop-up still shows each stop's own words."));
+
+        panel.Children.Add(Ui.Heading("Look"));
+        panel.Children.Add(Ui.FieldName("Line the words up"));
+        panel.Children.Add(Ui.Segments(new List<(string, string, string)>
+        {
+            (PageText.Left, "Left", "Lined up on the left, like most books"), (PageText.Center, "Middle", "Centred in the box"), (PageText.Right, "Right", "Lined up on the right"),
+        }, t.AlignOrLeft, v => _state.Change("Line up", () => t.Align = v, structure: true)));
+        panel.Children.Add(Ui.Slider("Letter size (part of the page's height)", 2, 8, 0.1, t.SizeOrDefault * 100, "%",
+            v => { _state.Change("Letter size", () => t.Size = Math.Round(v / 100, 4), mergeKey: "wsize", source: this); ShowFit(); }));
+        panel.Children.Add(Ui.Help("3% to 4% reads well on a phone held sideways. Smaller is hard to read there."));
+        panel.Children.Add(Ui.FieldName("Colour of the letters"));
+        string? ink = PrintedWords.ParseColor(t.Color) is null ? null : t.Color;
+        bool listed = InkChoices.Any(c => string.Equals(c.Item1, ink, StringComparison.OrdinalIgnoreCase));
+        var inks = new List<(string?, string)>(InkChoices);
+        if (!listed) inks.Add((ink, "Own colour " + ink));
+        panel.Children.Add(Ui.Choice<string?>(inks, listed ? InkChoices.First(c => string.Equals(c.Item1, ink, StringComparison.OrdinalIgnoreCase)).Item1 : ink,
+            v => _state.Change("Colour of the words", () => t.Color = v, structure: true)));
+        panel.Children.Add(Ui.FieldName("Or type a colour (#rrggbb)"));
+        panel.Children.Add(Text(t.Color, "#2b2118", "Colour of the words", $"wink{_state.PageIndex}", v => { if (v is null || PrintedWords.ParseColor(v) is not null) t.Color = v; }));
+        panel.Children.Add(Ui.Help("Dark letters get a soft light glow, and light letters a soft dark one, so they read on a painted background."));
+
+        panel.Children.Add(Ui.Heading("Room"));
+        ShowFit();
+        panel.Children.Add(fit);
+        panel.Children.Add(Ui.Row(Ui.Button("Fit the box to the words", () =>
+        {
+            var (needW, needH) = Reader.Ui.WordsLayout.Measure(t, PrintedWords.Content(p), aspect);
+            if (needH <= 0) return;
+            _state.Change("Fit the box", () => t.Box = t.Box with { H = Math.Min(Math.Round(needH + 0.01, 4), 1 - t.Box.Y) }, structure: true);
+        }, "Make the box just tall enough for the words", small: true)));
+        return Ui.CardBox(panel, Ui.Brush("#f783ac"));
+    }
+
     // ---------------------------------------------------------------- the page
 
     Control PageSettings(Page p)
     {
         var panel = new StackPanel();
+        panel.Children.Add(Ui.Check("Print the words on the page", p.Text is not null, on =>
+        {
+            if (on == (p.Text is not null)) return;
+            _state.Change(on ? "Print the words on the page" : "Take the words off the page", () =>
+            {
+                p.Text = on ? PrintedWords.Suggest(p, _state.Aspect(p)) : null;
+                _state.SetSelectionQuietly(on ? Sel.Words : Sel.None, on ? 0 : -1);
+            }, structure: true);
+        }, "Print the page's words on the picture, like a book, as well as the pop-up"));
+        if (p.Text is not null && _state.Selected != Sel.Words)
+            panel.Children.Add(Ui.Row(Ui.Button("Place the words...", () => _state.Select(Sel.Words, 0), "Select the words box to move it and change how the words look", small: true)));
         panel.Children.Add(Ui.FieldName("Page type"));
         panel.Children.Add(Ui.Choice<bool>(new List<(bool, string)> { (false, "Story: the camera moves from stop to stop"), (true, "Explore: the child drags around and finds things") }, p.Explore,
             v => _state.Change("Page type", () => { p.Explore = v; if (v) p.Guidance ??= new Guidance(); }, structure: true)));

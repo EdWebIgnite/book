@@ -47,7 +47,7 @@ sealed class CheckPanel : UserControl
     {
         _list.Children.Clear();
         if (!_state.HasBook) return;
-        List<Issue> issues = BookChecker.Check(_state.Project!);
+        List<Issue> issues = BookChecker.Check(_state.Project!, measureWords: Reader.Ui.WordsLayout.Measure);
         int problems = issues.Count(i => i.Level == Severity.Problem), warnings = issues.Count(i => i.Level == Severity.Warning), tips = issues.Count(i => i.Level == Severity.Tip);
         ProblemCount = problems;
         _summary.Text = issues.Count == 0 ? "Nothing to fix. The book is ready to export."
@@ -79,7 +79,7 @@ sealed class CheckPanel : UserControl
             ToolTip.SetTip(box, "Go there");
             box.PointerPressed += (_, _) =>
             {
-                Sel kind = issue.Kind switch { Spot.Stop => Sel.Stop, Spot.Hotspot => Sel.Hotspot, Spot.Layer => Sel.Layer, _ => Sel.None };
+                Sel kind = issue.Kind switch { Spot.Stop => Sel.Stop, Spot.Hotspot => Sel.Hotspot, Spot.Layer => Sel.Layer, Spot.Words => Sel.Words, _ => Sel.None };
                 _state.Show(issue.Page, kind, issue.Index);
             };
         }

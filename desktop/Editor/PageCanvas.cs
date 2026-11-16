@@ -125,6 +125,9 @@ sealed class PageCanvas : Control
         }
         double aspect = _state.Aspect(p);
 
+        // The printed words, exactly as the reader prints them.
+        DrawWords(ctx, p, aspect);
+
         // The crease and the two pages of a spread.
         if (Overlays.Crease && aspect >= 1.2 && !p.Explore)
         {
@@ -237,6 +240,28 @@ sealed class PageCanvas : Control
             }
         }
 
+        // The words box: always outlined, so it can be found and grabbed.
+        if (p.Text is PageText words)
+        {
+            bool sel = _state.Selected == Sel.Words;
+            Rect r = ToScreen(words.Box);
+            string content = PrintedWords.Content(p);
+            var (needW, needH) = Reader.Ui.WordsLayout.Measure(words, content, aspect);
+            bool fits = needH <= words.Box.H + 0.005 && needW <= words.Box.W + 0.005;
+            Color c = fits ? WordsColour : Color.Parse("#ff6b6b");
+            if (sel) ctx.FillRectangle(new SolidColorBrush(c, 0.10), r);
+            ctx.DrawRectangle(new Pen(new SolidColorBrush(c), sel ? 3 : 1.5, new DashStyle(new double[] { 5, 3 }, 0)), r);
+            if (!fits && needH > words.Box.H)
+            {
+                // Where the words really end.
+                Rect need = ToScreen(words.Box with { H = needH });
+                ctx.DrawLine(new Pen(new SolidColorBrush(c), 2), need.BottomLeft, need.BottomRight);
+            }
+            string tag = content.Length == 0 ? "words: nothing to print" : fits ? "words" : "words don't fit";
+            DrawTag(ctx, tag, new Point(r.X, r.Y - 26), fits ? Color.Parse("#c2255c") : Color.Parse("#c92a2a"));
+            if (sel) Handles(ctx, r, c);
+        }
+
         // The box being drawn.
         if (_drag is { Mode: Mode.New, Current: Point cur })
         {
@@ -244,6 +269,34 @@ sealed class PageCanvas : Control
             Color c = _state.Drawing switch { DrawKind.Hotspot => Gold, DrawKind.Dry => Dry, _ => Colors.White };
             ctx.DrawRectangle(new Pen(new SolidColorBrush(c), 2, new DashStyle(new double[] { 3, 2 }, 0)), r);
         }
+    }
+
+    static readonly Color WordsColour = Color.Parse("#f783ac");
+
+    Reader.Ui.PrintedWordsPicture? _words;
+    int _wordsHeight;
+
+    /// <summary>The page's printed words, made by the reader's own code so the preview is what the apps show.</summary>
+    void DrawWords(DrawingContext ctx, Page p, double aspect)
+    {
+        if (p.Text is null || !PrintedWords.Prints(p)) return;
+        double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        // Made again when the words change, or when the page is drawn much bigger than it was made for.
+        int height = (int)Math.Ceiling(_pageRect.Height * scaling / 64) * 64;
+        string key = Reader.Ui.PrintedWordsPicture.KeyFor(p, aspect);
+        if (_words is null || _words.Key != key || _wordsHeight < height || _wordsHeight > height * 2)
+        {
+            Reader.Ui.PrintedWordsPicture? old = _words;
+            // Made at twice the size and shrunk smoothly, as the reader's copies are, so small letters stay clean.
+            _words = Reader.Ui.PrintedWordsPicture.Make(p, aspect, height * 2);
+            _wordsHeight = height;
+            if (old is not null) Avalonia.Threading.Dispatcher.UIThread.Post(old.Dispose, Avalonia.Threading.DispatcherPriority.Background);
+        }
+        if (_words is null) return;
+        RectD region = _words.Region;
+        Bitmap picture = _words.For(_pageRect.Height * scaling);
+        using (ctx.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.HighQuality }))
+            ctx.DrawImage(picture, new Rect(picture.Size), ToScreen(region));
     }
 
     static readonly Color[] FrameColours = { Color.Parse("#ffffff"), Color.Parse("#8ce99a"), Color.Parse("#74c0fc"), Color.Parse("#ffd8a8") };
@@ -341,6 +394,12 @@ sealed class PageCanvas : Control
             string h = Corner(ToScreen(sh.Box));
             if (h.Length > 0) return new Hit(Sel.Hotspot, _state.SelIndex, "box", h);
         }
+        if (_state.Selected == Sel.Words && p.Text is PageText sw)
+        {
+            string h = Corner(ToScreen(sw.Box));
+            if (h.Length > 0) return new Hit(Sel.Words, 0, "box", h);
+            if (ToScreen(sw.Box).Contains(pt)) return new Hit(Sel.Words, 0, "box", "");
+        }
         if (_state.Selected == Sel.Dry && _state.SelEffect >= 0 && _state.SelEffect < p.Effects.Count && _state.SelIndex < p.Effects[_state.SelEffect].Dry.Count)
         {
             string h = Corner(ToScreen(p.Effects[_state.SelEffect].Dry[_state.SelIndex]));
@@ -366,6 +425,7 @@ sealed class PageCanvas : Control
         }
         for (int e = 0; e < p.Effects.Count; e++)
             for (int d = 0; d < p.Effects[e].Dry.Count; d++) Consider(p.Effects[e].Dry[d], new Hit(Sel.Dry, d, "box", "", e));
+        if (p.Text is PageText words) Consider(words.Box, new Hit(Sel.Words, 0, "box", ""));
         return best;
     }
 
@@ -378,6 +438,7 @@ sealed class PageCanvas : Control
             Sel.Hotspot => p.Hotspots[index].Box,
             Sel.Layer => part == "moveTo" ? p.Layers[index].MoveTo!.Value : p.Layers[index].Box,
             Sel.Dry => p.Effects[effect].Dry[index],
+            Sel.Words => p.Text?.Box ?? default,
             _ => default,
         };
     }
@@ -393,6 +454,7 @@ sealed class PageCanvas : Control
             case Sel.Layer when part == "moveTo": p.Layers[index].MoveTo = r; break;
             case Sel.Layer: p.Layers[index].Box = r; break;
             case Sel.Dry: p.Effects[effect].Dry[index] = r; break;
+            case Sel.Words when p.Text is not null: p.Text.Box = r; break;
         }
     }
 

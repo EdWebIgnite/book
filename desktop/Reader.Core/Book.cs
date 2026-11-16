@@ -56,7 +56,43 @@ public sealed class Page
     /// from. The readers never look at it; they show <see cref="Image"/>, which is the joined picture.
     /// </summary>
     public SpreadSource? Spread { get; set; }
+    /// <summary>
+    /// Optional: the page's words printed on the picture, as in a printed book, over a calm part of the
+    /// picture the illustrator left clear. Null prints nothing (books made before this are unchanged).
+    /// </summary>
+    public PageText? Text { get; set; }
     public System.Text.Json.Nodes.JsonObject? Extra { get; set; }
+}
+
+/// <summary>
+/// Where and how a page's words are printed on its picture. The box is in fractions of the page
+/// picture, like stops (for a double-page spread, fractions of the whole spread). The words wrap to the
+/// box's width and start at its top; the height is the room the illustrator left for them, which Check
+/// book compares with what the words need. The letter size is a fraction of the picture's height, so
+/// the words keep their place and size on every screen and zoom with the picture.
+/// </summary>
+public sealed class PageText
+{
+    public const string Left = "left", Center = "center", Right = "right";
+    /// <summary>Letters about a twenty-fourth of the page tall: easy to read on a phone held sideways.</summary>
+    public const double DefaultSize = 0.042;
+    /// <summary>A warm, very dark brown, softer on watercolour than black.</summary>
+    public const string DefaultColor = "#2b2118";
+
+    public RectD Box { get; set; }
+    /// <summary>left, center or right.</summary>
+    public string Align { get; set; } = Left;
+    /// <summary>The letter size (the font's size) as a fraction of the picture's height. <see cref="DefaultSize"/> when not set.</summary>
+    public double? Size { get; set; }
+    /// <summary>The colour of the letters, as #rrggbb. <see cref="DefaultColor"/> when not set.</summary>
+    public string? Color { get; set; }
+    /// <summary>Optional: the words to print instead of the stops' words. A line break starts a new line.</summary>
+    public string? Content { get; set; }
+    public System.Text.Json.Nodes.JsonObject? Extra { get; set; }
+
+    public double SizeOrDefault => Size is > 0 ? Size.Value : DefaultSize;
+    public string ColorOrDefault => PrintedWords.ParseColor(Color) is not null ? Color! : DefaultColor;
+    public string AlignOrLeft => Align is Center or Right ? Align : Left;
 }
 
 /// <summary>The two page pictures a spread was made from, in the book's folder (see <see cref="Page.Spread"/>).</summary>

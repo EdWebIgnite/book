@@ -1191,6 +1191,33 @@ public sealed class ReaderEngine
 
     RectD MatchAspect(RectD cam) => FitToAspect(cam, ViewAspect());
 
+    /// <summary>
+    /// True when the page prints its words (and printed words are switched on) and, once the camera has
+    /// arrived where it is going, nearly all of them will be on screen and not darkened by the focus.
+    /// Then a pop-up of the same words can stay away when the grown-up has switched pop-ups off.
+    /// </summary>
+    public bool PrintedWordsInView()
+    {
+        if (!HasBook || !Settings.PrintedWords || Finished || Exploring) return false;
+        Step step = CurrentStep;
+        Page page = Book!.Pages[step.Page];
+        if (step.Stop == Step.Cover || !PrintedWords.Prints(page)) return false;
+        RectD words = BoxRect(step.Page, page.Text!.Box);
+        Shot target = Target();
+        RectD seen = MatchAspect(target.Cam);
+        // Words outside the light of a dim or spotlight stop are too dark to read.
+        if (target.Dim > 0.3 || target.Spot > 0.3) seen = target.Focus;
+        // One page at a time, seen whole: the other page of the spread is hidden.
+        int half = HalfFor(step);
+        if (half != Step.Both && (Overview || CurrentStop is null))
+        {
+            RectD shown = HalfRect(step.Page, half);
+            double x0 = Math.Max(seen.X, shown.X), x1 = Math.Min(seen.Right, shown.Right);
+            seen = seen with { X = x0, W = Math.Max(0, x1 - x0) };
+        }
+        return PrintedWords.Coverage(words, seen) >= 0.9;
+    }
+
     /// <summary>The area actually on screen right now, in world units, with the screen's shape.</summary>
     public RectD VisibleCam() => MatchAspect(DisplayedCam());
 
@@ -1511,6 +1538,7 @@ public sealed class ReaderEngine
                 FirstStep = !_moved && !exploring && StepIndex == 0,
                 Reading = Reading && !Overview,
                 ReadingDone = ReadingDone && !Overview,
+                PrintedWordsInView = PrintedWordsInView(),
                 CanZoomIn = exploring && VisibleCam().H > ClosestZoom * 1.03,
                 CanZoomOut = exploring && VisibleCam().W < MaxCam().W * 0.98,
                 CanGoBack = StepIndex > 0 || Overview,

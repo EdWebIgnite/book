@@ -14,7 +14,7 @@ public enum Severity
 }
 
 /// <summary>What a problem is about, so the editor can jump to it.</summary>
-public enum Spot { Book, Page, Stop, Hotspot, Layer, Effect, File }
+public enum Spot { Book, Page, Stop, Hotspot, Layer, Effect, File, Words }
 
 /// <summary>One thing Check book found. Page and Index count from 0; the text counts from 1, as people do.</summary>
 public sealed record Issue(Severity Level, string Text, int Page = -1, Spot Kind = Spot.Book, int Index = -1, string? File = null);
@@ -28,7 +28,16 @@ public static class BookChecker
     /// <summary>A caption longer than this many characters is worth a second look on any screen.</summary>
     public const int LongCaption = 160;
 
-    public static List<Issue> Check(BookProject project, Func<string, (int Width, int Height)?>? sizeOf = null)
+    /// <summary>Printed words smaller than this (a fraction of the picture's height) are hard to read on a phone held sideways.</summary>
+    public const double SmallWords = 0.026;
+
+    /// <param name="measureWords">
+    /// How much room a page's printed words take (their widest line as a fraction of the picture's width,
+    /// their height as a fraction of its height), measured with the real letters. The editor passes the
+    /// reader's own layout; without it a rough estimate is used.
+    /// </param>
+    public static List<Issue> Check(BookProject project, Func<string, (int Width, int Height)?>? sizeOf = null,
+        Func<PageText, string, double, (double Width, double Height)>? measureWords = null)
     {
         sizeOf ??= name => project.PathOf(name) is string p && File.Exists(p) ? Pictures.Size(p) : null;
         var issues = new List<Issue>();
@@ -118,6 +127,26 @@ public static class BookChecker
                 else if (anyVoice && !string.IsNullOrWhiteSpace(st.Caption)) silent.Add((i, s));
                 if (aspect >= 1.2 && !p.Explore && Framing.CrossesCrease(st.To ?? st.Box, aspect) && st.Box.W < 0.45 && ShouldNoteCrease(st))
                     Add(Severity.Tip, $"{at} sits across the middle of the spread. On an upright phone the crease fades out as the camera goes in, so check it in the preview.", i, Spot.Stop, s);
+            }
+
+            if (p.Text is PageText words)
+            {
+                string content = PrintedWords.Content(p);
+                RectD wb = words.Box;
+                if (content.Length == 0)
+                    Add(Severity.Tip, $"{pg} has a place for printed words but nothing to print: give its stops words, or type the words for the page.", i, Spot.Words);
+                else
+                {
+                    var (needW, needH) = measureWords?.Invoke(words, content, aspect) ?? (wb.W, PrintedWords.EstimateHeight(words, content, aspect));
+                    if (Outside(wb) || wb.Y + needH > 1.005 || wb.X + needW > 1.005)
+                        Add(Severity.Warning, $"{pg}: the printed words run off the edge of the picture. Move the words box in, or make the letters smaller.", i, Spot.Words);
+                    else if (needH > wb.H + 0.005 || needW > wb.W + 0.005)
+                        Add(Severity.Warning, $"{pg}: the printed words don't fit their box (they need {Math.Ceiling(needH / Math.Max(1e-6, wb.H) * 100 - 100):0}% more height). Make the box bigger or the letters smaller, and check they still sit on a calm part of the picture.", i, Spot.Words);
+                }
+                if (words.SizeOrDefault < SmallWords)
+                    Add(Severity.Warning, $"{pg}: the printed letters are small and will be hard to read on a phone held sideways. Make them bigger.", i, Spot.Words);
+                if (aspect >= 1.2 && !p.Explore && wb.X < 0.495 && wb.Right > 0.505)
+                    Add(Severity.Warning, $"{pg}: the printed words sit across the middle of the spread. On an upright phone, which shows one page at a time, they would be cut in two. Keep them on one page.", i, Spot.Words);
             }
 
             if (p.Explore)

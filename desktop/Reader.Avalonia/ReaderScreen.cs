@@ -329,7 +329,7 @@ public sealed class ReaderScreen : UserControl
             _caption.Text = st.Caption;
         }
         if (!st.Reading && _litWord != -2) ShowWords(-1);
-        _captionBox.IsVisible = st.Caption.Length > 0;
+        _captionBox.IsVisible = PopsUp(st);
         if (st.Ask.Length > 0) _askText.Text = st.Ask;
         _askBox.IsVisible = st.Ask.Length > 0;
 
@@ -357,7 +357,7 @@ public sealed class ReaderScreen : UserControl
     {
         double h = Bounds.Height;
         double words = 0;
-        if ((st.Caption.Length > 0 || st.Ask.Length > 0) && !st.Exploring && h > 0)
+        if ((PopsUp(st) || st.Ask.Length > 0) && !st.Exploring && h > 0)
         {
             _words.Measure(new Size(_words.Width, double.PositiveInfinity));
             words = _words.DesiredSize.Height - _words.Margin.Top - _words.Margin.Bottom + 18;
@@ -368,6 +368,13 @@ public sealed class ReaderScreen : UserControl
     }
 
     double _yourTurnSince;
+
+    /// <summary>
+    /// Whether the caption pops up: always with pop-ups on; with them off, only where the page's printed
+    /// words can't be read (zoomed in away from them, or a page that prints none), and always for the
+    /// words of things found on explore pages, which are never printed.
+    /// </summary>
+    bool PopsUp(ReaderState st) => st.Caption.Length > 0 && (_settings.PopUpWords || st.Exploring || !st.PrintedWordsInView);
 
     static readonly IBrush LitWord = new ImmutableSolidColorBrush(Color.Parse("#ffe066"));
 

@@ -143,6 +143,11 @@ static class Screenshot
                 case "save":
                     window.Save();
                     break;
+                case "words":
+                    // Select the page's printed words box (as clicking it would).
+                    if (window.State.Page?.Text is null) return "words needs a page with printed words (--page).";
+                    window.State.Select(Sel.Words, 0);
+                    break;
                 case "autotime":
                 {
                     VoiceTarget? t = window.State.Stop is not null ? new VoiceTarget(window.State.PageIndex, false, window.State.SelIndex)

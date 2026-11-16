@@ -68,6 +68,11 @@ public sealed record ReaderState
     public bool Reading { get; init; }
     /// <summary>The stop's recorded voice has finished: the child's turn to tap on.</summary>
     public bool ReadingDone { get; init; }
+    /// <summary>
+    /// The page prints its words on the picture and they will be in view where the camera is going, so a
+    /// pop-up of the same words is not needed (see <see cref="ReaderSettings.PopUpWords"/>).
+    /// </summary>
+    public bool PrintedWordsInView { get; init; }
     public bool CanZoomIn { get; init; }
     public bool CanZoomOut { get; init; }
     public bool CanGoBack { get; init; }

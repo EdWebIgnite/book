@@ -287,6 +287,12 @@ public sealed partial class ReaderView : Control
             // The page before too, where there is room for three, so turning back doesn't swap the quick
             // half-size picture for the sharp one mid-turn or just after it lands.
             if (LoadedBook.FullPicturesKept >= 3) book.Warm(page - 1);
+            // The printed words of the pages either side, made while nothing moves so a turn never waits for them.
+            if (Engine.Settings.PrintedWords)
+            {
+                book.Words(page + 1);
+                book.Words(page - 1);
+            }
         }
 
         // Only draw again when something is moving, plus once more after it stops: that last frame is the

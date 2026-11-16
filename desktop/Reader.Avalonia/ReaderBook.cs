@@ -40,6 +40,8 @@ public sealed partial class ReaderView
 
     readonly Dictionary<(int Shape, int Left, int Right), BookFrame> _frames3 = new();
     Bitmap? _coverFace, _coverInside;
+    /// <summary>Whether the inside of the cover was made with the printed words on it.</summary>
+    bool _coverInsideWords;
 
     /// <summary>Let go of everything made for the last book: its frames and its cover pictures.</summary>
     void ForgetBookPictures()
@@ -197,7 +199,7 @@ public sealed partial class ReaderView
     static Matrix SpreadSpace(RectD screen) => Matrix.CreateScale(screen.H, screen.H) * Matrix.CreateTranslation(screen.X, screen.Y);
 
     /// <summary>One half of a spread as a picture: which picture, and which of its columns. Plain paper when there is no picture.</summary>
-    readonly record struct Half(Bitmap? Picture, double X0, double X1, bool RightHand);
+    readonly record struct Half(Bitmap? Picture, double X0, double X1, bool RightHand, int Page = -1);
 
     /// <summary>
     /// The left or right half of a page's spread. For a landscape picture it is half of that picture; for
@@ -211,14 +213,14 @@ public sealed partial class ReaderView
         {
             Bitmap picture = book.PagePicture(page, spreadPixelsWide);
             double w = picture.Size.Width;
-            return right ? new Half(picture, w / 2, w, true) : new Half(picture, 0, w / 2, false);
+            return right ? new Half(picture, w / 2, w, true, page) : new Half(picture, 0, w / 2, false, page);
         }
         int which = right ? page : page - 1;
         if (which < 0) return new Half(null, 0, 0, right);
         RectD other = Engine.PageRects[which];
         if (!BookLayout.IsPortrait(other) || Math.Abs(other.W / pr.W - 1) > 0.03) return new Half(null, 0, 0, right);
         Bitmap p = book.PagePicture(which, spreadPixelsWide / 2);
-        return new Half(p, 0, p.Size.Width, right);
+        return new Half(p, 0, p.Size.Width, right, which);
     }
 
     /// <summary>
@@ -227,7 +229,7 @@ public sealed partial class ReaderView
     /// them: drawn as a part of the picture, the edge pixels came out a shade different, and the outline of
     /// the pages flickered as the turn ended.
     /// </summary>
-    static void DrawHalfInPlace(DrawingContext ctx, Half half, Rect dest)
+    void DrawHalfInPlace(DrawingContext ctx, Half half, Rect dest)
     {
         if (half.Picture is not Bitmap picture || Math.Abs(half.X1 - half.X0 - picture.Size.Width / 2) > 0.5)
         {
@@ -236,13 +238,20 @@ public sealed partial class ReaderView
         }
         var whole = new Rect(half.RightHand ? dest.X - dest.Width : dest.X, dest.Y, dest.Width * 2, dest.Height);
         var keep = half.RightHand ? new Rect(dest.X, -1e5, 2e5, 2e5) : new Rect(-1e5, -1e5, dest.Right + 1e5, 2e5);
-        using (ctx.PushClip(keep)) ctx.DrawImage(picture, whole);
+        using (ctx.PushClip(keep))
+        {
+            ctx.DrawImage(picture, whole);
+            DrawWords(ctx, _book, half.Page, 0, 1, whole, whole.Height * _scaling, Quick);
+        }
     }
 
-    static void DrawHalf(DrawingContext ctx, Half half, Rect dest)
+    /// <summary>One half of a spread (or a portrait page) with its printed words. <paramref name="pixelsHigh"/>: how tall it is drawn, in pixels, when not on the screen.</summary>
+    void DrawHalf(DrawingContext ctx, Half half, Rect dest, double? pixelsHigh = null)
     {
         if (half.Picture is not Bitmap picture || half.X1 - half.X0 < 0.5) { ctx.FillRectangle(Paper, dest); return; }
         ctx.DrawImage(picture, new Rect(half.X0, 0, half.X1 - half.X0, picture.Size.Height), dest);
+        double pw = picture.Size.Width;
+        DrawWords(ctx, _book, half.Page, half.X0 / pw, half.X1 / pw, dest, pixelsHigh ?? dest.Height * _scaling, Quick);
     }
 
     /// <summary>A page's spread lying open: board and page edges underneath, the pages, and the crease over them.</summary>
@@ -322,7 +331,7 @@ public sealed partial class ReaderView
 
         // The turning page: the half of the earlier picture that was being read, hinged at the page's left edge.
         Half turning = HalfOf(book, earlier, right: flip.TurningHalf == Reader.Core.Step.RightPage, earlierSpread.W * scaling);
-        var front = new Face(turning.Picture, turning.X0, turning.X1, 0, turning.Picture?.Size.Height ?? 0, SpineAtLeft: true);
+        var front = new Face(turning.Picture, turning.X0, turning.X1, 0, turning.Picture?.Size.Height ?? 0, SpineAtLeft: true, turning.Page);
         var back = new Face(null, 0, 0, 0, 0, SpineAtLeft: false);
         double hinge = pageRect.X, width = pageRect.W;
         Rect page = ToRect(pageRect);
@@ -353,9 +362,9 @@ public sealed partial class ReaderView
     // ---------------------------------------------------------------- bending sheets
 
     /// <summary>One face of a bending sheet: where its picture comes from, and whether the spine is at that picture's left.</summary>
-    readonly record struct Face(Bitmap? Picture, double X0, double X1, double Y0, double Y1, bool SpineAtLeft)
+    readonly record struct Face(Bitmap? Picture, double X0, double X1, double Y0, double Y1, bool SpineAtLeft, int Page = -1)
     {
-        public static Face Of(Half half) => new(half.Picture, half.X0, half.X1, 0, half.Picture?.Size.Height ?? 0, half.RightHand);
+        public static Face Of(Half half) => new(half.Picture, half.X0, half.X1, 0, half.Picture?.Size.Height ?? 0, half.RightHand, half.Page);
         public static Face Whole(Bitmap picture, bool spineAtLeft) => new(picture, 0, picture.Size.Width, 0, picture.Size.Height, spineAtLeft);
 
         /// <summary>The picture's column for a point <paramref name="t"/> of the way from the spine to the free edge.</summary>
@@ -435,7 +444,12 @@ public sealed partial class ReaderView
                     var source = new Rect(Math.Min(c0, c1) - before * width, face.Y0, Math.Max(0.01, width * (1 + before + after)), face.Y1 - face.Y0);
                     var dest = new Rect(-before, 0, 1 + before + after, 1);
                     using (ctx.PushTransform(c1 < c0 ? new Matrix(-1, 0, 0, 1, 1, 0) : Matrix.Identity))
+                    {
                         ctx.DrawImage(picture, source, dest);
+                        // The printed words on this strip of paper, cut from the page exactly as the picture is.
+                        double pw = picture.Size.Width;
+                        if (face.Page >= 0 && face.Y0 == 0) DrawWords(ctx, _book, face.Page, source.X / pw, source.Right / pw, dest, at.Height * _scaling, Quick);
+                    }
                 }
                 else
                 {
@@ -747,7 +761,9 @@ public sealed partial class ReaderView
     /// </summary>
     Bitmap CoverInside(LoadedBook book, RectD board, Half firstLeft)
     {
-        if (_coverInside is not null) return _coverInside;
+        if (_coverInside is not null && _coverInsideWords == Engine.Settings.PrintedWords) return _coverInside;
+        _coverInside?.Dispose();
+        _coverInsideWords = Engine.Settings.PrintedWords;
         const double unit = 1000;
         var size = new PixelSize((int)Math.Ceiling(board.W * unit), (int)Math.Ceiling(board.H * unit));
         var picture = new RenderTargetBitmap(size);
@@ -758,7 +774,7 @@ public sealed partial class ReaderView
             double side = (BookLayout.StackRoom + BookLayout.Board) * unit, pageWidth = size.Width - side;
             var page = new Rect(side, BookLayout.Board * unit, pageWidth, unit);
             ctx.FillRectangle(Brush(Color.Parse("#d8cfbd")), new Rect(page.X - BookLayout.StackStep * unit, page.Y + 0.8, pageWidth, unit + 0.6));
-            using (ctx.PushRenderOptions(Fine)) DrawHalf(ctx, firstLeft, page);
+            using (ctx.PushRenderOptions(Fine)) DrawHalf(ctx, firstLeft, page, page.Height);
         }
         return _coverInside = picture;
     }

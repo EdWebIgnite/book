@@ -15,7 +15,7 @@
             "w": 0.475,
             "h": 0.3733
           },
-          "caption": "Moss had new boots."
+          "caption": "Moss opened the big brown box. Inside were new boots! Bright red, shiny boots."
         },
         {
           "box": {
@@ -31,7 +31,7 @@
             "h": 0.4067
           },
           "panSeconds": 3.5,
-          "caption": "Big, red, shiny boots. Moss loved them.",
+          "caption": "Moss was so excited. “Now I can jump in puddles!” he said.",
           "ask": "What do you love to wear?"
         }
       ]
@@ -46,7 +46,7 @@
             "w": 0.3,
             "h": 0.36
           },
-          "caption": "Boots are for puddles. Everybody knows that."
+          "caption": "Moss pulled on his boots and marched outside. Squeak, squeak, squeak went the boots on the grass."
         },
         {
           "box": {
@@ -62,7 +62,7 @@
             "h": 0.4
           },
           "panSeconds": 4,
-          "caption": "But the sun was shining. There was not one puddle anywhere.",
+          "caption": "But the sun was shining, and the garden was warm and dry. Moss looked high and low. There was not one puddle anywhere.",
           "ask": "Where could Moss look for a puddle?"
         }
       ]
@@ -77,7 +77,7 @@
             "w": 0.2833,
             "h": 0.4267
           },
-          "caption": "Drip. Drip. Drip."
+          "caption": "Drip. Drip. Drip. Water was dripping from the watering can."
         },
         {
           "box": {
@@ -86,7 +86,7 @@
             "w": 0.4083,
             "h": 0.3067
           },
-          "caption": "A puddle! Moss put in one toe."
+          "caption": "A puddle! Moss carefully put one boot in it."
         },
         {
           "box": {
@@ -95,7 +95,7 @@
             "w": 0.3833,
             "h": 0.44
           },
-          "caption": "Too small."
+          "caption": "But the puddle was tiny, much too small for jumping. He felt a little disappointed."
         }
       ]
     },
@@ -116,7 +116,7 @@
             "h": 0.3067
           },
           "panSeconds": 4,
-          "caption": "The bird bath had water. Moss stretched up, up, up."
+          "caption": "The bird bath was full of cool water. Moss stretched up, up, up on his tiptoes."
         },
         {
           "box": {
@@ -125,7 +125,7 @@
             "w": 0.475,
             "h": 0.5067
           },
-          "caption": "Too high. And somebody was already in it."
+          "caption": "It was far too high. And somebody was already splashing in it. “This is my bath,” chirped the little bird."
         }
       ]
     },
@@ -139,7 +139,7 @@
             "w": 0.2667,
             "h": 0.24
           },
-          "caption": "The dog’s bowl had water."
+          "caption": "Next, Moss found the dog’s bowl. It was full of water, just the right size for one boot."
         },
         {
           "box": {
@@ -155,7 +155,7 @@
             "h": 0.3467
           },
           "panSeconds": 3.5,
-          "caption": "The dog looked at Moss. Moss looked at the dog."
+          "caption": "Moss looked at the dog. The dog opened one sleepy eye and looked at him."
         },
         {
           "box": {
@@ -164,7 +164,7 @@
             "w": 0.3167,
             "h": 0.68
           },
-          "caption": "Too... not mine.",
+          "caption": "That was the dog’s water, Moss decided. Some water is for drinking, not for jumping.",
           "ask": "Why didn’t Moss jump in the dog’s bowl?"
         }
       ]
@@ -180,7 +180,7 @@
             "h": 0.4
           },
           "style": "spotlight",
-          "caption": "Moss sat down. Boots with no puddle are just shoes.",
+          "caption": "Moss sat down on the step with a big sigh. Boots without puddles are just shoes.",
           "ask": "How is Moss feeling now?"
         },
         {
@@ -198,7 +198,7 @@
           },
           "panSeconds": 4,
           "style": "spotlight",
-          "caption": "Then the sky went grey."
+          "caption": "Then a cool wind blew, and dark grey clouds rolled across the sky and hid the sun."
         },
         {
           "box": {
@@ -207,7 +207,7 @@
             "w": 0.2333,
             "h": 0.3333
           },
-          "caption": "Plip."
+          "caption": "Plip. A raindrop landed right on the end of his nose."
         }
       ],
       "openWhole": false
@@ -222,7 +222,7 @@
             "w": 0.2917,
             "h": 0.3333
           },
-          "caption": "Plip, plop, plip, plop... BOOM!"
+          "caption": "Plip, plop, plip, plop... BOOM! The thunder was so loud that Moss jumped."
         },
         {
           "box": {
@@ -231,7 +231,7 @@
             "w": 0.3,
             "h": 0.44
           },
-          "caption": "That was a LOT of rain. Moss hid under the bench."
+          "caption": "The rain poured down, so Moss hurried under the bench to stay dry. Thump, thump went his heart."
         },
         {
           "box": {
@@ -240,7 +240,7 @@
             "w": 0.2583,
             "h": 0.4
           },
-          "caption": "Somebody else was hiding there too. “I’m Dot,” said the duck. “I don’t like the boom either.”",
+          "caption": "Somebody else was hiding there too. “I’m Dot,” said the duck in a small voice. “I’m scared of the boom too.” So they sat close together until it was over.",
           "ask": "What do you do when it thunders?"
         }
       ],
@@ -274,7 +274,7 @@
             "w": 0.325,
             "h": 0.4
           },
-          "caption": "When the rain stopped, they peeped out."
+          "caption": "At last the rain stopped. Moss and Dot peeped out from under the bench."
         },
         {
           "box": {
@@ -290,7 +290,7 @@
             "h": 0.42
           },
           "panSeconds": 5,
-          "caption": "And there it was. The biggest puddle in the whole world.",
+          "caption": "The sun was back and a rainbow stretched across the sky. And there in the grass was the biggest puddle in the whole wide world. It was enormous!",
           "ask": "What do you think Moss will do?"
         }
       ],
@@ -333,7 +333,7 @@
           },
           "auto": true,
           "holdSeconds": 2.5,
-          "caption": "One... two... three..."
+          "caption": "Moss stood at the edge of the puddle, and Dot flapped her wings. Let’s count together. One... two... three..."
         },
         {
           "box": {
@@ -343,7 +343,7 @@
             "h": 0.84
           },
           "moveSeconds": 0.7,
-          "caption": "JUMP!"
+          "caption": "JUMP! Moss leapt high into the air."
         }
       ]
     },
@@ -358,7 +358,7 @@
             "h": 0.6533
           },
           "moveSeconds": 0,
-          "caption": "SPLASH!",
+          "caption": "SPLASH! Water flew everywhere, glittering in the sunshine.",
           "sound": "splash.wav"
         },
         {
@@ -368,7 +368,7 @@
             "w": 0.3167,
             "h": 0.5733
           },
-          "caption": "It was a very, very good puddle."
+          "caption": "Moss was soaking wet, and he didn’t mind one bit. It was a very, very good puddle."
         },
         {
           "box": {
@@ -377,7 +377,7 @@
             "w": 0.2583,
             "h": 0.3467
           },
-          "caption": "“Again!” said Dot."
+          "caption": "Dot flapped and quacked and laughed. “Again!” said Dot. “Again, again!”"
         }
       ],
       "openWhole": false,
@@ -404,7 +404,7 @@
             "w": 0.3167,
             "h": 0.5733
           },
-          "caption": "Moss’s boots were full of water."
+          "caption": "They jumped and splashed until the sun began to set. Moss’s boots were full of water, so he pulled one off."
         },
         {
           "box": {
@@ -420,7 +420,7 @@
             "h": 0.4133
           },
           "panSeconds": 3.5,
-          "caption": "And one boot made a very good boat."
+          "caption": "Dot hopped in, and the boot bobbed and floated like a little red boat."
         },
         {
           "box": {
@@ -429,7 +429,7 @@
             "w": 1,
             "h": 1
           },
-          "caption": "It was the best puddle day ever.",
+          "caption": "Moss felt tired and happy and proud. It was the best puddle day ever.",
           "ask": "What was your favourite part?"
         }
       ]
@@ -445,7 +445,7 @@
             "h": 0.576
           },
           "style": "none",
-          "caption": "After the rain, the garden was full of surprises. But Dot has lost her three ducklings! Can you find them?"
+          "caption": "After the rain, the garden was full of surprises. But oh no! Dot has lost her three ducklings. Can you help find them?"
         }
       ],
       "mode": "explore",
@@ -459,7 +459,7 @@
           },
           "name": "the duckling at the watering can",
           "story": 1,
-          "caption": "One! Having a paddle in the watering can."
+          "caption": "One! A duckling is paddling in the watering can."
         },
         {
           "box": {
@@ -470,7 +470,7 @@
           },
           "name": "the duckling by the dog",
           "story": 2,
-          "caption": "Two! Splashing in the dog’s bowl. The dog does not mind. Much."
+          "caption": "Two! This duckling is splashing in the dog’s bowl. The dog doesn’t mind. Well, not much."
         },
         {
           "box": {
@@ -481,7 +481,7 @@
           },
           "name": "the duckling under the big leaf",
           "story": 3,
-          "caption": "Three! Hiding under the big leaf, nice and dry. “Thank you!” said Dot."
+          "caption": "Three! The last duckling is hiding under the big leaf, nice and dry. “Thank you!” said Dot."
         },
         {
           "box": {
@@ -491,7 +491,7 @@
             "h": 0.0896
           },
           "name": "the butterfly",
-          "caption": "A butterfly, drying her wings in the sun."
+          "caption": "A butterfly is drying her wings in the warm sun."
         },
         {
           "box": {
@@ -512,7 +512,7 @@
             "h": 0.096
           },
           "name": "the worm",
-          "caption": "A wiggly worm has come up to see."
+          "caption": "A wiggly worm has come up to see what all the splashing is about."
         },
         {
           "box": {
@@ -522,7 +522,7 @@
             "h": 0.112
           },
           "name": "the bird",
-          "caption": "The little bird has her bath back."
+          "caption": "The little bird has her bath back, and she is very pleased."
         },
         {
           "box": {
@@ -532,7 +532,7 @@
             "h": 0.136
           },
           "name": "the snail",
-          "caption": "A snail! Snails love the rain."
+          "caption": "A snail! Snails love the rain because it keeps them cool and damp."
         },
         {
           "box": {
@@ -542,7 +542,7 @@
             "h": 0.272
           },
           "name": "the rainbow",
-          "caption": "A rainbow! The sun came back.",
+          "caption": "A rainbow! When the sun shines through raindrops, it makes a rainbow.",
           "ask": "What colours can you see?"
         },
         {
@@ -553,7 +553,7 @@
             "h": 0.088
           },
           "name": "the paper boat",
-          "caption": "A paper boat, sailing across the puddle."
+          "caption": "A paper boat is sailing slowly across the puddle."
         },
         {
           "box": {
@@ -563,7 +563,7 @@
             "h": 0.1232
           },
           "name": "the mushrooms",
-          "caption": "Mushrooms pop up after the rain."
+          "caption": "Mushrooms have popped up after the rain. Look how spotty they are!"
         },
         {
           "box": {
@@ -583,7 +583,7 @@
             "h": 0.168
           },
           "name": "the dog",
-          "caption": "The dog is having a rest."
+          "caption": "The dog is having a rest after all that excitement."
         }
       ],
       "guidance": {

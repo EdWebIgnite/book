@@ -61,7 +61,7 @@ sealed class ExportPanel : UserControl
         _body.Children.Clear();
         _body.Children.Add(Ui.Label("Export the book", 18, Ui.Text, FontWeight.Bold));
         _body.Children.Add(Ui.Help("Makes a copy of the book that is ready for the reader apps. The book you are editing is not changed."));
-        int problems = BookChecker.Check(_state.Project!).Count(i => i.Level == Severity.Problem);
+        int problems = BookChecker.Check(_state.Project!, measureWords: Reader.Ui.WordsLayout.Measure).Count(i => i.Level == Severity.Problem);
         if (problems > 0)
         {
             _body.Children.Add(new Border

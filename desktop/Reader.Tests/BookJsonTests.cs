@@ -19,6 +19,8 @@ public class BookJsonTests
     {
         JsonNode browser = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", id + ".browser.json")))!;
         JsonNode desktop = BookJson.Serialize(Kit.Load(id));
+        // Printed words are only in this reader: the retired browser reader drops them.
+        foreach (JsonNode? page in desktop["pages"]!.AsArray()) page!.AsObject().Remove("text");
         AssertSameJson(browser, desktop, "$");
     }
 

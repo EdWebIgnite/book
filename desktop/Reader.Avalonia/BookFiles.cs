@@ -108,6 +108,46 @@ public sealed class LoadedBook : IDisposable
         return p.Smaller.Length > 0 ? p.Smaller[^1] : _full.Get(p.Path) ?? Placeholder;
     }
 
+    // ---------------------------------------------------------------- printed words
+
+    readonly Dictionary<int, (PrintedWordsPicture? Picture, long Used)> _words = new();
+    long _wordsTick;
+
+    /// <summary>How many pages' words pictures are kept: the page being read and those either side of it.</summary>
+    public const int WordsKept = 3;
+
+    /// <summary>
+    /// A page's printed words as a picture to draw over the page picture, made the first time it is asked
+    /// for (and again if the words or their box change, as in the editor's preview). Null when the page
+    /// prints nothing. Only the last few pages' are kept. Call on the screen's thread.
+    /// </summary>
+    public PrintedWordsPicture? Words(int page)
+    {
+        if (page < 0 || page >= _pages.Length || page >= Book.Pages.Count) return null;
+        Page p = Book.Pages[page];
+        if (p.Text is null) return null;
+        string key = PrintedWordsPicture.KeyFor(p, Aspects[page]);
+        if (_words.TryGetValue(page, out var known) && (known.Picture?.Key ?? "") == key)
+        {
+            _words[page] = (known.Picture, ++_wordsTick);
+            return known.Picture;
+        }
+        if (known.Picture is PrintedWordsPicture stale) Dispatcher.UIThread.Post(stale.Dispose, DispatcherPriority.Background);
+        // As sharp as half as sharp again as the full-size picture: letters show softness sooner than paint.
+        // (A big scene cut into tiles is as sharp as its tiles, not its small overview picture.)
+        double sharp = p.Tiles is { Height: > 0 } tiles ? tiles.Height : _pages[page].Size.Height;
+        PrintedWordsPicture? made = PrintedWordsPicture.Make(p, Aspects[page], sharp * 1.5);
+        _words[page] = (made, ++_wordsTick);
+        if (_words.Count > WordsKept)
+        {
+            int oldest = _words.Where(w => w.Key != page).OrderBy(w => w.Value.Used).First().Key;
+            // Not straight away: it may be part of the frame being drawn now.
+            if (_words[oldest].Picture is PrintedWordsPicture old) Dispatcher.UIThread.Post(old.Dispose, DispatcherPriority.Background);
+            _words.Remove(oldest);
+        }
+        return made;
+    }
+
     /// <summary>Start fetching a page's full-size picture, so it is there by the time the camera goes in close.</summary>
     public void Warm(int page)
     {
@@ -297,6 +337,8 @@ public sealed class LoadedBook : IDisposable
     {
         Cover?.Dispose();
         _full.Dispose();
+        foreach (var w in _words.Values) w.Picture?.Dispose();
+        _words.Clear();
         foreach (PagePictures p in _pages) foreach (Bitmap b in p.Smaller) b.Dispose();
     }
 }

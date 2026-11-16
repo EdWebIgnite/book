@@ -850,6 +850,7 @@ sealed class MainWindow : Window
             case Sel.Stop when i < p.Stops.Count: _state.Change("Delete the stop", () => { p.Stops.RemoveAt(i); _state.SetSelectionQuietly(Sel.None, -1); }, structure: true); break;
             case Sel.Hotspot when i < p.Hotspots.Count: _state.Change("Delete the thing to find", () => { p.Hotspots.RemoveAt(i); _state.SetSelectionQuietly(Sel.None, -1); }, structure: true); break;
             case Sel.Layer when i < p.Layers.Count: _state.Change("Delete the picture on top", () => { p.Layers.RemoveAt(i); _state.SetSelectionQuietly(Sel.None, -1); }, structure: true); break;
+            case Sel.Words when p.Text is not null: _state.Change("Take the words off the page", () => { p.Text = null; _state.SetSelectionQuietly(Sel.None, -1); }, structure: true); break;
             case Sel.Dry when _state.SelEffect >= 0 && _state.SelEffect < p.Effects.Count:
                 int fx = _state.SelEffect;
                 _state.Change("Delete the area", () => { p.Effects[fx].Dry.RemoveAt(i); _state.SetSelectionQuietly(Sel.None, -1); }, structure: true);
@@ -869,6 +870,7 @@ sealed class MainWindow : Window
             case Sel.Stop: _state.Change("Nudge", () => p.Stops[i].Box = Move(p.Stops[i].Box), mergeKey: "nudge"); break;
             case Sel.Hotspot: _state.Change("Nudge", () => p.Hotspots[i].Box = Move(p.Hotspots[i].Box), mergeKey: "nudge"); break;
             case Sel.Layer: _state.Change("Nudge", () => p.Layers[i].Box = Move(p.Layers[i].Box, true), mergeKey: "nudge"); break;
+            case Sel.Words when p.Text is PageText t: _state.Change("Nudge", () => t.Box = Move(t.Box), mergeKey: "nudge"); break;
             case Sel.Dry: int fx = _state.SelEffect; _state.Change("Nudge", () => p.Effects[fx].Dry[i] = Move(p.Effects[fx].Dry[i]), mergeKey: "nudge"); break;
         }
     }

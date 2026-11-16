@@ -4,7 +4,7 @@ using Reader.Core;
 namespace BookEditor;
 
 /// <summary>What is selected on the page.</summary>
-enum Sel { None, Stop, Hotspot, Layer, Dry }
+enum Sel { None, Stop, Hotspot, Layer, Dry, Words }
 
 /// <summary>What dragging on an empty part of the page makes.</summary>
 enum DrawKind { Stop, Hotspot, Dry }
@@ -183,6 +183,7 @@ sealed class EditorState
             Sel.Stop => p is not null && SelIndex >= 0 && SelIndex < p.Stops.Count,
             Sel.Hotspot => p is not null && SelIndex >= 0 && SelIndex < p.Hotspots.Count,
             Sel.Layer => p is not null && SelIndex >= 0 && SelIndex < p.Layers.Count,
+            Sel.Words => p?.Text is not null,
             Sel.Dry => p is not null && SelEffect >= 0 && SelEffect < p.Effects.Count && SelIndex >= 0 && SelIndex < p.Effects[SelEffect].Dry.Count,
             _ => true,
         };

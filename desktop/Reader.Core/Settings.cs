@@ -71,8 +71,21 @@ public sealed class ReaderSettings
     /// </summary>
     public bool ReadToMe { get; set; } = true;
 
+    /// <summary>
+    /// Print each page's words on the picture, as in a printed book, on pages whose book says where
+    /// (<see cref="Page.Text"/>). Pages without a place for them are not changed.
+    /// </summary>
+    public bool PrintedWords { get; set; } = true;
+
+    /// <summary>
+    /// Pop up each stop's words in a box at the bottom of the screen. Off, the box still comes up where
+    /// a page's printed words can't be seen (zoomed in away from them, or a page that prints none), so
+    /// the words are never missing.
+    /// </summary>
+    public bool PopUpWords { get; set; } = true;
+
     /// <summary>Settings only this reader has. They are saved with the rest but are not in web/reader.js.</summary>
-    public static readonly IReadOnlyList<string> DesktopOnlyKeys = new[] { "readToMe" };
+    public static readonly IReadOnlyList<string> DesktopOnlyKeys = new[] { "readToMe", "printedWords", "popUpWords" };
 
     public ReaderSettings Clone()
     {
@@ -141,6 +154,8 @@ public sealed class ReaderSettings
         ["minTargetCm"] = MinTargetCm,
         ["doubleTapZoom"] = DoubleTapZoom,
         ["readToMe"] = ReadToMe,
+        ["printedWords"] = PrintedWords,
+        ["popUpWords"] = PopUpWords,
     };
 
     public string ToJsonString() => ToJson().ToJsonString(JsonOut);
@@ -191,6 +206,8 @@ public sealed class ReaderSettings
         MinTargetCm = Num(saved["minTargetCm"], MinTargetCm);
         DoubleTapZoom = Flag(saved["doubleTapZoom"], DoubleTapZoom);
         ReadToMe = Flag(saved["readToMe"], ReadToMe);
+        PrintedWords = Flag(saved["printedWords"], PrintedWords);
+        PopUpWords = Flag(saved["popUpWords"], PopUpWords);
     }
 
     /// <summary>

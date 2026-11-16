@@ -38,6 +38,8 @@ public sealed partial class ReaderView
     readonly Dictionary<(uint Colour, int Width, bool Round), ImmutablePen> _pens = new();
     readonly Dictionary<(int Page, int Effect), Geometry> _weatherClips = new();
     LoadedBook? _shapesFor;
+    /// <summary>The screen's pixels per unit for the frame being drawn.</summary>
+    double _scaling = 1;
 
     /// <summary>How many times the picture has been drawn. The bench uses it to tell drawn frames from skipped ones.</summary>
     public int RenderCount { get; private set; }
@@ -65,6 +67,7 @@ public sealed partial class ReaderView
 
         ViewTransform v = e.GetView();
         double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        _scaling = scaling;
         // The finer filter waits until everything is at rest; while anything moves, quick is what keeps it smooth.
         RenderOptions quality = e.Restless || e.Animating || Gestures.Active ? Quick : Fine;
 
@@ -164,8 +167,31 @@ public sealed partial class ReaderView
             ctx.DrawImage(picture, dest);
 
         if (tilesView is ViewTransform v) DrawTiles(ctx, book, page, v, scaling, quality);
+        DrawWords(ctx, book, page, 0, 1, dest, r.H * scaling, quality);
         DrawLayers(ctx, book, page, r, quality);
         if (weather) DrawWeather(ctx, book, page, r);
+    }
+
+    /// <summary>
+    /// The page's printed words, for the part of the page from <paramref name="u0"/> to <paramref name="u1"/>
+    /// of its width, which is drawn at <paramref name="dest"/> (in whatever space the page picture is being
+    /// drawn in: the screen, or one strip of a turning page). <paramref name="pagePixelsHigh"/> is how many
+    /// pixels tall the whole page is drawn, to pick a copy of the words that is sharp enough.
+    /// </summary>
+    void DrawWords(DrawingContext ctx, LoadedBook? book, int page, double u0, double u1, Rect dest, double pagePixelsHigh, RenderOptions quality)
+    {
+        if (book is null || page < 0 || !Engine.Settings.PrintedWords || u1 - u0 <= 1e-9) return;
+        if (book.Words(page) is not PrintedWordsPicture words) return;
+        RectD r = words.Region;
+        double a = Math.Max(u0, r.X), b = Math.Min(u1, r.Right);
+        if (b - a <= 1e-9) return;
+        Bitmap picture = words.For(pagePixelsHigh);
+        double across = dest.Width / (u1 - u0);
+        var to = new Rect(dest.X + (a - u0) * across, dest.Y + r.Y * dest.Height, (b - a) * across, r.H * dest.Height);
+        double pw = picture.PixelSize.Width;
+        var from = new Rect((a - r.X) / r.W * pw, 0, (b - a) / r.W * pw, picture.PixelSize.Height);
+        bool enlarging = r.H * pagePixelsHigh > picture.PixelSize.Height * 1.02;
+        using (ctx.PushRenderOptions(enlarging ? quality : Quick)) ctx.DrawImage(picture, from, to);
     }
 
     /// <summary>Sharp tiles over the overview picture, only for the part of the page on screen.</summary>

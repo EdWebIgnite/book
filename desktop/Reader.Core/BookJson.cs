@@ -49,6 +49,18 @@ public static class BookJson
             OpenWhole = !IsFalse(p["openWhole"]),
             Extra = Unknown(p, PageKeys),
         };
+        if (p["text"] is JsonObject words)
+        {
+            page.Text = new PageText
+            {
+                Box = new RectD(Num(words["x"]) ?? 0, Num(words["y"]) ?? 0, Num(words["w"]) ?? 0, Num(words["h"]) ?? 0),
+                Align = Text(words["align"]) is PageText.Center or PageText.Right ? Text(words["align"])! : PageText.Left,
+                Size = Num(words["size"]) is double size && size > 0 ? size : null,
+                Color = PrintedWords.ParseColor(Text(words["color"])) is not null ? Text(words["color"]) : null,
+                Content = NonEmpty(Text(words["content"])),
+                Extra = Unknown(words, TextKeys),
+            };
+        }
         if (p["spread"] is JsonObject spread && (Text(spread["left"]) is { Length: > 0 } || Text(spread["right"]) is { Length: > 0 }))
             page.Spread = new SpreadSource { Left = Text(spread["left"]) ?? "", Right = Text(spread["right"]) ?? "" };
 
@@ -160,7 +172,8 @@ public static class BookJson
 
     // The fields each part of a book can have. Anything else is kept in Extra and written back as it was.
     static readonly HashSet<string> BookKeys = new() { "id", "title", "author", "cover", "focusStyle", "pages" };
-    static readonly HashSet<string> PageKeys = new() { "image", "mode", "openWhole", "stops", "panels", "hotspots", "guidance", "effects", "layers", "tiles", "spread" };
+    static readonly HashSet<string> PageKeys = new() { "image", "mode", "openWhole", "stops", "panels", "hotspots", "guidance", "effects", "layers", "tiles", "spread", "text" };
+    static readonly HashSet<string> TextKeys = new() { "x", "y", "w", "h", "align", "size", "color", "content" };
     static readonly HashSet<string> StopKeys = new() { "box", "to", "panSeconds", "style", "moveSeconds", "auto", "holdSeconds", "caption", "ask", "sound", "voice" };
     static readonly HashSet<string> HotspotKeys = new() { "box", "name", "story", "caption", "ask", "sound", "effect", "voice" };
     static readonly HashSet<string> GuidanceKeys = new() { "hints", "showMe", "map" };
@@ -232,6 +245,19 @@ public static class BookJson
         }
         var page = new JsonObject { ["image"] = p.Image, ["stops"] = stops };
         if (!p.OpenWhole) page["openWhole"] = false;
+        if (p.Text is PageText words)
+        {
+            var wo = new JsonObject
+            {
+                ["x"] = Round4(words.Box.X), ["y"] = Round4(words.Box.Y), ["w"] = Round4(words.Box.W), ["h"] = Round4(words.Box.H),
+                ["size"] = Round4(words.SizeOrDefault),
+            };
+            if (words.AlignOrLeft != PageText.Left) wo["align"] = words.AlignOrLeft;
+            if (PrintedWords.ParseColor(words.Color) is not null) wo["color"] = words.Color;
+            if (!string.IsNullOrEmpty(words.Content)) wo["content"] = words.Content;
+            AddExtra(wo, words.Extra);
+            page["text"] = wo;
+        }
 
         if (p.Effects.Count > 0)
         {

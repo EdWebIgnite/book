@@ -88,7 +88,8 @@ public class StepsAndMovesTests
         Assert.Equal(Geo.Inflate(box, e.Settings.Padding), e.Shown.Cam);
         Assert.Equal(box, e.Shown.Focus);
         Assert.Equal(0.75, e.Shown.Vig, 9);
-        Assert.Equal("Moss had new boots.", e.State.Caption);
+        Assert.Equal(stop.Caption, e.State.Caption);
+        Assert.StartsWith("Moss opened the big brown box.", e.State.Caption);
     }
 
     [Fact]
