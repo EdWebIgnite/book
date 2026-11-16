@@ -10,8 +10,8 @@ namespace Reader.App;
 
 /// <summary>
 /// The shelf's hand-made art, all drawn in code: the wood grain and the paper texture are made once as
-/// small pictures from a seeded noise (so they are the same every run), and the potted plant and the
-/// books lying on their sides are little vector shapes.
+/// small pictures from a seeded noise (so they are the same every run), and the fern in its pot and the
+/// clothbound books lying on their sides are little vector shapes.
 /// </summary>
 static class ShelfArt
 {
@@ -126,73 +126,137 @@ static class ShelfArt
     // ---------------------------------------------------------------- leaves and things
 
     /// <summary>
-    /// A potted plant standing on a shelf, its pot's bottom middle at <paramref name="foot"/>, about
-    /// <paramref name="size"/> tall. A cream pot with a green band, and a fan of leaves.
+    /// A Boston fern in a glazed cream jardinière with a bottle green band and a brass rim, standing on a
+    /// shelf: the pot's bottom middle at <paramref name="foot"/>, about <paramref name="size"/> tall.
     /// </summary>
     public static void Plant(DrawingContext ctx, Point foot, double size)
     {
-        double potH = size * 0.36, potTop = size * 0.42, potBottom = size * 0.32;
+        double potH = size * 0.34, potTop = size * 0.40, potBottom = size * 0.28;
         double x = foot.X, y = foot.Y;
-        // Leaves first, behind the pot's rim.
-        var leaves = new (double Angle, double Length, int Colour)[]
+        Point base_ = new(x, y - potH * 0.92);
+        Color[] greens = { Color.Parse("#4f6e47"), Color.Parse("#5e7f55"), Color.Parse("#6f8f62"), Color.Parse("#84a076") };
+        // Fronds arching up and out, the outer ones drooping over the rim; drawn back to front.
+        var fronds = new (double Angle, double Length, int Colour)[]
         {
-            (-62, 0.50, 2), (-38, 0.62, 0), (-16, 0.70, 1), (6, 0.74, 0), (26, 0.66, 3), (48, 0.58, 2), (68, 0.46, 1), (-4, 0.48, 3), (-30, 0.44, 1),
+            (-82, 0.62, 0), (82, 0.6, 0), (-60, 0.72, 1), (60, 0.7, 1), (-38, 0.78, 2), (38, 0.76, 2),
+            (-16, 0.8, 1), (16, 0.82, 3), (0, 0.74, 2), (-70, 0.5, 3), (72, 0.52, 3),
         };
-        var stem = new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#4a8a35")), Math.Max(1, size * 0.018), lineCap: PenLineCap.Round);
-        Point base_ = new(x, y - potH * 0.9);
-        foreach (var (angle, length, colour) in leaves)
-        {
-            double a = angle * Math.PI / 180;
-            double reach = size * length * 0.55;
-            var tip = new Point(base_.X + Math.Sin(a) * reach, base_.Y - Math.Cos(a) * reach);
-            ctx.DrawLine(stem, base_, tip);
-            Ornaments.Leaf(ctx, tip, size * length * 0.48, angle * 1.1, Ornaments.LeafColours[colour]);
-        }
-        // The pot: slightly tapered, with a rim and a band.
+        foreach (var (angle, length, colour) in fronds) Frond(ctx, base_, angle, size * length * 0.62, greens[colour]);
+
+        // The jardinière: a rounded bowl shape, glazed cream, shaded on the right.
         var pot = new StreamGeometry();
         using (StreamGeometryContext g = pot.Open())
         {
             g.BeginFigure(new Point(x - potTop / 2, y - potH), true);
             g.LineTo(new Point(x + potTop / 2, y - potH));
-            g.LineTo(new Point(x + potBottom / 2, y));
+            g.CubicBezierTo(new Point(x + potTop / 2, y - potH * 0.35), new Point(x + potBottom / 2 + size * 0.04, y - potH * 0.08), new Point(x + potBottom / 2, y));
             g.LineTo(new Point(x - potBottom / 2, y));
+            g.CubicBezierTo(new Point(x - potBottom / 2 - size * 0.04, y - potH * 0.08), new Point(x - potTop / 2, y - potH * 0.35), new Point(x - potTop / 2, y - potH));
             g.EndFigure(true);
         }
-        var potFill = new LinearGradientBrush
+        var glaze = new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.Parse("#fffdf6"), 0), new GradientStop(Color.Parse("#f3ead7"), 0.7), new GradientStop(Color.Parse("#e2d6bd"), 1) },
+            GradientStops = { new GradientStop(Color.Parse("#fbf6e8"), 0), new GradientStop(Color.Parse("#efe5cf"), 0.6), new GradientStop(Color.Parse("#cfc3a6"), 1) },
         };
-        ctx.DrawGeometry(potFill, null, pot);
-        double bandY = y - potH * 0.55;
-        double bandHalf(double yy) => (potBottom + (potTop - potBottom) * (y - yy) / potH) / 2;
-        ctx.DrawRectangle(new ImmutableSolidColorBrush(Palette.LeafBright), null,
-            new Rect(x - bandHalf(bandY), bandY - potH * 0.08, bandHalf(bandY) * 2, potH * 0.16));
-        ctx.DrawRectangle(new ImmutableSolidColorBrush(Color.Parse("#fffdf6")), new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#e2d6bd")), 1),
-            new Rect(x - potTop / 2 - size * 0.02, y - potH - size * 0.05, potTop + size * 0.04, size * 0.07), size * 0.02, size * 0.02);
+        ctx.DrawGeometry(glaze, null, pot);
+        using (ctx.PushClip(pot.Bounds))
+        using (ctx.PushGeometryClip(pot))
+        {
+            double bandY = y - potH * 0.52;
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Palette.Leaf), new Rect(x - potTop, bandY - potH * 0.1, potTop * 2, potH * 0.2));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Palette.Sun, 0.9), new Rect(x - potTop, bandY - potH * 0.1 - 1.2, potTop * 2, 1.2));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Palette.Sun, 0.9), new Rect(x - potTop, bandY + potH * 0.1, potTop * 2, 1.2));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.35), new Rect(x - potTop * 0.36, y - potH, potTop * 0.08, potH));
+        }
+        // A brass rim.
+        var rim = new Rect(x - potTop / 2 - size * 0.015, y - potH - size * 0.04, potTop + size * 0.03, size * 0.05);
+        ctx.DrawRectangle(new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Palette.SunLight, 0), new GradientStop(Palette.SunDeep, 1) },
+        }, null, rim, size * 0.02, size * 0.02);
     }
 
-    static readonly (Color Cover, Color Band)[] LyingBooks =
+    /// <summary>One fern frond: a curving stem with little leaflets either side, smaller towards the tip.</summary>
+    static void Frond(DrawingContext ctx, Point from, double angle, double length, Color colour)
     {
-        (Color.Parse("#9fcb86"), Color.Parse("#f6efd9")),
-        (Color.Parse("#ffd66b"), Color.Parse("#e9a917")),
-        (Color.Parse("#f2b49b"), Color.Parse("#fff3e6")),
+        double a = angle * Math.PI / 180;
+        // Outer fronds bend down under their own weight.
+        double droop = Math.Abs(angle) / 90.0;
+        Point Along(double t)
+        {
+            double dx = 0, dy = 0;
+            int steps = 12;
+            for (int i = 0; i < steps; i++)
+            {
+                double u = t * i / steps;
+                double angU = a + Math.Sign(angle == 0 ? 1 : angle) * droop * u * u * 1.4;
+                dx += Math.Sin(angU) * length * t / steps;
+                dy -= Math.Cos(angU) * length * t / steps;
+            }
+            return new Point(from.X + dx, from.Y + dy);
+        }
+        var stemGeo = new StreamGeometry();
+        using (StreamGeometryContext g = stemGeo.Open())
+        {
+            g.BeginFigure(from, false);
+            for (int i = 1; i <= 16; i++) g.LineTo(Along(i / 16.0));
+            g.EndFigure(false);
+        }
+        var brush = new ImmutableSolidColorBrush(colour);
+        ctx.DrawGeometry(null, new ImmutablePen(brush, Math.Max(0.8, length * 0.018), lineCap: PenLineCap.Round), stemGeo);
+        int leaflets = 11;
+        for (int i = 1; i <= leaflets; i++)
+        {
+            double t = 0.12 + 0.86 * i / leaflets;
+            Point p = Along(t), q = Along(Math.Min(1, t + 0.02));
+            double dir = Math.Atan2(q.Y - p.Y, q.X - p.X) * 180 / Math.PI;   // the stem's heading
+            double size = length * 0.2 * (1.05 - t * 0.8);
+            Ornaments.Leaf(ctx, p, size, dir + 90 - 62, colour);
+            Ornaments.Leaf(ctx, p, size, dir + 90 + 62, colour);
+        }
+    }
+
+    static readonly (Color Cloth, Color Gilt)[] LyingBooks =
+    {
+        (Color.Parse("#2f5642"), Color.Parse("#d8b45c")),
+        (Color.Parse("#7b302b"), Color.Parse("#d8b45c")),
+        (Color.Parse("#2e3f5a"), Color.Parse("#d8b45c")),
     };
 
-    /// <summary>A little pile of books lying on their sides, the bottom one's bottom middle at <paramref name="foot"/>.</summary>
+    /// <summary>
+    /// A little pile of clothbound books lying on their sides, in bottle green, oxblood and navy with gilt
+    /// bands on their spines, the bottom one's bottom middle at <paramref name="foot"/>.
+    /// </summary>
     public static void BookPile(DrawingContext ctx, Point foot, double width)
     {
-        double h = width * 0.16, y = foot.Y;
-        var page = new ImmutableSolidColorBrush(Color.Parse("#fbf6ea"));
+        double h = width * 0.15, y = foot.Y;
+        var page = new ImmutableSolidColorBrush(Color.Parse("#efe4c8"));
         for (int i = 0; i < LyingBooks.Length; i++)
         {
-            double w = width * (1 - i * 0.09), off = (i % 2 == 0 ? -1 : 1) * width * 0.03;
-            var r = new Rect(foot.X - w / 2 + off, y - h, w, h);
-            ctx.DrawRectangle(new ImmutableSolidColorBrush(LyingBooks[i].Cover), null, r, h * 0.18, h * 0.18);
-            ctx.DrawRectangle(page, null, new Rect(r.Right - w * 0.06, r.Y + h * 0.18, w * 0.05, h * 0.64));
-            ctx.DrawRectangle(new ImmutableSolidColorBrush(LyingBooks[i].Band), null, new Rect(r.X + w * 0.14, r.Y, w * 0.06, h));
-            ctx.DrawRectangle(new ImmutableSolidColorBrush(Colors.White, 0.22), null, new Rect(r.X + h * 0.2, r.Y + h * 0.12, w - h * 0.4, h * 0.16), h * 0.08, h * 0.08);
-            y -= h;
+            double w = width * (1 - i * 0.08), off = (i % 2 == 0 ? -1 : 1) * width * 0.03;
+            double bh = h * (i == 1 ? 1.15 : 1);
+            var r = new Rect(foot.X - w / 2 + off, y - bh, w, bh);
+            var (cloth, gilt) = LyingBooks[i];
+            // The pages show at the far end; the spine faces us.
+            ctx.DrawRectangle(page, null, new Rect(r.X + w * 0.04, r.Y + bh * 0.12, w * 0.92, bh * 0.76));
+            ctx.DrawRectangle(new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Lighter(cloth, 0.18), 0), new GradientStop(cloth, 0.5), new GradientStop(Lighter(cloth, -0.25), 1) },
+            }, null, new Rect(r.X, r.Y, w * 0.93, bh), bh * 0.22, bh * 0.22);
+            var giltBrush = new ImmutableSolidColorBrush(gilt, 0.9);
+            foreach (double f in new[] { 0.1, 0.16, 0.77, 0.83 })
+                ctx.FillRectangle(giltBrush, new Rect(r.X + w * f, r.Y + bh * 0.15, Math.Max(1, w * 0.012), bh * 0.7));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(gilt, 0.75), new Rect(r.X + w * 0.36, r.Y + bh * 0.42, w * 0.2, Math.Max(1, bh * 0.14)));
+            y -= bh;
         }
+    }
+
+    static Color Lighter(Color c, double by)
+    {
+        byte L(byte v) => (byte)Math.Clamp(by >= 0 ? v + (255 - v) * by : v * (1 + by), 0, 255);
+        return Color.FromRgb(L(c.R), L(c.G), L(c.B));
     }
 }

@@ -45,7 +45,7 @@ public sealed class ShelfView : UserControl
 
         var title = new TextBlock
         {
-            Text = "My Books", Foreground = Palette.LeafDeepBrush, FontSize = forTouch ? 32 : 44, FontWeight = FontWeight.Black,
+            Text = "My Books", Foreground = Palette.LeafDeepBrush, FontSize = forTouch ? 32 : 44, FontWeight = FontWeight.Bold, FontFamily = Palette.Heading,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var mark = new Sprig { Width = forTouch ? 34 : 46, Height = forTouch ? 34 : 46, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -190,35 +190,107 @@ public sealed class ShelfView : UserControl
             using FileStream file = File.OpenRead(path);
             return Bitmap.DecodeToWidth(file, 480, BitmapInterpolationMode.HighQuality);
         }
-        catch (Exception) { return null; }   // no cover: the book keeps its plain green board
+        catch (Exception) { return null; }   // no cover: the book keeps its plain cloth board
     }
 
     // ================================================================ the wall
 
-    /// <summary>The wall behind the bookcase: soft green, a patch of sunlight in the top corner and a fine paper texture.</summary>
+    /// <summary>
+    /// The wall behind the bookcase: a faded Victorian nursery wallpaper of soft sage stripes and little
+    /// sprigs on cream, a wooden dado rail, and painted panelling below it down to the skirting. Kept very
+    /// low in contrast so it stays quiet behind the books. Drawn only when the window changes size.
+    /// </summary>
     sealed class Wall : Control
     {
-        static readonly IBrush Paint = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Palette.Wall, 0), new GradientStop(Palette.WallLow, 1) },
-        }.ToImmutable();
-
-        static readonly IBrush Sunlight = new RadialGradientBrush
-        {
-            Center = new RelativePoint(0.88, 0.0, RelativeUnit.Relative), GradientOrigin = new RelativePoint(0.88, 0.0, RelativeUnit.Relative),
-            RadiusX = new RelativeScalar(0.55, RelativeUnit.Relative), RadiusY = new RelativeScalar(0.75, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.FromArgb(120, 255, 236, 160), 0), new GradientStop(Color.FromArgb(40, 255, 236, 160), 0.5), new GradientStop(Color.FromArgb(0, 255, 236, 160), 1) },
-        }.ToImmutable();
-
         public Wall() => IsHitTestVisible = false;
+
+        /// <summary>A little three-leaved sprig with a bud, the wallpaper's repeat, about 16 units tall.</summary>
+        static readonly Geometry Sprig = Geometry.Parse(
+            "M0,7 C0.5,2 0.3,-2 0,-6 " +
+            "M0,1 C-3,0 -5.5,-2 -6,-5 C-3,-4.6 -1,-2.5 0,1 Z " +
+            "M0,-1.5 C3,-2.4 5.2,-4.6 5.4,-7.6 C2.6,-7 0.8,-4.6 0,-1.5 Z " +
+            "M0,4 C-2.4,3.6 -4.4,2.4 -5,0.4 C-2.6,0.6 -0.9,2 0,4 Z");
 
         public override void Render(DrawingContext ctx)
         {
             var r = new Rect(Bounds.Size);
-            ctx.FillRectangle(Paint, r);
-            ctx.FillRectangle(Sunlight, r);
-            ShelfArt.Speckle(ctx, r, 0.25);
+            if (r.Width <= 0 || r.Height <= 0) return;
+            double w = r.Width, h = r.Height;
+            double dado = Math.Round(Math.Max(h * 0.7, h - 220));
+            ctx.FillRectangle(Palette.Brush(Palette.Wall), new Rect(0, 0, w, dado));
+
+            // Stripes: a broad faint band with a pinstripe either side, every 76 units.
+            const double repeat = 76, band = 26;
+            var bandBrush = new ImmutableSolidColorBrush(Palette.WallSage, 0.13);
+            var pin = new ImmutablePen(new ImmutableSolidColorBrush(Palette.WallSage, 0.28), 1);
+            for (double x = 0; x < w + repeat; x += repeat)
+            {
+                ctx.FillRectangle(bandBrush, new Rect(x, 0, band, dado));
+                ctx.DrawLine(pin, new Point(x - 4, 0), new Point(x - 4, dado));
+                ctx.DrawLine(pin, new Point(x + band + 4, 0), new Point(x + band + 4, dado));
+            }
+            // Sprigs between the bands, in a half drop, with a tiny dusty rose bud.
+            var leaf = new ImmutableSolidColorBrush(Palette.WallSage, 0.5);
+            var stem = new ImmutablePen(new ImmutableSolidColorBrush(Palette.WallSage, 0.5), 0.9);
+            var bud = new ImmutableSolidColorBrush(Color.Parse("#c9a196"), 0.5);
+            int col = 0;
+            for (double x = band + (repeat - band) / 2; x < w + repeat; x += repeat, col++)
+            {
+                for (double y = col % 2 == 0 ? 40 : 40 + 52; y < dado - 10; y += 104)
+                {
+                    using (ctx.PushTransform(Matrix.CreateRotation((col % 2 == 0 ? -8 : 8) * Math.PI / 180) * Matrix.CreateTranslation(x, y)))
+                    {
+                        ctx.DrawGeometry(leaf, stem, Sprig);
+                        ctx.DrawEllipse(bud, null, new Point(0.2, -7.4), 1.9, 1.9);
+                    }
+                }
+            }
+
+            // Below the rail: painted panelling, each panel a thin raised moulding, down to the skirting board.
+            double skirting = Math.Min(30, (h - dado) * 0.2);
+            var panelling = new Rect(0, dado, w, h - dado);
+            ctx.FillRectangle(Palette.Brush(Palette.Panelling), panelling);
+            double pw = 190, gap = 26, top = dado + 26, bottom = h - skirting - 22;
+            if (bottom - top > 30)
+            {
+                var light = new ImmutablePen(new ImmutableSolidColorBrush(Colors.White, 0.55), 1.4);
+                var dark = new ImmutablePen(new ImmutableSolidColorBrush(Palette.ShadowOf(0.14)), 1.4);
+                for (double x = gap; x < w; x += pw + gap)
+                {
+                    var p = new Rect(x, top, pw, bottom - top);
+                    ctx.DrawRectangle(null, dark, p.Translate(new Vector(1, 1)));
+                    ctx.DrawRectangle(null, light, p);
+                }
+            }
+            // The skirting board and the dado rail, in cherry like the bookcase.
+            ctx.FillRectangle(new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#c8bfa6"), 0), new GradientStop(Color.Parse("#b4ab92"), 1) },
+            }, new Rect(0, h - skirting, w, skirting));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.5), new Rect(0, h - skirting, w, 1.2));
+            var rail = new Rect(0, dado - 7, w, 12);
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Palette.ShadowOf(0.12)), new Rect(0, rail.Bottom, w, 4));
+            ctx.FillRectangle(new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#b8653d"), 0), new GradientStop(Palette.Wood, 0.45), new GradientStop(Palette.WoodDeep, 1) },
+            }, rail);
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Color.Parse("#e6a57c"), 0.7), new Rect(0, rail.Y + 1, w, 1));
+
+            // Age: a fine paper speckle, the light of a window from the upper left, and a little shade at the edges.
+            ShelfArt.Speckle(ctx, r, 0.32);
+            ctx.FillRectangle(new RadialGradientBrush
+            {
+                Center = new RelativePoint(0.12, 0, RelativeUnit.Relative), GradientOrigin = new RelativePoint(0.12, 0, RelativeUnit.Relative),
+                RadiusX = new RelativeScalar(0.7, RelativeUnit.Relative), RadiusY = new RelativeScalar(1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.FromArgb(70, 255, 246, 220), 0), new GradientStop(Color.FromArgb(0, 255, 246, 220), 1) },
+            }, r);
+            ctx.FillRectangle(new RadialGradientBrush
+            {
+                RadiusX = new RelativeScalar(0.75, RelativeUnit.Relative), RadiusY = new RelativeScalar(0.75, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Palette.ShadowOf(0), 0.55), new GradientStop(Palette.ShadowOf(0.1), 1) },
+            }, r);
         }
     }
 
@@ -515,7 +587,7 @@ public sealed class ShelfView : UserControl
                     new Sprig { Width = touch ? 40 : 56, Height = touch ? 40 : 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) },
                     new TextBlock
                     {
-                        Text = "No books on the shelf yet", FontSize = touch ? 20 : 28, FontWeight = FontWeight.ExtraBold, Foreground = Palette.LeafDeepBrush,
+                        Text = "No books on the shelf yet", FontSize = touch ? 20 : 28, FontWeight = FontWeight.Bold, FontFamily = Palette.Heading, Foreground = Palette.LeafDeepBrush,
                         TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
                     },
                     _detail, _buttons,

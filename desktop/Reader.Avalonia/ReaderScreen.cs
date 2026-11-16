@@ -194,7 +194,7 @@ public sealed class ReaderScreen : UserControl
                         new Sprig { Width = 64, Height = 64, HorizontalAlignment = HorizontalAlignment.Center },
                         new TextBlock
                         {
-                            Text = "The End", FontSize = 46, FontWeight = FontWeight.Black, Foreground = Palette.LeafDeepBrush,
+                            Text = "The End", FontSize = 50, FontWeight = FontWeight.Bold, FontFamily = Palette.Heading, Foreground = Palette.LeafDeepBrush,
                             HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, -6, 0, 10),
                         },
                         _again, _endBack,
@@ -383,7 +383,7 @@ public sealed class ReaderScreen : UserControl
     /// </summary>
     bool PopsUp(ReaderState st) => st.Caption.Length > 0 && (_settings.PopUpWords || st.Exploring || !st.PrintedWordsInView);
 
-    static readonly IBrush LitWord = new ImmutableSolidColorBrush(Color.Parse("#ffe066"));
+    static readonly IBrush LitWord = Palette.Brush(Palette.SunLight);
 
     /// <summary>
     /// Light up one word of the caption (-1 for none). The words are separate pieces of text only while a

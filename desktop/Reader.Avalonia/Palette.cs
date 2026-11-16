@@ -5,9 +5,14 @@ using Avalonia.Media.Immutable;
 namespace Reader.Ui;
 
 /// <summary>
-/// The app's skin in one place: its colours, its font and how much it may move. Fresh leaf green leads,
-/// with cream and white, a sunny yellow for the things to press and warm cherry wood for the shelf. The
-/// colours are soft enough to sit beside watercolour pictures, and nothing is pure black.
+/// The app's skin in one place: its colours, its fonts and how much it may move. The feel is a London
+/// nursery of the late 1800s, kept light and happy: a fitted cherry wood bookcase, faded sage and cream
+/// wallpaper, bottle and sage greens for the things to press and the headings, warm cream, and polished
+/// brass for small accents. The colours are soft enough to sit beside watercolour pictures, and nothing
+/// is pure black.
+///
+/// (The names are from the first, leafier version of the skin: "Leaf" is now the period bottle-sage green
+/// and "Sun" the brass.)
 ///
 /// To change the look, change the colours here: the shelf, the settings, the reader's buttons, the
 /// pop-up words and the boxes all take theirs from this class (Reader.App's AppSkin passes them on to
@@ -15,36 +20,38 @@ namespace Reader.Ui;
 /// </summary>
 public static class Palette
 {
-    // Greens.
-    public static readonly Color Leaf = Color.Parse("#4f9d3a");          // the lead colour: buttons, ticks, the Next arrow
-    public static readonly Color LeafBright = Color.Parse("#6db84f");    // highlights, the bookcase paint
-    public static readonly Color LeafDeep = Color.Parse("#2f6a2a");      // headings, icons, words on green-tinted light
-    public static readonly Color LeafPale = Color.Parse("#cfe8bd");      // borders, hover washes
-    public static readonly Color Mint = Color.Parse("#eef7e6");          // light green wash behind group headings
-    public static readonly Color Forest = Color.Parse("#21302a");        // the dark round the open book (was a purple-black)
+    // Greens: Victorian bottle and sage.
+    public static readonly Color Leaf = Color.Parse("#3f6b4c");          // the lead colour: main buttons, ticks, the Next arrow
+    public static readonly Color LeafBright = Color.Parse("#5d8a68");    // highlights on green
+    public static readonly Color LeafDeep = Color.Parse("#2b4a37");      // headings, words on green-tinted light
+    public static readonly Color LeafPale = Color.Parse("#cdd8c3");      // borders, hover washes: pale sage
+    public static readonly Color Mint = Color.Parse("#eef1e5");          // light sage wash behind group headings
+    public static readonly Color Forest = Color.Parse("#1f2b24");        // the deep bottle green round the open book
 
     // Light.
-    public static readonly Color Cream = Color.Parse("#fffaf0");
-    public static readonly Color Paper = Color.Parse("#ffffff");
-    public static readonly Color Wall = Color.Parse("#f8f6ee");          // top of the shelf's wall: warm cream with a breath of sage
-    public static readonly Color WallLow = Color.Parse("#ebebdd");       // bottom of the shelf's wall
+    public static readonly Color Cream = Color.Parse("#fcf7ea");
+    public static readonly Color Paper = Color.Parse("#fffdf7");
+    public static readonly Color Wall = Color.Parse("#efe9d6");          // the wallpaper's ground: faded cream
+    public static readonly Color WallSage = Color.Parse("#a9b796");      // the wallpaper's stripes and sprigs, used very faintly
+    public static readonly Color Panelling = Color.Parse("#dfe2cf");     // the painted panelling below the dado rail
 
-    // Sun.
-    public static readonly Color Sun = Color.Parse("#ffcf4a");
-    public static readonly Color SunDeep = Color.Parse("#e9a917");
-    public static readonly Color SunInk = Color.Parse("#5a3d00");        // icons and words on yellow
+    // Brass (the names are from the first version, when this was a sunny yellow).
+    public static readonly Color Sun = Color.Parse("#d8b45c");           // polished brass: Show me, the Ask badge, small trims
+    public static readonly Color SunDeep = Color.Parse("#a8812f");
+    public static readonly Color SunLight = Color.Parse("#f3df9e");      // brass catching the light; the read-along highlight
+    public static readonly Color SunInk = Color.Parse("#3d2c08");        // icons and words on brass
 
     // Words.
-    public static readonly Color Ink = Color.Parse("#26331f");           // main words: a very dark green, never black
-    public static readonly Color InkSoft = Color.Parse("#56634c");       // help and notes
-    public static readonly Color InkFaint = Color.Parse("#7f8a76");
+    public static readonly Color Ink = Color.Parse("#2a2b22");           // main words: a warm very dark olive, never black
+    public static readonly Color InkSoft = Color.Parse("#5b5d4e");       // help and notes
+    public static readonly Color InkFaint = Color.Parse("#85877a");
 
     // Cherry wood for the bookcase, from the light catching an edge to the deepest grain, and the warm red kept for "remove".
     public static readonly Color WoodLight = Color.Parse("#b8653d");
     public static readonly Color Wood = Color.Parse("#9a4a2c");
     public static readonly Color WoodDark = Color.Parse("#7d3a22");
     public static readonly Color WoodDeep = Color.Parse("#5e2a18");
-    public static readonly Color Clay = Color.Parse("#c8583e");
+    public static readonly Color Clay = Color.Parse("#a8473a");          // a period oxblood red for "remove"
     public static readonly Color Shadow = Color.Parse("#2c2414");        // the colour of shadows: warm, not grey
 
     public static IImmutableSolidColorBrush Brush(Color c) => new ImmutableSolidColorBrush(c);
@@ -72,6 +79,13 @@ public static class Palette
     /// Regular to Black. Letters it doesn't have (✕, arrows) come from the system's font.
     /// </summary>
     public static readonly FontFamily Font = new("avares://Reader.Avalonia/Assets/Fonts#Nunito, $Default");
+
+    /// <summary>
+    /// Fraunces Bold, a soft old-style serif (SIL OFL 1.1, Assets/Fonts/OFL-Fraunces.txt), for the few big
+    /// headings only: "My Books", "Settings", "The End". It gives the period feel; everything children
+    /// read is in Nunito.
+    /// </summary>
+    public static readonly FontFamily Heading = new("avares://Reader.Avalonia/Assets/Fonts#Fraunces, avares://Reader.Avalonia/Assets/Fonts#Nunito");
 }
 
 /// <summary>
@@ -89,18 +103,22 @@ public static class Buttons
     /// <summary>One set of colours for a button: its face (top and bottom) at rest, under the pointer and pressed, and its edge.</summary>
     public sealed record Look(Color Top, Color Bottom, Color HoverTop, Color HoverBottom, Color PressedTop, Color PressedBottom, Color EdgeTop, Color EdgeBottom);
 
+    /// <summary>Ordinary buttons: warm cream, a brass-tinted edge.</summary>
     public static readonly Look Plain = new(
-        Color.Parse("#ffffff"), Color.Parse("#efe8dc"), Color.Parse("#ffffff"), Color.Parse("#f6f1e8"),
-        Color.Parse("#e6dece"), Color.Parse("#efe9de"), Color.Parse("#e4dacb"), Color.Parse("#b3a58c"));
+        Color.Parse("#fffdf6"), Color.Parse("#eee5d1"), Color.Parse("#fffefa"), Color.Parse("#f5eedf"),
+        Color.Parse("#e3d8c0"), Color.Parse("#ece3cf"), Color.Parse("#e9dcc0"), Color.Parse("#a99467"));
+    /// <summary>Main actions: bottle green.</summary>
     public static readonly Look Green = new(
-        Color.Parse("#66b44d"), Color.Parse("#47912f"), Color.Parse("#70be57"), Color.Parse("#4f9a37"),
-        Color.Parse("#438a2d"), Color.Parse("#4e9836"), Color.Parse("#7fc466"), Color.Parse("#2f6a22"));
+        Color.Parse("#4f7d5c"), Color.Parse("#355c43"), Color.Parse("#5a8967"), Color.Parse("#3c6549"),
+        Color.Parse("#30553d"), Color.Parse("#3a6247"), Color.Parse("#7aa184"), Color.Parse("#22402e"));
+    /// <summary>Polished brass, for Show me.</summary>
     public static readonly Look Sun = new(
-        Color.Parse("#ffd966"), Color.Parse("#f2b72c"), Color.Parse("#ffe07a"), Color.Parse("#f5c03e"),
-        Color.Parse("#eeb028"), Color.Parse("#f4bf3a"), Color.Parse("#fff0b0"), Color.Parse("#c98f12"));
+        Color.Parse("#f1d68c"), Color.Parse("#c9a04a"), Color.Parse("#f6df9d"), Color.Parse("#d3ab55"),
+        Color.Parse("#c29a43"), Color.Parse("#cfa752"), Color.Parse("#fbedc0"), Color.Parse("#8c6a24"));
+    /// <summary>Oxblood, for "Yes, remove it".</summary>
     public static readonly Look Red = new(
-        Color.Parse("#d76b4f"), Color.Parse("#b74c33"), Color.Parse("#de7659"), Color.Parse("#c0553b"),
-        Color.Parse("#ad4730"), Color.Parse("#b9513a"), Color.Parse("#e48a70"), Color.Parse("#8a3420"));
+        Color.Parse("#b45a4b"), Color.Parse("#913f33"), Color.Parse("#bd6556"), Color.Parse("#9b483b"),
+        Color.Parse("#8a3a2f"), Color.Parse("#944236"), Color.Parse("#cf8576"), Color.Parse("#6c2b22"));
 
     static IBrush Vertical(Color top, Color bottom, double alpha = 1) => new LinearGradientBrush
     {

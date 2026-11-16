@@ -108,11 +108,11 @@ public sealed class SettingsPanel : UserControl
     static readonly IBrush Grey = Reader.Ui.Palette.InkSoftBrush;
     static readonly IBrush HelpGrey = Reader.Ui.Palette.InkSoftBrush;
 
-    /// <summary>A group's heading: a band of pale green across the panel with a leaf-green edge, its title and a short note.</summary>
+    /// <summary>A group's heading: a band of pale sage across the panel with a brass edge, its title and a short note.</summary>
     public static Control GroupHeading(string title, string note) => new Border
     {
         Background = Reader.Ui.Palette.MintBrush, Margin = new Thickness(-18, 24, -18, 4), Padding = new Thickness(14, 10, 18, 10),
-        BorderBrush = Reader.Ui.Palette.LeafBrush, BorderThickness = new Thickness(5, 0, 0, 0),
+        BorderBrush = Reader.Ui.Palette.SunBrush, BorderThickness = new Thickness(5, 0, 0, 0),
         Child = new StackPanel
         {
             Children =
@@ -123,7 +123,7 @@ public sealed class SettingsPanel : UserControl
         },
     };
 
-    /// <summary>A small heading inside a group, in leaf green capitals.</summary>
+    /// <summary>A small heading inside a group, in green capitals.</summary>
     public static Control SectionHeading(string title) => new TextBlock
     {
         Text = title.ToUpperInvariant(), FontSize = 12.5, FontWeight = FontWeight.ExtraBold, LetterSpacing = 0.9,
@@ -168,7 +168,7 @@ public sealed class SettingsPanel : UserControl
             Children =
             {
                 new TextBlock { Text = "FOR GROWN-UPS", FontSize = 11.5, FontWeight = FontWeight.ExtraBold, LetterSpacing = 1.1, Foreground = Reader.Ui.Palette.LeafBrush },
-                new TextBlock { Text = "Settings", FontSize = 26, FontWeight = FontWeight.Black, Foreground = Reader.Ui.Palette.LeafDeepBrush },
+                new TextBlock { Text = "Settings", FontSize = 28, FontWeight = FontWeight.Bold, FontFamily = Reader.Ui.Palette.Heading, Foreground = Reader.Ui.Palette.LeafDeepBrush },
             },
         };
         var sub = new TextBlock
@@ -215,8 +215,16 @@ public sealed class SettingsPanel : UserControl
             {
                 Children =
                 {
-                    // A strip of leaf green along the top, like the painted bookcase.
-                    new Border { Height = 6, VerticalAlignment = VerticalAlignment.Top, Background = Reader.Ui.Palette.LeafBrush, IsHitTestVisible = false },
+                    // A strip of brass along the top.
+                    new Border
+                    {
+                        Height = 5, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false,
+                        Background = new LinearGradientBrush
+                        {
+                            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                            GradientStops = { new GradientStop(Reader.Ui.Palette.SunLight, 0), new GradientStop(Reader.Ui.Palette.SunDeep, 1) },
+                        },
+                    },
                     new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = body },
                 },
             },

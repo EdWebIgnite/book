@@ -330,8 +330,8 @@ public sealed class AppView : UserControl
             bool good = _bookNoteGood;
             section.Children.Add(new Border
             {
-                Background = Palette.Brush(good ? Palette.Mint : Color.Parse("#fff4d6")),
-                BorderBrush = Palette.Brush(good ? Palette.LeafPale : Color.Parse("#f3d58a")), BorderThickness = new Thickness(1.5),
+                Background = Palette.Brush(good ? Palette.Mint : Color.Parse("#f8efd6")),
+                BorderBrush = Palette.Brush(good ? Palette.LeafPale : Color.Parse("#dcc48a")), BorderThickness = new Thickness(1.5),
                 CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 8), Margin = new Thickness(0, 6, 0, 6),
                 Child = new TextBlock { Text = _bookNote, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = good ? Palette.LeafDeepBrush : Palette.SunInkBrush, TextWrapping = TextWrapping.Wrap },
             });

@@ -55,11 +55,11 @@ public static class AppSkin
         r["ButtonPadding"] = new Thickness(16, 8);
 
         // Lists and tick boxes: soft green edges rather than near-black ones.
-        r["ComboBoxBorderBrush"] = Palette.Brush(Color.Parse("#b9d9a5"));
+        r["ComboBoxBorderBrush"] = Palette.Brush(Color.Parse("#c3b998"));
         r["ComboBoxBorderBrushPointerOver"] = Palette.LeafBrush;
         r["ComboBoxBackground"] = Palette.PaperBrush;
         r["ComboBoxBackgroundPointerOver"] = Palette.MintBrush;
-        r["CheckBoxCheckBackgroundStrokeUnchecked"] = Palette.Brush(Color.Parse("#9cc488"));
+        r["CheckBoxCheckBackgroundStrokeUnchecked"] = Palette.Brush(Color.Parse("#a99a72"));
         r["CheckBoxCheckBackgroundFillUnchecked"] = Palette.PaperBrush;
 
         // Tool tips: deep green with cream words.

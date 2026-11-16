@@ -15,7 +15,7 @@ public static class Ornaments
 
     public static readonly Color[] LeafColours =
     {
-        Color.Parse("#5fae45"), Color.Parse("#78c25a"), Color.Parse("#4a9a39"), Color.Parse("#8fcf6c"),
+        Color.Parse("#5e7f55"), Color.Parse("#7a9a6c"), Color.Parse("#4c6c46"), Color.Parse("#93ad85"),
     };
 
     /// <summary>Draw a leaf <paramref name="length"/> long at <paramref name="at"/>, turned by <paramref name="degrees"/> from pointing up.</summary>
@@ -31,10 +31,10 @@ public static class Ornaments
         }
     }
 
-    /// <summary>A small five-petalled flower: cream petals round a sunny yellow middle.</summary>
+    /// <summary>A small five-petalled flower: cream petals round a brass middle.</summary>
     public static void Flower(DrawingContext ctx, Point at, double r)
     {
-        var petal = new ImmutableSolidColorBrush(Color.Parse("#fff3c4"));
+        var petal = new ImmutableSolidColorBrush(Color.Parse("#f6ecd2"));
         for (int i = 0; i < 5; i++)
         {
             double a = i * Math.PI * 2 / 5 - Math.PI / 2;
