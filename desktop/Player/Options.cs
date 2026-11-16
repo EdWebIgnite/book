@@ -88,6 +88,7 @@ sealed class Options
             --do "<steps>"       act these out first, as real touches and key presses, separated by semicolons:
                                    tap 900,400          press and let go at that point
                                    hover 300,400        move the mouse there without pressing (a book on the shelf lifts)
+                                   press 300,400        press there and keep pressing (best as the last step: a button held down)
                                    hold 1240,36 2100    press, keep pressing for that many milliseconds, let go
                                    drag 800,400 300,400 press, slide (over 200 ms) and let go
                                    wheel 640,400 -1     turn the wheel one notch (negative is towards you)

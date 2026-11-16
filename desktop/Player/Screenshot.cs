@@ -189,6 +189,12 @@ static class Screenshot
                     window.MouseMove(over_);
                     pass(16);
                     break;
+                case "press" when words.Length == 2 && TryPoint(words[1], out Point down):
+                    // Press and keep pressing, for a picture of a button held down.
+                    window.MouseMove(down);
+                    window.MouseDown(down, MouseButton.Left);
+                    pass(16);
+                    break;
                 case "hold" when words.Length == 3 && TryPoint(words[1], out Point on)
                                  && double.TryParse(words[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double held):
                     window.MouseMove(on);

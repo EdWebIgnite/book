@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using Avalonia.Media.Transformation;
 using Reader.Core;
 
 namespace Reader.Ui;
@@ -52,8 +53,8 @@ public static class Icons
 public class RoundButton : Border
 {
     static readonly IBrush Paper = new ImmutableSolidColorBrush(Color.FromArgb(235, 255, 255, 255));   // rgba(255,255,255,.92)
-    /// <summary>The icons' colour: the skin's deep leaf green.</summary>
-    public static readonly IBrush Ink = Palette.LeafDeepBrush;
+    /// <summary>The icons' colour: the plain dark text colour of the skin's buttons.</summary>
+    public static readonly IBrush Ink = Buttons.TextBrush;
 
     bool _pressed, _enabled = true;
     BoxShadow _shadow;
@@ -119,12 +120,43 @@ public class RoundButton : Border
         Child = icon;
     }
 
-    void ApplyShadow() => BoxShadow = _ring is BoxShadow ring ? new BoxShadows(ring, new[] { _shadow }) : new BoxShadows(_shadow);
+    void ApplyShadow()
+    {
+        BoxShadow shadow = _pressed && _look is not null ? Buttons.ShadowPressed : _shadow;
+        BoxShadow = _ring is BoxShadow ring ? new BoxShadows(ring, new[] { shadow }) : new BoxShadows(shadow);
+    }
+
+    Buttons.Look? _look;
+    double _alpha = 1;
+
+    /// <summary>
+    /// The tactile face (see <see cref="Buttons"/>): a soft top-to-bottom face, a lip along the bottom, and
+    /// a sink when pressed. <paramref name="glass"/> is the see-through version that floats over the picture
+    /// on a phone on its side: the same face, faint, with no edge.
+    /// </summary>
+    public void SetLook(Buttons.Look look, bool glass, double glassAlpha = 0.55)
+    {
+        _look = look;
+        _alpha = glass ? glassAlpha : 1;
+        ApplyLook();
+    }
+
+    void ApplyLook()
+    {
+        if (_look is not Buttons.Look look) return;
+        bool glass = _alpha < 1;
+        Background = _pressed && !glass ? Buttons.PressedFace(look) : Buttons.Face(look, glass ? _alpha : 0.97);
+        BorderBrush = glass ? null : Buttons.Edge(look);
+        BorderThickness = glass ? default : _pressed ? Buttons.LipPressed : Buttons.Lip;
+    }
 
     void SetPressed(bool pressed)
     {
         _pressed = pressed;
-        RenderTransform = pressed ? new ScaleTransform(0.92, 0.92) : null;
+        // Pressed, the button sinks a little: down a pixel or two, a touch smaller, its shadow tucked in.
+        RenderTransform = pressed ? (_look is null ? new ScaleTransform(0.92, 0.92) : TransformOperations.Parse("translateY(2px) scale(0.96)")) : null;
+        ApplyLook();
+        ApplyShadow();
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -164,11 +196,9 @@ public sealed class PillButton : Border
 
     public PillButton(string text, bool primary)
     {
-        Background = primary ? Palette.LeafBrush : Palette.PaperBrush;
-        BorderBrush = primary ? null : Palette.LeafPaleBrush;
-        BorderThickness = new Thickness(primary ? 0 : 2);
-        BoxShadow = primary ? new BoxShadows(new BoxShadow { OffsetY = 3, Blur = 8, Color = Palette.ShadowOf(0.22) }) : default;
-        CornerRadius = new CornerRadius(999);
+        _look = primary ? Buttons.Green : Buttons.Plain;
+        ApplyLook(false);
+        CornerRadius = new CornerRadius(28);
         Padding = new Thickness(30, 14);
         MinWidth = 220;
         Cursor = new Cursor(StandardCursorType.Hand);
@@ -178,12 +208,31 @@ public sealed class PillButton : Border
         Child = Label = new TextBlock
         {
             Text = text, FontSize = 19, FontWeight = FontWeight.ExtraBold, HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = primary ? Brushes.White : Palette.LeafDeepBrush,
+            Foreground = primary ? Brushes.White : Buttons.TextBrush,
         };
+    }
+
+    readonly Buttons.Look _look;
+
+    /// <summary>The tactile face, lip and shadow; pressed, the face darkens, the lip thins and the button sinks.</summary>
+    void ApplyLook(bool pressed)
+    {
+        Background = pressed ? Buttons.PressedFace(_look) : Buttons.Face(_look);
+        BorderBrush = Buttons.Edge(_look);
+        BorderThickness = pressed ? Buttons.LipPressed : Buttons.Lip;
+        BoxShadow = new BoxShadows(pressed ? Buttons.ShadowPressed : new BoxShadow { OffsetY = 3, Blur = 7, Color = Palette.ShadowOf(0.24) });
+        RenderTransform = pressed ? new TranslateTransform(0, 2) : null;
     }
 
     public TextBlock Label { get; }
     public event Action? Click;
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        // Fully round ends. (A huge corner radius with a thicker bottom edge draws as an oval.)
+        CornerRadius = new CornerRadius(e.NewSize.Height / 2);
+    }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -191,8 +240,7 @@ public sealed class PillButton : Border
         e.Handled = true;
         _pressed = true;
         e.Pointer.Capture(this);
-        Opacity = 0.85;
-        RenderTransform = new ScaleTransform(0.97, 0.97);
+        ApplyLook(true);
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -201,8 +249,7 @@ public sealed class PillButton : Border
         e.Handled = true;
         if (!_pressed) return;
         _pressed = false;
-        Opacity = 1;
-        RenderTransform = null;
+        ApplyLook(false);
         e.Pointer.Capture(null);
         if (new Rect(Bounds.Size).Contains(e.GetPosition(this))) Click?.Invoke();
     }
@@ -211,7 +258,6 @@ public sealed class PillButton : Border
     {
         base.OnPointerCaptureLost(e);
         _pressed = false;
-        Opacity = 1;
-        RenderTransform = null;
+        ApplyLook(false);
     }
 }

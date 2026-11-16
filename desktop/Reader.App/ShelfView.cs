@@ -97,7 +97,7 @@ public sealed class ShelfView : UserControl
 
     static Button ShelfButton(string text, string icon)
     {
-        Control glyph = Icons.Make(icon, 18, Palette.LeafBrush);
+        Control glyph = Icons.Make(icon, 18, Buttons.TextBrush);
         glyph.VerticalAlignment = VerticalAlignment.Center;
         return new Button
         {

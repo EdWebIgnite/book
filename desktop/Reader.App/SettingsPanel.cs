@@ -151,7 +151,7 @@ public sealed class SettingsPanel : UserControl
         _parentsOnly = parentsOnly;
         HorizontalAlignment = HorizontalAlignment.Right;
 
-        var closeIcon = Reader.Ui.Icons.Make("M7 7 L17 17 M17 7 L7 17", 18, Reader.Ui.Palette.LeafDeepBrush);
+        var closeIcon = Reader.Ui.Icons.Make("M7 7 L17 17 M17 7 L7 17", 18, Reader.Ui.Buttons.TextBrush);
         closeIcon.VerticalAlignment = VerticalAlignment.Center;
         var close = new Button
         {

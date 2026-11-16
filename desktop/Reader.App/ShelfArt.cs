@@ -78,7 +78,7 @@ static class ShelfArt
     static Bitmap? _wood, _grain;
 
     /// <summary>
-    /// Light honey wood, the grain running along the plank: long wavy stripes bent by a slow noise, with
+    /// Cherry wood, the grain running along the plank: long wavy stripes bent by a slow noise, with
     /// fine fibres. 1024 x 96, stretched along each plank.
     /// </summary>
     public static Bitmap Wood => _wood ??= Make(1024, 96, (x, y) =>
@@ -87,9 +87,13 @@ static class ShelfArt
         double ring = 0.5 + 0.5 * Math.Sin((y * 0.16 + warp) * 2.6);
         ring = Math.Pow(ring, 3);
         double fibre = Fbm(x * 0.02, y * 0.9, 23);
-        double t = 0.15 + 0.55 * ring + 0.3 * (fibre - 0.5) + 0.2 * Fbm(x * 0.002, y * 0.01, 3);
-        Color a = Palette.Wood, b = Palette.WoodDark;
-        return Bgra(Mix(a.R, b.R, t), Mix(a.G, b.G, t), Mix(a.B, b.B, t));
+        double t = Math.Clamp(0.1 + 0.6 * ring + 0.35 * (fibre - 0.5) + 0.25 * (Fbm(x * 0.002, y * 0.01, 3) - 0.5), 0, 1);
+        Color a = Palette.Wood, b = Palette.WoodDark, deep = Palette.WoodDeep, light = Palette.WoodLight;
+        double r = Mix(a.R, b.R, t), g = Mix(a.G, b.G, t), bl = Mix(a.B, b.B, t);
+        // The darkest lines of the figure, and here and there a soft glow where the grain catches the light.
+        double line = Math.Pow(ring, 4) * 0.45, glow = Math.Max(0, 0.5 - ring) * 0.5 * Fbm(x * 0.006, y * 0.04, 17);
+        r = Mix(Mix(r, deep.R, line), light.R, glow); g = Mix(Mix(g, deep.G, line), light.G, glow); bl = Mix(Mix(bl, deep.B, line), light.B, glow);
+        return Bgra(r, g, bl);
     });
 
     /// <summary>A fine see-through speckle, laid over painted and papered surfaces so they don't look flat. 256 x 256, wraps.</summary>

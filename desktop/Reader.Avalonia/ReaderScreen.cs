@@ -63,12 +63,8 @@ public sealed class ReaderScreen : UserControl
     const double CompactTop = 0, CompactBottom = 0;
 
     /// <summary>The see-through white of the buttons when they sit over the picture.</summary>
-    static readonly IBrush GlassPaper = new ImmutableSolidColorBrush(Color.FromArgb(140, 255, 255, 255));
-    static readonly IBrush GlassYellow = Palette.Brush(Palette.Sun, 0.67);
-    static readonly IBrush Paper = new ImmutableSolidColorBrush(Color.FromArgb(235, 255, 255, 255));
-    /// <summary>The Next arrow, the button children press most, is leaf green (see-through over the picture on a phone on its side).</summary>
-    static readonly IBrush NextLeaf = Palette.Brush(Palette.Leaf, 0.96);
-    static readonly IBrush GlassLeaf = Palette.Brush(Palette.Leaf, 0.62);
+    // The buttons' faces are in Buttons (Palette.cs). The Next arrow, the button children press most, is
+    // leaf green; Show me is sunny yellow; over the picture on a phone on its side they are see-through.
     static readonly BoxShadow GlassShadow = new() { OffsetY = 1, Blur = 4, Color = Palette.ShadowOf(0.16) };
     static readonly BoxShadow RoundShadow = new() { OffsetY = 2, Blur = 9, Color = Palette.ShadowOf(0.32) };
     static readonly BoxShadow ArrowShadow = new() { OffsetY = 3, Blur = 12, Color = Palette.ShadowOf(0.38) };
@@ -521,14 +517,13 @@ public sealed class ReaderScreen : UserControl
         foreach (RoundButton b in new[] { _back, _gear, _zoomIn, _zoomOut, _whole, _showMe })
         {
             b.Diameter = round;
-            if (b != _showMe) b.Background = glass ? GlassPaper : Paper;
+            b.SetLook(b == _showMe ? Buttons.Sun : Buttons.Plain, glass, b == _showMe ? 0.7 : 0.55);
             b.Shadow = glass ? GlassShadow : RoundShadow;
         }
-        _showMe.Background = glass ? GlassYellow : Yellow;
         _prev.Diameter = _next.Diameter = arrow;
         foreach (RoundButton b in new[] { _prev, _next })
         {
-            b.Background = b == _next ? (glass ? GlassLeaf : NextLeaf) : glass ? GlassPaper : Paper;
+            b.SetLook(b == _next ? Buttons.Green : Buttons.Plain, glass, b == _next ? 0.62 : 0.55);
             b.Shadow = glass ? GlassShadow : ArrowShadow;
         }
         _title.IsVisible = !glass;

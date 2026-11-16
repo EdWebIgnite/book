@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
@@ -9,7 +10,7 @@ namespace Reader.App;
 
 /// <summary>
 /// Puts the skin on the standard controls: the Fluent theme with leaf green as its accent, rounded
-/// buttons in cream and green, and the app's font everywhere. The colours themselves are in
+/// tactile buttons with plain dark words, and the app's font everywhere. The colours themselves are in
 /// <see cref="Palette"/>. Called once by the Windows program and by the phone app as they start.
 /// </summary>
 public static class AppSkin
@@ -35,20 +36,22 @@ public static class AppSkin
         r["ControlCornerRadius"] = new CornerRadius(12);
         r["OverlayCornerRadius"] = new CornerRadius(14);
 
-        // Buttons: cream with a soft green edge, a mint wash under the pointer, deeper when pressed.
-        r["ButtonBackground"] = Palette.PaperBrush;
-        r["ButtonBackgroundPointerOver"] = Palette.MintBrush;
-        r["ButtonBackgroundPressed"] = Palette.LeafPaleBrush;
-        r["ButtonBackgroundDisabled"] = Palette.Brush(Palette.Mint, 0.6);
-        r["ButtonForeground"] = Palette.LeafDeepBrush;
-        r["ButtonForegroundPointerOver"] = Palette.LeafDeepBrush;
-        r["ButtonForegroundPressed"] = Palette.LeafDeepBrush;
+        // Buttons: a light tactile face with plain dark words (see Buttons in Palette.cs); the shadow,
+        // the lip and the sink when pressed are in the styles below.
+        Buttons.Look plain = Buttons.Plain;
+        r["ButtonBackground"] = Buttons.Face(plain);
+        r["ButtonBackgroundPointerOver"] = Buttons.HoverFace(plain);
+        r["ButtonBackgroundPressed"] = Buttons.PressedFace(plain);
+        r["ButtonBackgroundDisabled"] = Buttons.Face(plain, 0.6);
+        r["ButtonForeground"] = Buttons.TextBrush;
+        r["ButtonForegroundPointerOver"] = Buttons.TextBrush;
+        r["ButtonForegroundPressed"] = Buttons.TextBrush;
         r["ButtonForegroundDisabled"] = Palette.InkFaintBrush;
-        r["ButtonBorderBrush"] = Palette.LeafPaleBrush;
-        r["ButtonBorderBrushPointerOver"] = Palette.Brush(Palette.LeafBright);
-        r["ButtonBorderBrushPressed"] = Palette.LeafBrush;
-        r["ButtonBorderBrushDisabled"] = Palette.LeafPaleBrush;
-        r["ButtonBorderThemeThickness"] = new Thickness(1.5);
+        r["ButtonBorderBrush"] = Buttons.Edge(plain);
+        r["ButtonBorderBrushPointerOver"] = Buttons.Edge(plain);
+        r["ButtonBorderBrushPressed"] = Buttons.Edge(plain);
+        r["ButtonBorderBrushDisabled"] = Buttons.Edge(plain, 0.6);
+        r["ButtonBorderThemeThickness"] = Buttons.Lip;
         r["ButtonPadding"] = new Thickness(16, 8);
 
         // Lists and tick boxes: soft green edges rather than near-black ones.
@@ -64,26 +67,39 @@ public static class AppSkin
         r["ToolTipForeground"] = Palette.CreamBrush;
         r["ToolTipBorderBrush"] = Palette.Brush(Palette.LeafDeep);
 
-        // Buttons marked "primary": leaf green with white words. "danger": the warm clay red.
-        app.Styles.Add(Colours("primary", Palette.Leaf, Palette.LeafBright, Palette.LeafDeep, Colors.White));
-        app.Styles.Add(Colours("danger", Palette.Clay, Color.Parse("#d66a50"), Color.Parse("#a8452f"), Colors.White));
+        // Every button: a soft shadow, and pressed it sinks: the face moves down, the lip thins and the shadow shrinks.
         app.Styles.Add(new Style(x => x.OfType<Button>()) { Setters = { new Setter(Avalonia.Controls.Primitives.TemplatedControl.FontWeightProperty, FontWeight.Bold) } });
+        app.Styles.Add(new Style(x => x.OfType<Button>().Template().OfType<ContentPresenter>())
+        {
+            Setters = { new Setter(ContentPresenter.BoxShadowProperty, new BoxShadows(Buttons.Shadow)) },
+        });
+        app.Styles.Add(new Style(x => x.OfType<Button>().Class(":pressed").Template().OfType<ContentPresenter>())
+        {
+            Setters =
+            {
+                new Setter(ContentPresenter.BoxShadowProperty, new BoxShadows(Buttons.ShadowPressed)),
+                new Setter(ContentPresenter.BorderThicknessProperty, Buttons.LipPressed),
+                new Setter(Visual.RenderTransformProperty, new TranslateTransform(0, 1.5)),
+            },
+        });
+        // Buttons marked "primary": a leaf green face with white words. "danger": the warm clay red.
+        app.Styles.Add(Colours("primary", Buttons.Green));
+        app.Styles.Add(Colours("danger", Buttons.Red));
     }
 
-    /// <summary>A filled button style for buttons with the given class, in all its states.</summary>
-    static Styles Colours(string cls, Color fill, Color hover, Color pressed, Color text)
+    /// <summary>A coloured button style for buttons with the given class, in all its states.</summary>
+    static Styles Colours(string cls, Buttons.Look look)
     {
-        IBrush Fill(Color c) => Palette.Brush(c);
-        Style State(string? pseudo, Color c)
+        Style State(string? pseudo, IBrush face)
         {
             Style s = pseudo is null
-                ? new Style(x => x.OfType<Button>().Class(cls).Template().OfType<Avalonia.Controls.Presenters.ContentPresenter>())
-                : new Style(x => x.OfType<Button>().Class(cls).Class(pseudo).Template().OfType<Avalonia.Controls.Presenters.ContentPresenter>());
-            s.Setters.Add(new Setter(Avalonia.Controls.Presenters.ContentPresenter.BackgroundProperty, Fill(c)));
-            s.Setters.Add(new Setter(Avalonia.Controls.Presenters.ContentPresenter.BorderBrushProperty, Fill(c)));
-            s.Setters.Add(new Setter(Avalonia.Controls.Presenters.ContentPresenter.ForegroundProperty, Fill(text)));
+                ? new Style(x => x.OfType<Button>().Class(cls).Template().OfType<ContentPresenter>())
+                : new Style(x => x.OfType<Button>().Class(cls).Class(pseudo).Template().OfType<ContentPresenter>());
+            s.Setters.Add(new Setter(ContentPresenter.BackgroundProperty, face));
+            s.Setters.Add(new Setter(ContentPresenter.BorderBrushProperty, Buttons.Edge(look)));
+            s.Setters.Add(new Setter(ContentPresenter.ForegroundProperty, Brushes.White));
             return s;
         }
-        return new Styles { State(null, fill), State(":pointerover", hover), State(":pressed", pressed) };
+        return new Styles { State(null, Buttons.Face(look)), State(":pointerover", Buttons.HoverFace(look)), State(":pressed", Buttons.PressedFace(look)) };
     }
 }

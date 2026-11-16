@@ -7,7 +7,7 @@ using Reader.Ui;
 namespace Reader.App;
 
 /// <summary>
-/// The bookcase on the shelf screen: a light honey oak frame with a top cap and a plinth, a soft cream back
+/// The bookcase on the shelf screen: a cherry wood frame with a top cap and a plinth, a soft cream back
 /// of tongue-and-groove boards, and wooden shelves with the books standing face out on them. Spare room
 /// holds a potted plant (the shelf's one touch of green) or a little pile of books lying down.
 ///
@@ -202,8 +202,10 @@ sealed class Bookcase : Panel
         return b;
     }
 
-    static readonly Color FrameLight = Color.Parse("#e7c189"), FrameMid = Color.Parse("#d7a96a"), FrameDark = Color.Parse("#c28f55");
-    static readonly Color Back = Color.Parse("#f5ead4"), BackShade = Color.Parse("#e3d0ac");
+    static readonly Color FrameLight = Color.Parse("#a4532f"), FrameMid = Color.Parse("#8c4227"), FrameDark = Color.Parse("#6e321c");
+    /// <summary>The warm light on an edge of cherry: a highlight that stays in the wood's own colour rather than going white.</summary>
+    static readonly Color Sheen = Color.Parse("#e6a57c");
+    static readonly Color Back = Color.Parse("#f7ecd8"), BackShade = Color.Parse("#e6d2b0");
 
     /// <summary>The wood grain laid over a board of the frame, along it or (for the sides) up and down it.</summary>
     static void WoodBoard(DrawingContext ctx, Rect r, bool upright, double opacity)
@@ -239,18 +241,18 @@ sealed class Bookcase : Panel
         // A soft shadow on the wall round the whole case.
         ctx.DrawRectangle(null, null, body, radius, radius, new BoxShadows(new BoxShadow { OffsetY = 10, Blur = 30, Color = Palette.ShadowOf(0.22) }));
 
-        // The frame: light honey oak, the grain running along each board.
+        // The frame: cherry wood, the grain running along each board.
         ctx.DrawRectangle(Vertical((FrameLight, 0), (FrameMid, 0.55), (FrameDark, 1)), null, body, radius, radius);
         using (ctx.PushClip(new RoundedRect(body, radius)))
         {
             // The sides, their grain running up and down.
             foreach (double x in new[] { body.X, w - side })
-                WoodBoard(ctx, new Rect(x, 0, side - ov, h), upright: true, 0.55);
-            WoodBoard(ctx, new Rect(body.X, 0, body.Width, Top), upright: false, 0.6);
-            WoodBoard(ctx, new Rect(body.X, h - _s.Base, body.Width, _s.Base), upright: false, 0.6);
+                WoodBoard(ctx, new Rect(x, 0, side - ov, h), upright: true, 0.75);
+            WoodBoard(ctx, new Rect(body.X, 0, body.Width, Top), upright: false, 0.75);
+            WoodBoard(ctx, new Rect(body.X, h - _s.Base, body.Width, _s.Base), upright: false, 0.75);
             // Light from the upper left: the left side catches it, the right side is in a little shade.
-            ctx.FillRectangle(Horizontal((Color.FromArgb(60, 255, 255, 255), 0), (Color.FromArgb(0, 255, 255, 255), 1)), new Rect(body.X, 0, side - ov, h));
-            ctx.FillRectangle(Horizontal((Palette.ShadowOf(0), 0), (Palette.ShadowOf(0.16), 1)), new Rect(w - side, 0, side - ov, h));
+            ctx.FillRectangle(Horizontal((Color.FromArgb(70, Sheen.R, Sheen.G, Sheen.B), 0), (Color.FromArgb(0, Sheen.R, Sheen.G, Sheen.B), 1)), new Rect(body.X, Top, side - ov, h - Top - _s.Base));
+            ctx.FillRectangle(Horizontal((Palette.ShadowOf(0), 0), (Palette.ShadowOf(0.16), 1)), new Rect(w - side, Top, side - ov, h - Top - _s.Base));
             ctx.FillRectangle(Vertical((Palette.ShadowOf(0), 0.4), (Palette.ShadowOf(0.18), 1)), new Rect(body.X, h - _s.Base, body.Width, _s.Base));
         }
 
@@ -273,7 +275,7 @@ sealed class Bookcase : Panel
         }
         // A bevel round the opening: a dark line where the back meets the frame, a light one on the frame's edge.
         var bevelDark = new ImmutablePen(new ImmutableSolidColorBrush(Palette.ShadowOf(0.35)), 1.4);
-        var bevelLight = new ImmutablePen(new ImmutableSolidColorBrush(Colors.White, 0.45), 1.2);
+        var bevelLight = new ImmutablePen(new ImmutableSolidColorBrush(Sheen, 0.55), 1.2);
         ctx.DrawRectangle(null, bevelLight, inner.Inflate(1.6));
         ctx.DrawRectangle(null, bevelDark, inner.Inflate(0.4));
 
@@ -282,11 +284,11 @@ sealed class Bookcase : Panel
         ctx.DrawRectangle(null, null, cap, radius, radius, new BoxShadows(new BoxShadow { OffsetY = 3, Blur = 5, Color = Palette.ShadowOf(0.28) }));
         ctx.DrawRectangle(Vertical((FrameLight, 0), (FrameMid, 1)), null, cap, radius, radius);
         using (ctx.PushClip(new RoundedRect(cap, radius))) WoodBoard(ctx, cap, upright: false, 0.5);
-        ctx.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.5), new Rect(2, 0.5, w - 4, 1.4));
+        ctx.FillRectangle(new ImmutableSolidColorBrush(Sheen, 0.75), new Rect(2, 0.5, w - 4, 1.4));
         var plinth = new Rect(0, h - _s.Cap * 0.9, w, _s.Cap * 0.9);
         ctx.DrawRectangle(Vertical((FrameMid, 0), (FrameDark, 1)), null, plinth, radius, radius);
         using (ctx.PushClip(new RoundedRect(plinth, radius))) WoodBoard(ctx, plinth, upright: false, 0.35);
-        ctx.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.35), new Rect(2, plinth.Y, w - 4, 1.2));
+        ctx.FillRectangle(new ImmutableSolidColorBrush(Sheen, 0.5), new Rect(2, plinth.Y, w - 4, 1.2));
 
         for (int shelf = 0; shelf < _shelves; shelf++) DrawShelf(ctx, shelf, inner, shelf == _shelves - 1 ? h - _s.Cap * 0.9 : null);
         foreach (var (slot, shelf, kind) in _decor)
@@ -320,15 +322,15 @@ sealed class Bookcase : Panel
 
         // The shelf's top, seen a little from above: lighter at the back edge.
         var topFace = new Rect(x0, topY, x1 - x0, _s.PlankTop);
-        ctx.FillRectangle(Vertical((Color.Parse("#e9cfa0"), 0), (Palette.WoodLight, 0.5), (Color.Parse("#f7e4c0"), 1)), topFace);
+        ctx.FillRectangle(Vertical((Palette.WoodDark, 0), (Palette.Wood, 0.45), (Palette.WoodLight, 1)), topFace);
         ctx.FillRectangle(Vertical((Palette.ShadowOf(0.16), 0), (Palette.ShadowOf(0), 1)), new Rect(x0, topY, x1 - x0, _s.PlankTop * 0.45));
 
         // The front edge, with the grain, a highlight along its top and a darker bottom.
         var front = new Rect(x0 - 3, frontY, x1 - x0 + 6, frontH);
         using (ctx.PushClip(new RoundedRect(front, 3)))
             ctx.DrawImage(ShelfArt.Wood, new Rect(0, 0, ShelfArt.Wood.PixelSize.Width, ShelfArt.Wood.PixelSize.Height), front);
-        ctx.DrawRectangle(Vertical((Color.FromArgb(70, 255, 255, 255), 0), (Color.FromArgb(0, 255, 255, 255), 0.25), (Palette.ShadowOf(0), 0.6), (Palette.ShadowOf(0.18), 1)), null, front, 3, 3);
-        ctx.DrawLine(new ImmutablePen(new ImmutableSolidColorBrush(Colors.White, 0.7), 1.2), new Point(front.X + 2, frontY + 0.6), new Point(front.Right - 2, frontY + 0.6));
+        ctx.DrawRectangle(Vertical((Color.FromArgb(60, Sheen.R, Sheen.G, Sheen.B), 0), (Color.FromArgb(0, Sheen.R, Sheen.G, Sheen.B), 0.3), (Palette.ShadowOf(0), 0.6), (Palette.ShadowOf(0.25), 1)), null, front, 3, 3);
+        ctx.DrawLine(new ImmutablePen(new ImmutableSolidColorBrush(Sheen, 0.8), 1.2), new Point(front.X + 2, frontY + 0.6), new Point(front.Right - 2, frontY + 0.6));
 
         // The shadow the shelf throws on the back boards below it.
         if (downTo is null) ctx.FillRectangle(Vertical((Palette.ShadowOf(0.22), 0), (Palette.ShadowOf(0.06), 0.4), (Palette.ShadowOf(0), 1)), new Rect(x0, frontY + frontH, x1 - x0, _touch ? 12 : 20));

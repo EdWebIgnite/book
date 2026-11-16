@@ -6,7 +6,7 @@ namespace Reader.Ui;
 
 /// <summary>
 /// The app's skin in one place: its colours, its font and how much it may move. Fresh leaf green leads,
-/// with cream and white, a sunny yellow for the things to press and light honey wood for the shelf. The
+/// with cream and white, a sunny yellow for the things to press and warm cherry wood for the shelf. The
 /// colours are soft enough to sit beside watercolour pictures, and nothing is pure black.
 ///
 /// To change the look, change the colours here: the shelf, the settings, the reader's buttons, the
@@ -39,10 +39,11 @@ public static class Palette
     public static readonly Color InkSoft = Color.Parse("#56634c");       // help and notes
     public static readonly Color InkFaint = Color.Parse("#7f8a76");
 
-    // Wood (light painted honey birch) and the warm red kept for "remove".
-    public static readonly Color WoodLight = Color.Parse("#f2d7a6");
-    public static readonly Color Wood = Color.Parse("#e3b878");
-    public static readonly Color WoodDark = Color.Parse("#c9965a");
+    // Cherry wood for the bookcase, from the light catching an edge to the deepest grain, and the warm red kept for "remove".
+    public static readonly Color WoodLight = Color.Parse("#b8653d");
+    public static readonly Color Wood = Color.Parse("#9a4a2c");
+    public static readonly Color WoodDark = Color.Parse("#7d3a22");
+    public static readonly Color WoodDeep = Color.Parse("#5e2a18");
     public static readonly Color Clay = Color.Parse("#c8583e");
     public static readonly Color Shadow = Color.Parse("#2c2414");        // the colour of shadows: warm, not grey
 
@@ -71,6 +72,55 @@ public static class Palette
     /// Regular to Black. Letters it doesn't have (✕, arrows) come from the system's font.
     /// </summary>
     public static readonly FontFamily Font = new("avares://Reader.Avalonia/Assets/Fonts#Nunito, $Default");
+}
+
+/// <summary>
+/// The skin's buttons: a soft tactile look rather than flat colour. Each has a face that is a little
+/// lighter at the top than the bottom, a light top edge and a darker lip along the bottom, and a soft
+/// shadow; pressed, the face sinks a pixel or two, darkens a touch and the shadow shrinks. The words on
+/// ordinary buttons are the plain dark text colour; the main actions keep a coloured face.
+/// </summary>
+public static class Buttons
+{
+    /// <summary>The words and icons on ordinary buttons: a warm near-black.</summary>
+    public static readonly Color Text = Color.Parse("#2b2521");
+    public static readonly IImmutableSolidColorBrush TextBrush = new ImmutableSolidColorBrush(Text);
+
+    /// <summary>One set of colours for a button: its face (top and bottom) at rest, under the pointer and pressed, and its edge.</summary>
+    public sealed record Look(Color Top, Color Bottom, Color HoverTop, Color HoverBottom, Color PressedTop, Color PressedBottom, Color EdgeTop, Color EdgeBottom);
+
+    public static readonly Look Plain = new(
+        Color.Parse("#ffffff"), Color.Parse("#efe8dc"), Color.Parse("#ffffff"), Color.Parse("#f6f1e8"),
+        Color.Parse("#e6dece"), Color.Parse("#efe9de"), Color.Parse("#e4dacb"), Color.Parse("#b3a58c"));
+    public static readonly Look Green = new(
+        Color.Parse("#66b44d"), Color.Parse("#47912f"), Color.Parse("#70be57"), Color.Parse("#4f9a37"),
+        Color.Parse("#438a2d"), Color.Parse("#4e9836"), Color.Parse("#7fc466"), Color.Parse("#2f6a22"));
+    public static readonly Look Sun = new(
+        Color.Parse("#ffd966"), Color.Parse("#f2b72c"), Color.Parse("#ffe07a"), Color.Parse("#f5c03e"),
+        Color.Parse("#eeb028"), Color.Parse("#f4bf3a"), Color.Parse("#fff0b0"), Color.Parse("#c98f12"));
+    public static readonly Look Red = new(
+        Color.Parse("#d76b4f"), Color.Parse("#b74c33"), Color.Parse("#de7659"), Color.Parse("#c0553b"),
+        Color.Parse("#ad4730"), Color.Parse("#b9513a"), Color.Parse("#e48a70"), Color.Parse("#8a3420"));
+
+    static IBrush Vertical(Color top, Color bottom, double alpha = 1) => new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(WithAlpha(top, alpha), 0), new GradientStop(WithAlpha(bottom, alpha), 1) },
+    }.ToImmutable();
+
+    static Color WithAlpha(Color c, double a) => Color.FromArgb((byte)Math.Round(c.A * a), c.R, c.G, c.B);
+
+    public static IBrush Face(Look l, double alpha = 1) => Vertical(l.Top, l.Bottom, alpha);
+    public static IBrush HoverFace(Look l) => Vertical(l.HoverTop, l.HoverBottom);
+    public static IBrush PressedFace(Look l) => Vertical(l.PressedTop, l.PressedBottom);
+    public static IBrush Edge(Look l, double alpha = 1) => Vertical(l.EdgeTop, l.EdgeBottom, alpha);
+
+    /// <summary>The edge is thin round the top and sides and thicker along the bottom: the button's lip.</summary>
+    public static readonly Thickness Lip = new(1, 1, 1, 2.5);
+    public static readonly Thickness LipPressed = new(1, 1.5, 1, 1.5);
+
+    public static readonly BoxShadow Shadow = new() { OffsetY = 2, Blur = 5, Color = Palette.ShadowOf(0.24) };
+    public static readonly BoxShadow ShadowPressed = new() { OffsetY = 0.5, Blur = 2, Color = Palette.ShadowOf(0.2) };
 }
 
 /// <summary>
