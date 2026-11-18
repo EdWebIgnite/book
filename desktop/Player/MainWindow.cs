@@ -20,6 +20,7 @@ sealed class MainWindow : Window
     {
         _options = options;
         Title = Brand.Name;
+        try { Icon = AppIcon.ForWindow(editor: false); } catch (Exception) { }
         Background = Reader.Ui.Palette.ForestBrush;     // the reader's dark backdrop, so nothing flashes white
         Width = 1280;
         Height = 800;

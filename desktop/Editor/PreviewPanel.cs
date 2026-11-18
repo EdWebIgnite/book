@@ -26,36 +26,58 @@ sealed class PreviewPanel : UserControl
     Device _device = Device.All[0];
     int _page, _stop = -1;
     bool _fromStop;
+    bool _night;
+    string _language = "en";
 
     public PreviewPanel(EditorState state, MainWindow window)
     {
         _state = state;
         _window = window;
-        Background = Ui.Bg;
+        Background = Ui.Stage;
         var devices = Device.All.Select(d => (d.Id, d.Name)).ToList();
-        var top = new WrapPanel { Margin = new Thickness(12, 8), VerticalAlignment = VerticalAlignment.Center };
-        void Add(Control c) { c.Margin = new Thickness(0, 0, 10, 0); c.VerticalAlignment = VerticalAlignment.Center; top.Children.Add(c); }
-        Add(Ui.Label("Preview", 15, Ui.Accent, FontWeight.ExtraBold, wrap: false));
+        var top = new WrapPanel { Margin = new Thickness(12, 8), VerticalAlignment = VerticalAlignment.Center, ItemSpacing = 12, LineSpacing = 4 };
+        void Add(Control c) { c.VerticalAlignment = VerticalAlignment.Center; top.Children.Add(c); }
+        Add(Ui.Label("Preview", 15, Ui.AccentDeep, FontWeight.ExtraBold, wrap: false));
         _deviceBox = Ui.Choice<string>(devices, _device.Id, id => { if (_device.Id == id) return; _device = Device.Find(id); Restart(); });
-        _deviceBox.Width = 280;
+        _deviceBox.Width = 250;
         ToolTip.SetTip(_deviceBox, "The screen to play on. Phones show one page at a time when upright, and the open book when sideways.");
         Add(_deviceBox);
         Add(Ui.Check("Open book", _settings.BookLook, v => { _settings.BookLook = v; Restart(); }, "The open-book look with the page turn. Off: flat pictures that slide across."));
         Add(Ui.Check("Read to me", _settings.ReadToMe, v => { _settings.ReadToMe = v; Restart(); }, "Play the recordings and light up the words"));
         Add(Ui.Check("Watch mode", _settings.AutoPlay, v => { _settings.AutoPlay = v; _screen?.Refresh(); }, "Go on by itself, as the parents' Watch mode does"));
         Add(Ui.Check("Ask lines", _settings.Prompts, v => { _settings.Prompts = v; _screen?.Refresh(); _screen?.Engine.Refresh(); }, "Show the questions for the grown-up"));
-        Add(Ui.Button("From the start", () => { _page = 0; _stop = -1; _fromStop = false; Restart(fromStart: true); }, small: true));
-        Add(Ui.Button("Replay", () => Restart(), "Play again from where it started", small: true));
-        Add(Ui.Button("Close", () => _window.ClosePreview(), "Esc", primary: true));
-        _frame = new Border { Background = Brushes.Black, ClipToBounds = true };
-        _box = new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.Both, Margin = new Thickness(16), Child = new Border { BorderBrush = Ui.Line, BorderThickness = new Thickness(6), CornerRadius = new CornerRadius(18), Child = _frame, ClipToBounds = true } };
+        Add(Ui.Check("Bedtime colours", false, v => { _night = v; Restart(); }, "The reader's bedtime colours, as a family who has switched them on sees the book"));
+        var language = Ui.Choice<string>(Strings.Languages.Select(l => (l.Code, l.Name)).ToList(), _language, v => { _language = v; Restart(); });
+        language.Width = 120;
+        ToolTip.SetTip(language, "The language of the reader's own buttons and messages (the book's words stay as they are)");
+        Add(language);
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                Ui.Button("From the start", () => { _page = 0; _stop = -1; _fromStop = false; Restart(fromStart: true); }, "Play the book from its first page", small: true),
+                Ui.Button("Replay", () => Restart(), "Play again from where it started", small: true),
+                Ui.Button("Back to editing", () => _window.ClosePreview(), "Esc", primary: true),
+            },
+        };
+        _frame = new Border { Background = Ui.Brush("#1f2b24"), ClipToBounds = true };
+        _box = new Viewbox
+        {
+            Stretch = Stretch.Uniform, StretchDirection = StretchDirection.Both, Margin = new Thickness(24, 16),
+            Child = new Border { Background = Ui.Brush("#1d1e20"), BorderBrush = Ui.Brush("#1d1e20"), BorderThickness = new Thickness(10), CornerRadius = new CornerRadius(22), Child = _frame, ClipToBounds = true, BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 8, Blur = 30, Color = Color.FromArgb(90, 0, 0, 0) }) },
+        };
         _note = Ui.Help("This is the reader the apps use. Right arrow or Space goes on, Left goes back, W shows the whole page. Esc comes back to editing.");
+        _note.Foreground = Ui.OnStage;
         _note.HorizontalAlignment = HorizontalAlignment.Center;
-        _note.Margin = new Thickness(0, 0, 0, 10);
+        _note.Margin = new Thickness(0, 0, 0, 12);
+        var bar = new DockPanel();
+        DockPanel.SetDock(buttons, Dock.Right);
+        bar.Children.Add(buttons);
+        bar.Children.Add(top);
         var dock = new DockPanel();
-        DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(_note, Dock.Bottom);
-        dock.Children.Add(new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = top, [DockPanel.DockProperty] = Dock.Top });
+        dock.Children.Add(new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = bar, [DockPanel.DockProperty] = Dock.Top });
         dock.Children.Add(_note);
         dock.Children.Add(_box);
         Content = dock;
@@ -89,6 +111,11 @@ sealed class PreviewPanel : UserControl
     void Restart(bool fromStart = false)
     {
         Stop();
+        // The reader's bedtime colours and language, only while it plays here: the editor round it keeps its own.
+        Background = Ui.Stage;
+        _note.Foreground = Ui.OnStage;
+        Palette.Night = _night;
+        Strings.Language = _language;
         if (!_state.HasBook || _state.Book.Pages.Count == 0) return;
         LoadedBook.MaxPictureSide = _device.Phone ? Pictures.PhoneLimit : 0;
         LoadedBook.FullPicturesKept = _device.Phone ? 2 : 4;
@@ -99,7 +126,7 @@ sealed class PreviewPanel : UserControl
         }
         catch (Exception e)
         {
-            _frame.Child = new TextBlock { Text = "The book can't be played yet: " + e.Message, Foreground = Brushes.White, Margin = new Thickness(30), TextWrapping = TextWrapping.Wrap, Width = 400 };
+            _frame.Child = new TextBlock { Text = "The book can't be played yet: " + e.Message, Foreground = Ui.Brush("#fbf5e6"), FontSize = 15, Margin = new Thickness(30), TextWrapping = TextWrapping.Wrap, Width = 400 };
             _frame.Width = _device.Width;
             _frame.Height = _device.Height;
             return;
@@ -150,6 +177,8 @@ sealed class PreviewPanel : UserControl
         }
         _book?.Dispose();
         _book = null;
+        Palette.Night = false;
+        Strings.Language = "en";
         LoadedBook.MaxPictureSide = 0;
         LoadedBook.FullPicturesKept = 4;
     }

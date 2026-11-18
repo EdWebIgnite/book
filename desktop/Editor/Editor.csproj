@@ -10,6 +10,8 @@
     <RootNamespace>BookEditor</RootNamespace>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The dassie over a book with a pencil, on cream (drawn by Reader.Ui.AppIcon, made with BookEditor and its make-icons option). -->
+    <ApplicationIcon>Assets\dassie-editor.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

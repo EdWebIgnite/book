@@ -71,7 +71,8 @@ sealed class Inspector : UserControl
             _body.Children.Add(Section("Moving effects", Effects(p), tag: p.Effects.Count == 0 ? "None" : string.Join(", ", p.Effects.Select(e => Names.Effect(e.Type)))));
             _body.Children.Add(Section("Pictures on top", Layers(p), tag: p.Layers.Count == 0 ? "None" : p.Layers.Count.ToString()));
         }
-        _body.Children.Add(Section("Book", BookSettings(), openByDefault: p is null));
+        // With no pages yet the book's own settings are all there is, so they are open.
+        _body.Children.Add(p is null ? Ui.Section("Book", BookSettings(), open: true) : Section("Book", BookSettings(), openByDefault: false));
         Avalonia.Threading.Dispatcher.UIThread.Post(() => _scroll.Offset = scroll, Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
@@ -118,7 +119,7 @@ sealed class Inspector : UserControl
             ? "Choose what dragging on the picture makes (intro stops or things to find) with the buttons above the picture."
             : "Drag on the picture to draw where the camera stops. The stops play in order, left to right, along the bottom.";
         return Ui.CardBox(Stack(
-            Ui.Label("Nothing selected", 13.5, Ui.Text, FontWeight.Bold),
+            Ui.Label("Nothing selected", 15, Ui.AccentDeep, FontWeight.ExtraBold),
             Ui.Help(what),
             Ui.Help("Click a box to change it. Drag it to move it, drag a white corner to resize it. Hold Shift to draw a new box on top of another."),
             Ui.Help("Delete removes it, the arrow keys nudge it, Ctrl+D makes a copy. P plays the page. Ctrl+Z undoes. F1 lists every shortcut.")));
@@ -130,7 +131,7 @@ sealed class Inspector : UserControl
     {
         Color c = Ui.StopColour(index);
         var panel = new StackPanel();
-        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot((index + 1).ToString(), c), Ui.Label($"Stop {index + 1}", 14, Ui.Text, FontWeight.Bold) } };
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot((index + 1).ToString(), c), Ui.Label($"Stop {index + 1}", 15, Ui.AccentDeep, FontWeight.ExtraBold) } };
         panel.Children.Add(title);
         panel.Children.Add(Ui.Row(
             Ui.Button("Earlier", () => _window.MoveStop(index, index - 1), "Move this stop one place earlier", small: true),
@@ -236,7 +237,7 @@ sealed class Inspector : UserControl
     Control HotspotCard(Page p, Hotspot h, int index)
     {
         var panel = new StackPanel();
-        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot("★", Color.Parse("#a37a00")), Ui.Label($"Thing to find {index + 1}", 14, Ui.Text, FontWeight.Bold) } });
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot("★", Color.Parse("#a37a00")), Ui.Label($"Thing to find {index + 1}", 15, Ui.AccentDeep, FontWeight.ExtraBold) } });
         panel.Children.Add(Ui.Row(
             Ui.Button("Duplicate", _window.DuplicateSelected, "Ctrl+D", small: true),
             Ui.Button("Copy", _window.CopySelected, "Ctrl+C, then Ctrl+V on another explore page", small: true),
@@ -271,7 +272,7 @@ sealed class Inspector : UserControl
         panel.Children.Add(_narration);
         panel.Children.Add(Ui.Heading("Sound effect"));
         panel.Children.Add(SoundRow(h.Sound, v => h.Sound = v, "Plays when it is found: a noise it makes. For the words read aloud, use Read aloud above, so they light up as they are read."));
-        return Ui.CardBox(panel, Ui.Gold);
+        return Ui.CardBox(panel, Ui.Brush("#d9a400"));
     }
 
     // ---------------------------------------------------------------- a picture on top
@@ -279,7 +280,7 @@ sealed class Inspector : UserControl
     Control LayerCard(Page p, Layer l, int index)
     {
         var panel = new StackPanel();
-        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot((index + 1).ToString(), Color.Parse("#7a4fd6")), Ui.Label($"Picture on top {index + 1}", 14, Ui.Text, FontWeight.Bold) } });
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot((index + 1).ToString(), Color.Parse("#7a4fd6")), Ui.Label($"Picture on top {index + 1}", 15, Ui.AccentDeep, FontWeight.ExtraBold) } });
         panel.Children.Add(Ui.Label(l.Image, 12, Ui.Muted, wrap: false));
         panel.Children.Add(Ui.Row(Ui.Button("Delete", _window.DeleteSelected, small: true), Ui.Button("Replace picture...", () => _window.ReplaceLayer(index), small: true)));
         panel.Children.Add(Ui.Help("Drag it on the page to place it, drag a corner to size it. It may sit partly off the page, to come in from the side."));
@@ -314,16 +315,16 @@ sealed class Inspector : UserControl
         }
         panel.Children.Add(Ui.FieldName("While it waits"));
         panel.Children.Add(Ui.Choice<string?>(new List<(string?, string)> { (null, "It keeps still"), ("bob", "It bobs up and down"), ("sway", "It sways") }, l.Idle, v => _state.Change("While it waits", () => l.Idle = v, source: this)));
-        return Ui.CardBox(panel, Ui.Brush("#b08cff"));
+        return Ui.CardBox(panel, Ui.Brush("#8f6fd8"));
     }
 
     Control DryCard(Page p)
     {
         var panel = new StackPanel();
-        panel.Children.Add(Ui.Label("Area the weather misses", 14, Ui.Text, FontWeight.Bold));
+        panel.Children.Add(Ui.Label("Area the weather misses", 15, Ui.AccentDeep, FontWeight.ExtraBold));
         panel.Children.Add(Ui.Help("Rain or snow doesn't fall here, for example under a roof or a tree. Drag it to move it, drag a corner to resize it."));
         panel.Children.Add(Ui.Row(Ui.Button("Delete", _window.DeleteSelected, small: true)));
-        return Ui.CardBox(panel, Ui.Brush("#7fd3f2"));
+        return Ui.CardBox(panel, Ui.Brush("#3fa6c9"));
     }
 
     // ---------------------------------------------------------------- the words printed on the page
@@ -337,7 +338,7 @@ sealed class Inspector : UserControl
     {
         var panel = new StackPanel();
         double aspect = _state.Aspect(p);
-        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot("T", Color.Parse("#c2255c")), Ui.Label("Words on the page", 14, Ui.Text, FontWeight.Bold) } });
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Dot("T", Color.Parse("#c2255c")), Ui.Label("Words on the page", 15, Ui.AccentDeep, FontWeight.ExtraBold) } });
         panel.Children.Add(Ui.Row(
             Ui.Button("Take them off", _window.DeleteSelected, "No printed words on this page (Delete)", small: true),
             Ui.Button("▶ Play", () => _window.OpenPreview(fromStop: false), "See the page in the reader", small: true)));
@@ -390,7 +391,7 @@ sealed class Inspector : UserControl
             if (needH <= 0) return;
             _state.Change("Fit the box", () => t.Box = t.Box with { H = Math.Min(Math.Round(needH + 0.01, 4), 1 - t.Box.Y) }, structure: true);
         }, "Make the box just tall enough for the words", small: true)));
-        return Ui.CardBox(panel, Ui.Brush("#f783ac"));
+        return Ui.CardBox(panel, Ui.Brush("#d6457c"));
     }
 
     // ---------------------------------------------------------------- the page
@@ -503,7 +504,7 @@ sealed class Inspector : UserControl
                 if (e.Dry.Count > 0) row.Children.Add(Ui.Button($"Clear areas ({e.Dry.Count})", () => _state.Change("Clear areas", () => e.Dry.Clear(), structure: true), small: true));
                 box.Children.Add(row);
             }
-            panel.Children.Add(new Border { BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 10), Background = Ui.Brush("#1a1d24"), Child = box });
+            panel.Children.Add(new Border { BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 10), Background = Ui.Raised, Child = box });
         }
         var add = new List<(string, string)> { ("", "Add an effect...") };
         foreach (string t in new[] { PageEffect.Rain, PageEffect.Snow, PageEffect.Leaves, PageEffect.Sparkles, PageEffect.Lightning, PageEffect.Shake }) add.Add((t, Names.Effect(t)));
@@ -534,7 +535,7 @@ sealed class Inspector : UserControl
             bool active = _state.Selected == Sel.Layer && _state.SelIndex == i;
             var row = new Border
             {
-                Background = active ? Ui.Brush("#2a2540") : Brushes.Transparent, BorderBrush = active ? Ui.Brush("#b08cff") : Brushes.Transparent, BorderThickness = new Thickness(1),
+                Background = active ? Ui.SelectWash : Brushes.Transparent, BorderBrush = active ? Ui.Select : Brushes.Transparent, BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6), Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
                 Child = new StackPanel
                 {

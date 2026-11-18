@@ -11,7 +11,7 @@ using AndroidX.Core.View;
 namespace Phone;
 
 /// <summary>The Android app itself. It starts Avalonia with the reader in it (see <see cref="PhoneApp"/>).</summary>
-[Application(Label = Reader.Core.Brand.Name, Icon = "@drawable/icon", Theme = "@style/ReaderTheme", AllowBackup = false)]
+[Application(Label = Reader.Core.Brand.Name, Icon = "@mipmap/ic_launcher", RoundIcon = "@mipmap/ic_launcher_round", Theme = "@style/ReaderTheme", AllowBackup = false)]
 public sealed class AndroidApp : AvaloniaAndroidApplication<PhoneApp>
 {
     public AndroidApp(IntPtr javaReference, JniHandleOwnership transfer) : base(javaReference, transfer) { }

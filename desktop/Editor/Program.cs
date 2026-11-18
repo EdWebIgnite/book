@@ -1,7 +1,5 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Styling;
-using Avalonia.Themes.Fluent;
 
 namespace BookEditor;
 
@@ -21,6 +19,7 @@ static class Program
         if (args.Contains("--help") || args.Contains("-h")) { Console.WriteLine(ShotOptions.Usage); return 0; }
         if (shot is not null) return Screenshot.Take(shot);
         if (args.Contains("--time-words")) return TimeWordsCommand.Run(args);
+        if (Array.IndexOf(args, "--make-icons") is int mi and >= 0) return mi + 1 < args.Length ? IconMaker.Run(args[mi + 1]) : 2;
         EditorApp.OpenAtStart = args.FirstOrDefault(a => !a.StartsWith('-') && Directory.Exists(a));
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
@@ -35,19 +34,7 @@ sealed class EditorApp : Application
     /// <summary>A book folder given on the command line (or by dropping a folder on BookEditor.exe).</summary>
     public static string? OpenAtStart { get; set; }
 
-    public override void Initialize()
-    {
-        Styles.Add(new FluentTheme());
-        RequestedThemeVariant = ThemeVariant.Dark;
-        Resources["SystemAccentColor"] = Ui.AccentColor;
-        Resources["SystemAccentColorDark1"] = Avalonia.Media.Color.Parse("#e0761f");
-        Resources["SystemAccentColorLight1"] = Avalonia.Media.Color.Parse("#ffa04f");
-        // The folding sections on the right: cards on the panel, not black bars.
-        foreach (string key in new[] { "ExpanderHeaderBackground", "ExpanderHeaderBackgroundPointerOver", "ExpanderHeaderBackgroundPressed", "ExpanderContentBackground" })
-            Resources[key] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(key.Contains("PointerOver") ? "#262a33" : "#20232b"));
-        foreach (string key in new[] { "ExpanderHeaderBorderBrush", "ExpanderHeaderBorderBrushPointerOver", "ExpanderHeaderBorderBrushPressed", "ExpanderContentBorderBrush" })
-            Resources[key] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#343946"));
-    }
+    public override void Initialize() => EditorSkin.Install(this);
 
     public override void OnFrameworkInitializationCompleted()
     {

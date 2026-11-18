@@ -171,15 +171,15 @@ sealed class AutoTiming
     {
         _window = window;
         _state = state;
-        _title = Ui.Label("", 14, Ui.Text, FontWeight.Bold);
+        _title = Ui.Label("", 14, Ui.AccentDeep, FontWeight.ExtraBold);
         _text = Ui.Label("", 12.5, Ui.Muted);
         _bar = new ProgressBar { Minimum = 0, Maximum = 1, Height = 8, Margin = new Thickness(0, 8, 0, 8), Foreground = Ui.Accent };
         var stop = Ui.Button("Stop", () => _cancel?.Cancel(), "Stop now. Nothing is changed.", small: true);
         _panel = new Border
         {
-            IsVisible = false, Width = 380, Background = Ui.Panel, BorderBrush = Ui.Accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(16, 12), Margin = new Thickness(0, 0, 400, 110), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 8, Blur = 30, Color = Color.FromArgb(140, 0, 0, 0) }),
+            IsVisible = false, Width = 380, Background = Ui.Card, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(20, 16), Margin = new Thickness(0, 0, 380, 176), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
+            BoxShadow = Ui.Lifted,
             Child = new StackPanel { Children = { _title, _text, _bar, new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { stop } } } },
         };
         Model = new SpeechModel();

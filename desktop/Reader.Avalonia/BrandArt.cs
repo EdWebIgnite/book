@@ -223,3 +223,142 @@ public sealed class Wordmark : Control
         }
     }
 }
+
+/// <summary>
+/// The app icons, drawn in code like the mascot: the dassie peeking over the top of an open book, in
+/// front of a brass sun. The reader's icon is on bottle green; the Book Editor's is on cream paper with
+/// a pencil across the corner, so the two belong together but can't be mistaken for each other on a
+/// taskbar. Very small sizes (24 pixels and under) leave out the book and the sun so the face still
+/// reads. Rendered to .ico and Android launcher pictures by "BookEditor --make-icons" (see the README).
+/// </summary>
+public static class AppIcon
+{
+    /// <summary>What goes behind the picture.</summary>
+    public enum Back
+    {
+        /// <summary>A rounded square: Windows and the Android launcher's square icon.</summary>
+        Square,
+        /// <summary>A circle: Android's round icon.</summary>
+        Circle,
+        /// <summary>Nothing: the foreground of an Android adaptive icon (the colour is a layer of its own).</summary>
+        None,
+    }
+
+    /// <summary>The background colour of each icon, for Android's adaptive icon background layer.</summary>
+    public static Color BackColour(bool editor) => editor ? Color.Parse("#f8f0dc") : Color.Parse("#2f6b50");
+
+    static IBrush Background(bool editor) => new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = editor
+            ? new GradientStops { new GradientStop(Color.Parse("#fffaee"), 0), new GradientStop(Color.Parse("#efe2c2"), 1) }
+            : new GradientStops { new GradientStop(Color.Parse("#4a8a6b"), 0), new GradientStop(Color.Parse("#245640"), 1) },
+    }.ToImmutable();
+
+    static readonly ImmutablePen BookLine = new(new ImmutableSolidColorBrush(Color.Parse("#6f5036")), 1.6, lineJoin: PenLineJoin.Round, lineCap: PenLineCap.Round);
+
+    /// <summary>
+    /// Draw the icon filling a square of <paramref name="size"/> units. <paramref name="art"/> shrinks the
+    /// picture inside the square (Android's adaptive foreground keeps its picture in the middle two thirds).
+    /// </summary>
+    public static void Draw(DrawingContext ctx, double size, bool editor, Back back = Back.Square, double art = 1)
+    {
+        double k = size / 100;
+        using var _ = ctx.PushTransform(Matrix.CreateScale(k, k));
+        bool tiny = size <= 24.5;
+        switch (back)
+        {
+            case Back.Square:
+                ctx.DrawRectangle(Background(editor), editor ? new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#c9b483")), tiny ? 4 : 2) : null,
+                    new Rect(tiny ? 2 : 1, tiny ? 2 : 1, tiny ? 96 : 98, tiny ? 96 : 98), tiny ? 18 : 22, tiny ? 18 : 22);
+                break;
+            case Back.Circle:
+                ctx.DrawEllipse(Background(editor), editor ? new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#c9b483")), 2) : null, new Point(50, 50), 49, 49);
+                break;
+        }
+        using var __ = ctx.PushTransform(Matrix.CreateTranslation(-50, -50) * Matrix.CreateScale(art, art) * Matrix.CreateTranslation(50, 50));
+        if (tiny)
+        {
+            // Just the face, as big as it goes.
+            using (ctx.PushTransform(Matrix.CreateTranslation(6, 14))) Dassie.Draw(ctx, Dassie.Pose.Peek, 88, 88 / Dassie.Aspect(Dassie.Pose.Peek));
+            if (editor) Pencil(ctx, new Point(93, 62), 32, 13);
+            return;
+        }
+        // The sun behind.
+        ctx.DrawEllipse(new ImmutableSolidColorBrush(Color.Parse(editor ? "#f1d68c" : "#f3df9e"), editor ? 0.9 : 0.95), null, new Point(50, 42), 31, 31);
+        // The dassie, its paws on the top of the book.
+        using (ctx.PushTransform(Matrix.CreateTranslation(15, 21))) Dassie.Draw(ctx, Dassie.Pose.Peek, 70, 70 / Dassie.Aspect(Dassie.Pose.Peek));
+        OpenBook(ctx);
+        if (editor) Pencil(ctx, new Point(90.5, 61), 36, 9);
+    }
+
+    /// <summary>An open book seen from the front: two cream pages bowed at the top, with a spine.</summary>
+    static void OpenBook(DrawingContext ctx)
+    {
+        var cover = new ImmutableSolidColorBrush(Color.Parse("#9a4a2c"));
+        ctx.DrawGeometry(cover, null, Geometry.Parse("M12 70 Q31 63 50 70 Q69 63 88 70 L88 88 Q69 82 50 88 Q31 82 12 88 Z"));
+        var page = new ImmutableSolidColorBrush(Color.Parse("#fffcf4"));
+        var shade = new ImmutableSolidColorBrush(Color.Parse("#ead9b5"));
+        ctx.DrawGeometry(page, BookLine, Geometry.Parse("M15 66 Q32 60 50 67 L50 85 Q32 79 15 85 Z"));
+        ctx.DrawGeometry(page, BookLine, Geometry.Parse("M85 66 Q68 60 50 67 L50 85 Q68 79 85 85 Z"));
+        ctx.DrawGeometry(shade, null, Geometry.Parse("M50 67 L50 85 Q47 83 44 82.4 L44 65.6 Q47 66 50 67 Z"));
+        ctx.DrawGeometry(shade, null, Geometry.Parse("M50 67 L50 85 Q53 83 56 82.4 L56 65.6 Q53 66 50 67 Z"));
+        var lines = new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#c9b98e")), 1.4, lineCap: PenLineCap.Round);
+        foreach (double y in new[] { 71.5, 75.5, 79.5 })
+        {
+            ctx.DrawLine(lines, new Point(20, y - 0.6), new Point(41, y + 0.6));
+            ctx.DrawLine(lines, new Point(59, y + 0.6), new Point(80, y - 0.6));
+        }
+        ctx.DrawLine(BookLine, new Point(50, 67), new Point(50, 85));
+    }
+
+    /// <summary>A yellow pencil from its end at <paramref name="tail"/> down to the left, writing on the book's right-hand page.</summary>
+    static void Pencil(DrawingContext ctx, Point tail, double length, double width)
+    {
+        using var _ = ctx.PushTransform(Matrix.CreateRotation(Math.PI * 0.75) * Matrix.CreateTranslation(tail.X, tail.Y));
+        // Drawn along +x from the tail (eraser) to the point.
+        double w = width, h = w / 2, body = length - w * 1.6, ferrule = w * 0.55, eraser = w * 0.7;
+        var outline = new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#5a3d1c")), Math.Max(1.2, w * 0.14), lineJoin: PenLineJoin.Round);
+        ctx.DrawRectangle(new ImmutableSolidColorBrush(Color.Parse("#e79a86")), outline, new Rect(-eraser, -h, eraser, w), h * 0.6, h * 0.6);
+        ctx.DrawRectangle(new ImmutableSolidColorBrush(Color.Parse("#b9b4a8")), outline, new Rect(0, -h, ferrule, w));
+        ctx.DrawRectangle(new ImmutableSolidColorBrush(Color.Parse("#e8b23a")), outline, new Rect(ferrule, -h, body - ferrule, w));
+        ctx.DrawLine(new ImmutablePen(new ImmutableSolidColorBrush(Color.Parse("#c98e1e")), w * 0.18), new Point(ferrule, 0), new Point(body, 0));
+        var cone = new StreamGeometry();
+        using (var g = cone.Open())
+        {
+            g.BeginFigure(new Point(body, -h), true);
+            g.LineTo(new Point(length, 0));
+            g.LineTo(new Point(body, h));
+            g.EndFigure(true);
+        }
+        ctx.DrawGeometry(new ImmutableSolidColorBrush(Color.Parse("#f3d9a6")), outline, cone);
+        var lead = new StreamGeometry();
+        using (var g = lead.Open())
+        {
+            double l0 = body + (length - body) * 0.62;
+            g.BeginFigure(new Point(l0, -h * 0.38), true);
+            g.LineTo(new Point(length, 0));
+            g.LineTo(new Point(l0, h * 0.38));
+            g.EndFigure(true);
+        }
+        ctx.DrawGeometry(new ImmutableSolidColorBrush(Color.Parse("#3d2c22")), null, lead);
+    }
+
+    /// <summary>The icon as a picture of <paramref name="pixels"/> square.</summary>
+    public static Avalonia.Media.Imaging.RenderTargetBitmap Render(int pixels, bool editor, Back back = Back.Square, double art = 1)
+    {
+        var bmp = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(pixels, pixels), new Vector(96, 96));
+        using (DrawingContext ctx = bmp.CreateDrawingContext(true)) Draw(ctx, pixels, editor, back, art);
+        return bmp;
+    }
+
+    /// <summary>The window's icon, at a few sizes so the system can pick.</summary>
+    public static WindowIcon ForWindow(bool editor)
+    {
+        using var bmp = Render(256, editor);
+        var ms = new MemoryStream();
+        bmp.Save(ms);
+        ms.Position = 0;
+        return new WindowIcon(ms);
+    }
+}

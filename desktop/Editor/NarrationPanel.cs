@@ -162,14 +162,14 @@ sealed class NarrationPanel : UserControl
             _wave.WordClicked += i => { _selectedWord = i; RefreshWords(); };
             _wave.Seek += t => Play(t);
             _body.Children.Add(_wave);
-            _body.Children.Add(Ui.Help("Drag the orange edges to trim quiet or mistakes off the start and end. Click the shape to play from there. Drag a word's line to move it."));
+            _body.Children.Add(Ui.Help("Drag the green edges to trim quiet or mistakes off the start and end. Click the shape to play from there. Drag a word's line to move it."));
         }
 
         if (_tapping is not null)
         {
             _body.Children.Add(new Border
             {
-                Background = Ui.Brush("#3a2a14"), BorderBrush = Ui.Accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(10), Margin = new Thickness(0, 6, 0, 4),
+                Background = Ui.SelectWash, BorderBrush = Ui.Select, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Margin = new Thickness(0, 8, 0, 4),
                 Child = new StackPanel
                 {
                     Spacing = 6,
@@ -221,7 +221,7 @@ sealed class NarrationPanel : UserControl
         var time = Ui.Label("0.0 seconds", 13, Ui.Text);
         _body.Children.Add(new Border
         {
-            Background = Ui.Brush("#3a1a1a"), BorderBrush = Ui.Bad, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(10),
+            Background = Ui.BadWash, BorderBrush = Ui.Bad, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12),
             Child = new StackPanel
             {
                 Spacing = 6,
@@ -260,14 +260,14 @@ sealed class NarrationPanel : UserControl
             bool sel = i == _selectedWord && _tapping is null;
             var chip = new Border
             {
-                Background = i == lit ? Ui.Brush("#ffe066") : sel ? Ui.Brush("#2f3441") : Ui.Raised, CornerRadius = new CornerRadius(7), Padding = new Thickness(7, 3), Margin = new Thickness(0, 0, 4, 4),
-                BorderBrush = sel ? Ui.Accent : Brushes.Transparent, BorderThickness = new Thickness(1), Cursor = new Cursor(StandardCursorType.Hand),
+                Background = i == lit ? Ui.Brush("#f3df9e") : sel ? Ui.SelectWash : Ui.Raised, CornerRadius = new CornerRadius(7), Padding = new Thickness(7, 3), Margin = new Thickness(0, 0, 4, 4),
+                BorderBrush = sel ? Ui.Select : Brushes.Transparent, BorderThickness = new Thickness(1.5), Cursor = new Cursor(StandardCursorType.Hand),
                 Child = new StackPanel
                 {
                     Children =
                     {
-                        new TextBlock { Text = text, FontSize = 12.5, FontWeight = FontWeight.SemiBold, Foreground = i == lit ? Ui.AccentInk : Ui.Text },
-                        new TextBlock { Text = time, FontSize = 10.5, Foreground = i == lit ? Ui.AccentInk : Ui.Muted },
+                        new TextBlock { Text = text, FontSize = 12.5, FontWeight = FontWeight.SemiBold, Foreground = Ui.Text },
+                        new TextBlock { Text = time, FontSize = 10.5, Foreground = i == lit ? Ui.Text : Ui.Muted },
                     },
                 },
             };
@@ -447,7 +447,7 @@ sealed class NarrationPanel : UserControl
 
 /// <summary>
 /// The shape of a recording, with the trimmed part, the playhead and a line where each word starts.
-/// Drag the orange edges to trim, click to play from a point, drag a word's line to move it.
+/// Drag the green edges to trim, click to play from a point, drag a word's line to move it.
 /// </summary>
 sealed class Waveform : Control
 {
@@ -492,21 +492,21 @@ sealed class Waveform : Control
     double X(double t) => Length <= 0 ? 0 : t / Length * Bounds.Width;
     double T(double x) => Math.Clamp(x / Math.Max(1, Bounds.Width) * Length, 0, Length);
 
-    static readonly Typeface Face = new(FontFamily.Default);
+    static readonly Typeface Face = new(Ui.Font, FontStyle.Normal, FontWeight.SemiBold);
 
     public override void Render(DrawingContext ctx)
     {
         double w = Bounds.Width, h = Bounds.Height, mid = (h - 16) / 2;
-        ctx.DrawRectangle(Ui.Field, null, new Rect(0, 0, w, h), 6, 6);
-        var on = new SolidColorBrush(Color.Parse("#7fb8ff")); var off = new SolidColorBrush(Color.Parse("#3a4558"));
+        ctx.DrawRectangle(Ui.Field, new Pen(Ui.Line, 1), new Rect(0.5, 0.5, w - 1, h - 1), 6, 6);
+        var on = new SolidColorBrush(Color.Parse("#4a8a6b")); var off = new SolidColorBrush(Color.Parse("#cdc3ad"));
         for (int i = 0; i < _peaks.Length; i++)
         {
             double x = i * w / _peaks.Length, t = (i + 0.5) / _peaks.Length * Length;
             double a = Math.Max(1, _peaks[i] * mid * 0.95);
             ctx.FillRectangle(t >= _start && t <= _end ? on : off, new Rect(x, mid - a, Math.Max(1, w / _peaks.Length - 0.4), a * 2));
         }
-        // Trimmed-off parts are shaded, with an orange handle at each edge.
-        var shade = new SolidColorBrush(Colors.Black, 0.45);
+        // Trimmed-off parts are shaded, with a green handle at each edge.
+        var shade = new SolidColorBrush(Color.Parse("#2b2118"), 0.12);
         ctx.FillRectangle(shade, new Rect(0, 0, X(_start), h));
         ctx.FillRectangle(shade, new Rect(X(_end), 0, w - X(_end), h));
         foreach (double t in new[] { _start, _end })
@@ -518,15 +518,15 @@ sealed class Waveform : Control
         for (int i = 0; i < _times.Count; i++)
         {
             double x = X(_times[i]);
-            var brush = i == _lit ? Ui.Gold : Ui.Brush("#ffe9a8");
+            var brush = i == _lit ? Ui.Select : Ui.Brush("#a8812f");
             ctx.FillRectangle(brush, new Rect(x - 0.75, 0, 1.5, h - 16));
             if (i < _wordText.Count)
             {
-                var ft = new FormattedText(_wordText[i], CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 10.5, i == _lit ? Ui.Gold : Ui.Muted);
+                var ft = new FormattedText(_wordText[i], CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 10.5, i == _lit ? Ui.Text : Ui.Muted);
                 ctx.DrawText(ft, new Point(x + 2, h - 15));
             }
         }
-        if (_play >= 0) ctx.FillRectangle(Brushes.White, new Rect(X(_play) - 1, 0, 2, h));
+        if (_play >= 0) ctx.FillRectangle(Ui.Bad, new Rect(X(_play) - 1, 0, 2, h));
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

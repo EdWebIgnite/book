@@ -20,7 +20,7 @@ namespace BookEditor;
 /// left, the page being edited in the middle, settings for what is selected on the right, and the
 /// camera's journey along the bottom. Preview, Check book and Export open over it.
 /// </summary>
-sealed class MainWindow : Window
+sealed partial class MainWindow : Window
 {
     readonly EditorState _state = new();
     readonly Images _images = new();
@@ -38,8 +38,6 @@ sealed class MainWindow : Window
     readonly Dialogs _dialogs = new();
 
     readonly TextBox _title;
-    readonly TextBlock _status;
-    readonly Button _undo, _redo, _save;
     readonly Border _toast;
     readonly TextBlock _toastText;
     readonly Border _dropHint;
@@ -47,21 +45,31 @@ sealed class MainWindow : Window
     readonly Control _welcome;
     readonly Border _canvasBar;
     readonly Control _help;
-    readonly Border _empty;
+    readonly Control _empty;
     DispatcherTimer? _toastTimer;
     (string Kind, string Json)? _clipboard;
     bool _closingConfirmed;
     bool _updatingTitle;
 
+    /// <summary>What the editor remembers about itself between runs (never about a book).</summary>
+    public EditorSettings Settings { get; }
+
+    /// <summary>The smallest the window can be: it fits a 1366 x 768 laptop at 125% scaling, taskbar and all.</summary>
+    public const double SmallestWidth = 960, SmallestHeight = 560;
+
     public MainWindow(bool screenshotMode = false)
     {
         ScreenshotMode = screenshotMode;
-        Title = "Book Editor";
+        Title = EditorBrand.Name;
         Width = 1440;
         Height = 900;
-        MinWidth = 1000;
-        MinHeight = 640;
+        MinWidth = SmallestWidth;
+        MinHeight = SmallestHeight;
         Background = Ui.Bg;
+        FontFamily = Ui.Font;
+        Settings = EditorSettings.Load();
+        Ui.Surround = Settings.Surround;
+        try { Icon = Reader.Ui.AppIcon.ForWindow(editor: true); } catch (Exception) { }
         _recovery = new Recovery();
         _recent = new RecentBooks();
         _images.Synchronous = screenshotMode;
@@ -73,15 +81,23 @@ sealed class MainWindow : Window
 
         Timing = new AutoTiming(this, _state);
         _canvas = new PageCanvas(_state, _images);
-        _pages = new PageList(_state, _images, this) { Width = 210 };
-        _inspector = new Inspector(_state, this) { Width = 380 };
+        _canvas.Overlays.Crease = Settings.Crease;
+        _canvas.Overlays.Frames.Clear();
+        foreach (string f in Settings.Frames) if (Editor.Core.Device.All.Any(d => d.Id == f)) _canvas.Overlays.Frames.Add(f);
+        _canvas.ZoomChanged += RefreshStatus;
+        _pages = new PageList(_state, _images, this) { Width = 196 };
+        _inspector = new Inspector(_state, this) { Width = 356 };
         _timeline = new Timeline(_state, _images, this);
         _preview = new PreviewPanel(_state, this) { IsVisible = false };
-        _check = new CheckPanel(_state, this) { IsVisible = false, Width = 460, HorizontalAlignment = HorizontalAlignment.Right };
+        _check = new CheckPanel(_state, this) { IsVisible = false, Width = 440, HorizontalAlignment = HorizontalAlignment.Right };
         _export = new ExportPanel(_state, this) { IsVisible = false };
 
-        // ---- the top bar
-        _title = new TextBox { Width = 300, FontSize = 16, FontWeight = FontWeight.Bold, PlaceholderText = "Book title", Background = Brushes.Transparent, BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        // ---- the top bar: the name, the menus, the tools, the book's title, the output
+        _title = new TextBox
+        {
+            MinWidth = 120, MaxWidth = 420, FontSize = 14, FontWeight = FontWeight.Bold, PlaceholderText = "Book title", VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(12, 0),
+        };
         ToolTip.SetTip(_title, "The book's title, as it shows on the shelf");
         _title.TextChanged += (_, _) =>
         {
@@ -90,53 +106,11 @@ sealed class MainWindow : Window
             if (t == _state.Book.Title) return;
             _state.Change("Title", () => _state.Book.Title = t, mergeKey: "title", source: _title);
         };
-        _status = Ui.Label("", 12.5, Ui.Muted, wrap: false);
-        _status.VerticalAlignment = VerticalAlignment.Center;
-        _undo = Ui.Button("Undo", _state.Undo, "Undo (Ctrl+Z)");
-        _redo = Ui.Button("Redo", _state.Redo, "Redo (Ctrl+Y)");
-        _save = Ui.Button("Save", Save, "Save (Ctrl+S). A safety copy is also kept every few seconds while there are unsaved changes.", primary: true);
-        var open = Ui.Button("Open", () => _ = OpenFolderDialog(), "Open a book folder (Ctrl+O)");
-        open.ContextFlyout = null;
-        var recentButton = Ui.Button("Recent ▾", ShowRecent, "Books opened lately");
-        _recentButton = recentButton;
-        var left = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        left.Children.Add(Ui.Label("Book Editor", 15, Ui.Accent, FontWeight.ExtraBold, wrap: false));
-        left.Children[0].VerticalAlignment = VerticalAlignment.Center;
-        left.Children[0].Margin = new Thickness(0, 0, 6, 0);
-        left.Children.Add(_title);
-        left.Children.Add(NewButton = Ui.Button("New", () => _ = NewBook(), "Start a new book (Ctrl+N)"));
-        left.Children.Add(open);
-        left.Children.Add(recentButton);
-        var right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        right.Children.Add(_status);
-        right.Children.Add(_undo);
-        right.Children.Add(_redo);
-        right.Children.Add(PlayButton = Ui.Button("▶ Play", () => OpenPreview(fromStop: true), "Play from the selected stop in the reader (P or F5)"));
-        right.Children.Add(CheckButton = Ui.Button("Check book", OpenCheck, "Look for problems (F7)"));
-        right.Children.Add(ExportButton = Ui.Button("Export", OpenExport, "Make a copy ready for the apps (Ctrl+E)"));
-        right.Children.Add(HelpButton = Ui.Button("?", ShowHelp, "Help, keys and the step-by-step walkthrough (F1)"));
-        right.Children.Add(_save);
-        var bar = new DockPanel { Margin = new Thickness(12, 8) };
-        DockPanel.SetDock(right, Dock.Right);
-        bar.Children.Add(right);
-        bar.Children.Add(left);
-        var top = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = bar };
+        var top = TopBar();
 
         // ---- above the page: what dragging makes, and what is shown over the picture
-        _canvasBar = new Border { Background = Ui.Bg, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(10, 6) };
-        _empty = new Border
-        {
-            IsVisible = false, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 460,
-            Child = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    Ui.Label("This book has no pages yet", 18, Ui.Text, FontWeight.Bold),
-                    Ui.Label("Drag page pictures onto the window, or press \"+ Add pictures\" on the left. A picture can be a whole spread, or add a left and a right page and they are joined into one spread.", 13.5, Ui.Muted),
-                },
-            },
-        };
+        _canvasBar = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(12, 0), Height = 44 };
+        _empty = EmptyBook();
         var center = new DockPanel();
         DockPanel.SetDock(_canvasBar, Dock.Top);
         center.Children.Add(_canvasBar);
@@ -158,28 +132,33 @@ sealed class MainWindow : Window
         _welcome = Welcome();
         _help = HelpSheet();
         _help.IsVisible = false;
+        _about = AboutSheet();
+        _about.IsVisible = false;
 
-        _toastText = new TextBlock { Foreground = Ui.Bg, FontSize = 14, TextWrapping = TextWrapping.Wrap, MaxWidth = 700 };
+        _toastText = new TextBlock { Foreground = Ui.Brush("#fbf5e6"), FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, MaxWidth = 640, VerticalAlignment = VerticalAlignment.Center };
         _toast = new Border
         {
-            Background = Ui.Brush("#f2f3f6"), CornerRadius = new CornerRadius(10), Padding = new Thickness(16, 10), IsVisible = false, IsHitTestVisible = false,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 200), Child = _toastText,
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 6, Blur = 24, Color = Color.FromArgb(128, 0, 0, 0) }),
+            Background = Ui.AccentDeep, CornerRadius = new CornerRadius(8), Padding = new Thickness(16, 10), IsVisible = false, IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 24), Child = _toastText,
+            BoxShadow = Ui.Lifted,
         };
         _dropHint = new Border
         {
-            IsVisible = false, IsHitTestVisible = false, Margin = new Thickness(12), BorderBrush = Ui.Accent, BorderThickness = new Thickness(3), CornerRadius = new CornerRadius(12),
-            Background = new SolidColorBrush(Color.FromArgb(36, 255, 138, 42)),
-            Child = new TextBlock { Text = "Drop pictures to add pages, a sound to use it as the selected stop's recording, or a book folder to open it", FontSize = 20, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 700, TextAlignment = TextAlignment.Center },
+            IsVisible = false, IsHitTestVisible = false, Margin = new Thickness(16), BorderBrush = Ui.Accent, BorderThickness = new Thickness(3), CornerRadius = new CornerRadius(12),
+            Background = new SolidColorBrush(Color.FromArgb(215, 233, 240, 228)),
+            Child = new TextBlock { Text = "Drop pictures to add pages, a sound to use it as the selected stop's recording, a book folder or a .picturebook file to open it", FontSize = 18, FontWeight = FontWeight.Bold, Foreground = Ui.AccentDeep, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 640, TextAlignment = TextAlignment.Center },
         };
 
         _bookFile = BookFileSheet();
         _bookFile.IsVisible = false;
         Tour = new Walkthrough(this);
-        var layers = new Panel { Children = { _workspace, _welcome, _preview, _export, _help, _bookFile, Timing.Panel, Tour.Layer, _dialogs, _dropHint, _toast } };
+        var layers = new Panel { Children = { _workspace, _welcome, _preview, _export, _help, _about, _bookFile, Timing.Panel, Tour.Layer, _dialogs, _dropHint, _toast } };
+        var status = StatusBar();
         var rootDock = new DockPanel();
         DockPanel.SetDock(top, Dock.Top);
+        DockPanel.SetDock(status, Dock.Bottom);
         rootDock.Children.Add(top);
+        rootDock.Children.Add(status);
         rootDock.Children.Add(layers);
         Content = rootDock;
 
@@ -194,11 +173,11 @@ sealed class MainWindow : Window
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = DragDropEffects.Copy);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(KeyDownEvent, OnKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        if (!screenshotMode) PlaceWindow();
         RefreshChrome();
+        RefreshCanvasBar();
     }
 
-    readonly Button _recentButton;
-    readonly List<Button> _needBook = new();
 
     // ---------------------------------------------------------------- shared with the panels
 
@@ -229,6 +208,7 @@ sealed class MainWindow : Window
         if (why is Why.Book or Why.Structure or Why.Selection) RefreshCanvasBar();
         RefreshChrome();
         if (why == Why.Book && source != _title) SetTitleBox();
+        if (why == Why.Book) FillRecentMenu();
     }
 
     void SetTitleBox()
@@ -238,182 +218,7 @@ sealed class MainWindow : Window
         _updatingTitle = false;
     }
 
-    void RefreshChrome()
-    {
-        bool has = _state.HasBook;
-        _welcome.IsVisible = !has;
-        _workspace.IsVisible = has;
-        _title.IsEnabled = has;
-        _save.IsEnabled = has;
-        foreach (Button b in _needBook) b.IsEnabled = has;
-        _undo.IsEnabled = _state.History.CanUndo;
-        _redo.IsEnabled = _state.History.CanRedo;
-        ToolTip.SetTip(_undo, _state.History.UndoLabel is string u ? $"Undo {u.ToLowerInvariant()} (Ctrl+Z)" : "Nothing to undo");
-        ToolTip.SetTip(_redo, _state.History.RedoLabel is string r ? $"Redo {r.ToLowerInvariant()} (Ctrl+Y)" : "Nothing to redo");
-        _status.Text = !has ? "" : _state.Dirty ? "Not saved yet" : _state.SavedAt is DateTime t ? $"Saved at {t:HH:mm}" : "No changes";
-        _empty.IsVisible = has && _state.Book.Pages.Count == 0;
-        Title = has ? $"{(_state.Dirty ? "* " : "")}{(_state.Book.Title.Length > 0 ? _state.Book.Title : "Untitled")} - Book Editor" : "Book Editor";
-    }
-
-    void RefreshCanvasBar()
-    {
-        var row = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 10, LineSpacing = 4 };
-        if (_state.Page is Page p)
-        {
-            if (p.Explore)
-            {
-                row.Children.Add(Ui.Label("Dragging draws", 12.5, Ui.Muted, wrap: false));
-                row.Children[^1].VerticalAlignment = VerticalAlignment.Center;
-                row.Children.Add(Ui.Segments(new List<(string, string, string)>
-                {
-                    ("stop", "Intro stops", "Stops the camera visits before the child explores"),
-                    ("hot", "Things to find", "Things the child taps to find"),
-                }, _state.Drawing == DrawKind.Hotspot ? "hot" : "stop", v => { _state.Drawing = v == "hot" ? DrawKind.Hotspot : DrawKind.Stop; RefreshCanvasBar(); }));
-            }
-            else if (_state.Drawing == DrawKind.Dry)
-            {
-                row.Children.Add(Ui.Label("Drag on the picture to mark an area the weather misses.", 12.5, Ui.Warn, wrap: false));
-            }
-            else
-            {
-                row.Children.Add(Ui.Label("Drag on the picture to draw a stop.", 12.5, Ui.Muted, wrap: false));
-            }
-            row.Children[^1].VerticalAlignment = VerticalAlignment.Center;
-            row.Children.Add(new Border { Width = 1, Background = Ui.Line, Margin = new Thickness(4, 2) });
-            row.Children.Add(Ui.Check("Spread middle", _canvas.Overlays.Crease, v => { _canvas.Overlays.Crease = v; _canvas.InvalidateVisual(); }, "Show the crease of a double-page spread and its left and right pages"));
-            row.Children.Add(Ui.Label("Show what these screens see:", 12.5, Ui.Muted, wrap: false));
-            row.Children[^1].VerticalAlignment = VerticalAlignment.Center;
-            foreach (var (id, text) in new[] { ("s22-upright", "Phone upright"), ("s22-sideways", "Phone sideways"), ("cheap-sideways", "Small phone"), ("tablet-sideways", "Tablet"), ("window", "Computer") })
-            {
-                row.Children.Add(Ui.Check(text, _canvas.Overlays.Frames.Contains(id), v =>
-                {
-                    if (v) _canvas.Overlays.Frames.Add(id); else _canvas.Overlays.Frames.Remove(id);
-                    _canvas.InvalidateVisual();
-                }, "Around the selected stop, a frame shows what this screen shows. Upright phones show one page of a spread at a time."));
-            }
-            row.Children.Add(Ui.Button("Fit", _canvas.Fit, "Show the whole page (Ctrl and the mouse wheel zoom; drag with the middle button or Space to move)", small: true));
-        }
-        foreach (Control c in row.Children) c.VerticalAlignment = VerticalAlignment.Center;
-        _canvasBar.Child = row;
-    }
-
-    /// <summary>A short message at the bottom of the window that goes away by itself.</summary>
-    public void Say(string text, double seconds = 5)
-    {
-        _toastText.Text = text;
-        _toast.IsVisible = true;
-        _toastTimer?.Stop();
-        _toastTimer = new DispatcherTimer(TimeSpan.FromSeconds(seconds), DispatcherPriority.Normal, (_, _) => { _toast.IsVisible = false; _toastTimer?.Stop(); });
-        _toastTimer.Start();
-    }
-
     public void FocusForKeys() => _canvas.Focus();
-
-    // ---------------------------------------------------------------- the welcome screen
-
-    /// <summary>The welcome screen's "Start a new book", for the walkthrough to point at.</summary>
-    public Button? WelcomeNew { get; private set; }
-
-    // On the very first run, the welcome screen offers the walkthrough.
-    readonly Border _offer = new() { IsVisible = false };
-
-    /// <summary>The first run with a book given to open: ask about the walkthrough in a question instead.</summary>
-    public async Task AskAboutTour()
-    {
-        int a = await _dialogs.Ask("New to the Book Editor?", "A short walkthrough shows you how to make a book, one step at a time. You can stop it whenever you like and carry on later from the ? button.",
-            new[] { "Show me how", "No thanks" }, 0, 1);
-        if (a == 0) Tour.Start(0); else Tour.Decline();
-    }
-
-    public void OfferTour()
-    {
-        _offer.Child = new Border
-        {
-            Background = Ui.Brush("#2a2116"), BorderBrush = Ui.Accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 12), Margin = new Thickness(0, 6, 0, 6),
-            Child = new StackPanel
-            {
-                Spacing = 6,
-                Children =
-                {
-                    Ui.Label("New to the Book Editor?", 15, Ui.Text, FontWeight.Bold),
-                    Ui.Label("A short walkthrough shows you how to make your first book, one step at a time: pictures, stops, words, a voice, and sending it to a phone. You can stop it whenever you like and carry on later from the ? button.", 13, Ui.Text),
-                    Ui.Row(Ui.Button("Show me how", () => { _offer.IsVisible = false; Tour.Start(0); }, primary: true), Ui.Button("No thanks", () => { _offer.IsVisible = false; Tour.Decline(); })),
-                },
-            },
-        };
-        _offer.IsVisible = true;
-    }
-
-    Control Welcome()
-    {
-        var list = new StackPanel { Spacing = 6 };
-        var body = new StackPanel
-        {
-            Spacing = 12, MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                Ui.Label("Make a picture book", 26, Ui.Text, FontWeight.ExtraBold),
-                Ui.Label("Each book is a folder holding its pictures, sounds and a book.json file. Start a new one, or open a book folder you already have.", 14, Ui.Muted),
-                Ui.Row(WelcomeNew = Ui.Button("Start a new book", () => _ = NewBook(), "Ctrl+N", primary: true), Ui.Button("Open a book folder...", () => _ = OpenFolderDialog(), "Ctrl+O")),
-                _offer,
-                list,
-            },
-        };
-        void Fill()
-        {
-            list.Children.Clear();
-            var recent = _recent.Existing();
-            if (recent.Count > 0)
-            {
-                list.Children.Add(Ui.Heading("Opened lately"));
-                foreach (string f in recent.Take(8)) list.Children.Add(BookLink(f));
-            }
-            string? content = BookLibrary.FindContent(null, AppContext.BaseDirectory, Environment.CurrentDirectory);
-            if (content is not null)
-            {
-                var samples = new List<string>();
-                try { samples = BookLibrary.List(content).Select(b => b.Folder).Where(f => !recent.Contains(Path.GetFullPath(f))).ToList(); } catch (Exception) { }
-                if (samples.Count > 0)
-                {
-                    list.Children.Add(Ui.Heading("Books in the reader's content folder"));
-                    foreach (string f in samples) list.Children.Add(BookLink(f));
-                }
-            }
-        }
-        var root = new Border { Background = Ui.Bg, Child = new ScrollViewer { Content = new Border { Padding = new Thickness(40), Child = body } } };
-        root.AttachedToVisualTree += (_, _) => Fill();
-        root.PropertyChanged += (_, e) => { if (e.Property == IsVisibleProperty && root.IsVisible) Fill(); };
-        return root;
-    }
-
-    Control BookLink(string folder)
-    {
-        string title = Path.GetFileName(folder);
-        try { title = BookLibrary.Describe(folder).Title; } catch (Exception) { }
-        var b = new Button
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 8),
-            Content = new StackPanel { Children = { Ui.Label(title, 14, Ui.Text, FontWeight.SemiBold), Ui.Label(folder, 11.5, Ui.Muted) } },
-        };
-        b.Click += (_, _) => _ = OpenBook(folder);
-        return b;
-    }
-
-    void ShowRecent()
-    {
-        var menu = new MenuFlyout();
-        var recent = _recent.Existing();
-        if (recent.Count == 0) menu.Items.Add(new MenuItem { Header = "No books opened yet", IsEnabled = false });
-        foreach (string f in recent)
-        {
-            string title = Path.GetFileName(f);
-            try { title = BookLibrary.Describe(f).Title + "   (" + f + ")"; } catch (Exception) { }
-            var item = new MenuItem { Header = title };
-            item.Click += (_, _) => _ = OpenBook(f);
-            menu.Items.Add(item);
-        }
-        menu.ShowAt(_recentButton);
-    }
 
     // ---------------------------------------------------------------- opening, new, saving
 
@@ -421,7 +226,7 @@ sealed class MainWindow : Window
     async Task<bool> OkToLeave()
     {
         if (!_state.HasBook || !_state.Dirty) return true;
-        int a = await _dialogs.Ask("Save your changes?", $"\"{_state.Book.Title}\" has changes that aren't saved.", new[] { "Save", "Don't save", "Cancel" }, 0, 2);
+        int a = await _dialogs.Ask("Save your changes?", $"\"{(_state.Book.Title.Length > 0 ? _state.Book.Title : "This book")}\" has changes that aren't saved yet. If you don't save, they are lost.", new[] { "Save", "Don't save", "Cancel" }, 0, 2);
         if (a == 2) return false;
         if (a == 0) Save();
         else _recovery.Clear(_state.Project!.Folder);
@@ -432,7 +237,9 @@ sealed class MainWindow : Window
     {
         if (!await OkToLeave()) return;
         string? folder = await PickFolder("Open a book folder");
-        if (folder is not null) await OpenBook(folder, askFirst: false);
+        if (folder is null) return;
+        // A book file chosen by mistake in a folder picker can't happen, but a folder with no book in it and no pictures can.
+        await OpenBook(folder, askFirst: false);
     }
 
     public async Task OpenBook(string folder, bool askFirst = true)
@@ -442,7 +249,7 @@ sealed class MainWindow : Window
         try { project = BookProject.Open(folder); }
         catch (Exception e)
         {
-            Say("That folder couldn't be opened: " + e.Message, 8);
+            Problem($"\"{Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}\" couldn't be opened as a book. {e.Message}");
             _recent.Remove(folder);
             return;
         }
@@ -466,25 +273,31 @@ sealed class MainWindow : Window
         if (!await OkToLeave()) return;
         string parent = EditorPaths.DefaultBooksFolder;
         var title = Ui.TextField("", "For example: Moss and the Biggest Puddle");
-        var where = Ui.Label(parent, 12, Ui.Text);
-        var create = Ui.Button("Make the book", () => { }, primary: true);
+        var where = Ui.Label(parent, 12.5, Ui.Text, wrap: false);
+        where.VerticalAlignment = VerticalAlignment.Center;
+        var problem = Ui.Label("", 12.5, Ui.Bad, FontWeight.Bold);
+        problem.IsVisible = false;
+        var create = Ui.Button("Make the book", () => { }, "Enter", primary: true);
+        var change = Ui.Button("Change...", async () => { if (await PickFolder("Where should the book's folder go?") is string f) { parent = f; where.Text = f; } }, small: true);
+        var whereRow = new DockPanel { Children = { new Border { [DockPanel.DockProperty] = Dock.Right, Margin = new Thickness(8, 0, 0, 0), Child = change },
+            new Border { Background = Ui.Raised, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6), Child = where } } };
         var form = new StackPanel
         {
             Children =
             {
-                Ui.Label("Start a new book", 17, Ui.Text, FontWeight.Bold),
-                Ui.FieldName("What is the book called?"), title,
-                Ui.FieldName("Its folder goes in"),
-                new Border { Background = Ui.Field, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Padding = new Thickness(8, 6), Child = where },
-                Ui.Row(Ui.Button("Change...", async () => { if (await PickFolder("Where should the book's folder go?") is string f) { parent = f; where.Text = f; } }, small: true)),
+                Ui.Title("Start a new book"),
+                Ui.FieldName("What is the book called?"), title, problem,
+                Ui.FieldName("Its folder goes in"), whereRow,
                 Ui.Help("A folder named after the title is made there. Everything the book uses (pictures, sounds, recordings) is kept in it."),
-                Ui.Row(create, Ui.Button("Cancel", () => _dialogs.Close())),
+                Dialogs.Buttons(create, Ui.Button("Cancel", () => _dialogs.Close(), "Esc")),
             },
         };
+        title.KeyDown += (_, e) => { if (e.Key == Key.Enter) { e.Handled = true; create.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); } };
+        title.TextChanged += (_, _) => problem.IsVisible = false;
         create.Click += (_, _) =>
         {
             string name = (title.Text ?? "").Trim();
-            if (name.Length == 0) { Say("Type the book's title first."); return; }
+            if (name.Length == 0) { problem.Text = "Type the book's title first."; problem.IsVisible = true; title.Focus(); return; }
             try
             {
                 Directory.CreateDirectory(parent);
@@ -495,7 +308,7 @@ sealed class MainWindow : Window
                 SetTitleBox();
                 Say("Now add the page pictures: drag them onto the window, or press \"+ Add pictures\".", 7);
             }
-            catch (Exception e) { Say("The book's folder couldn't be made: " + e.Message, 8); }
+            catch (Exception e) { problem.Text = "The book's folder couldn't be made there: " + e.Message + " Try another place with Change."; problem.IsVisible = true; }
         };
         _dialogs.ShowPanel(form, () => { });
         Dispatcher.UIThread.Post(() => title.Focus());
@@ -509,12 +322,13 @@ sealed class MainWindow : Window
             _state.Save();
             _recovery.Clear(_state.Project!.Folder);
             Say("Saved.", 2);
+            RefreshStatus();
         }
         catch (Exception e)
         {
             // The recovery copy still holds the changes, so nothing is lost.
             _recovery.Write(_state.Project!);
-            Say("The book couldn't be saved: " + e.Message + " Your changes are kept in a safety copy.", 10);
+            Problem("The book couldn't be saved: " + e.Message + " Nothing is lost: your changes are kept in a safety copy, and the book offers them back when it is opened again.", 12);
         }
     }
 
@@ -526,6 +340,7 @@ sealed class MainWindow : Window
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
+        if (!ScreenshotMode) RememberWindow();
         if (_closingConfirmed || !_state.HasBook || !_state.Dirty || ScreenshotMode) return;
         e.Cancel = true;
         if (await OkToLeave())
@@ -549,10 +364,12 @@ sealed class MainWindow : Window
     {
         try
         {
-            var r = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = title, AllowMultiple = false });
-            return r.Count > 0 ? r[0].TryGetLocalPath() : null;
+            var r = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = title, AllowMultiple = false, SuggestedStartLocation = await StartFolder() });
+            string? path = r.Count > 0 ? r[0].TryGetLocalPath() : null;
+            if (path is not null) Remember(path);
+            return path;
         }
-        catch (Exception e) { Say("The folder picker couldn't open: " + e.Message); return null; }
+        catch (Exception e) { Problem("The folder picker couldn't open: " + e.Message); return null; }
     }
 
     public async Task<string[]> PickFiles(string title, string[] patterns, string kind, bool many)
@@ -561,12 +378,29 @@ sealed class MainWindow : Window
         {
             var r = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = title, AllowMultiple = many,
+                Title = title, AllowMultiple = many, SuggestedStartLocation = await StartFolder(),
                 FileTypeFilter = new[] { new FilePickerFileType(kind) { Patterns = patterns } },
             });
-            return r.Select(f => f.TryGetLocalPath()).OfType<string>().ToArray();
+            string[] paths = r.Select(f => f.TryGetLocalPath()).OfType<string>().ToArray();
+            if (paths.Length > 0) Remember(paths[0]);
+            return paths;
         }
-        catch (Exception e) { Say("The file picker couldn't open: " + e.Message); return Array.Empty<string>(); }
+        catch (Exception e) { Problem("The file picker couldn't open: " + e.Message); return Array.Empty<string>(); }
+    }
+
+    /// <summary>Where a picker starts: the folder last picked from, or the book's own folder.</summary>
+    async Task<IStorageFolder?> StartFolder()
+    {
+        string? at = Settings.LastFolder is string f && Directory.Exists(f) ? f : _state.Project?.Folder;
+        if (at is null) return null;
+        try { return await StorageProvider.TryGetFolderFromPathAsync(at); }
+        catch (Exception) { return null; }
+    }
+
+    void Remember(string path)
+    {
+        Settings.Picked(path);
+        if (!ScreenshotMode) Settings.Save();
     }
 
     public async Task<string?> PickOneFile(string title, string[] patterns, string kind) => (await PickFiles(title, patterns, kind, false)).FirstOrDefault();
@@ -933,6 +767,7 @@ sealed class MainWindow : Window
         _dropHint.IsVisible = false;
         var paths = e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>().ToList() ?? new List<string>();
         if (paths.Count == 0) return;
+        if (paths.FirstOrDefault(f => f.EndsWith(BookPackage.Extension, StringComparison.OrdinalIgnoreCase)) is string package) { _ = OpenBookFile(package); return; }
         string? folder = paths.FirstOrDefault(Directory.Exists);
         if (folder is not null)
         {
@@ -992,49 +827,34 @@ sealed class MainWindow : Window
 
     public void CloseExport() => _export.IsVisible = false;
 
-    void ShowHelp()
-    {
-        if (!_help.IsVisible) FillTourButtons();
-        _help.IsVisible = !_help.IsVisible;
-    }
-
     // ---------------------------------------------------------------- the book file, as text
 
     Control _bookFile = null!;
     readonly TextBox _bookFileText = new()
     {
         IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Cascadia Mono,Consolas,DejaVu Sans Mono,monospace"),
-        FontSize = 12.5, Background = Ui.Field, Foreground = Ui.Text, MinHeight = 400,
+        FontSize = 12.5, Background = Ui.Field, Foreground = Ui.Text, MinHeight = 200,
     };
     readonly TextBlock _bookFileNote = Ui.Help("");
 
     Control BookFileSheet()
     {
         var copy = Ui.Button("Copy all", CopyBookFile, "Copy the text, to paste into an email or a message", primary: true, small: true);
-        var body = new DockPanel();
         var head = new StackPanel
         {
             Spacing = 4,
             Children =
             {
-                new DockPanel { Children = { new Border { [DockPanel.DockProperty] = Dock.Right, Child = Ui.Button("Close", () => _bookFile.IsVisible = false, "Esc", small: true) }, Ui.Label("The book file", 18, Ui.Text, FontWeight.Bold) } },
                 Ui.Help("This is the book as the editor writes it to book.json in the book's folder. It's here to help sort out problems, for example to send to someone who is helping you. It can't be changed here."),
                 _bookFileNote,
                 Ui.Row(copy),
             },
         };
+        var body = new DockPanel();
         DockPanel.SetDock(head, Dock.Top);
         body.Children.Add(head);
         body.Children.Add(new ScrollViewer { Content = _bookFileText, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto });
-        return new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
-            Child = new Border
-            {
-                Width = 820, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Padding = new Thickness(20), Margin = new Thickness(0, 30),
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Stretch, Child = body,
-            },
-        };
+        return Sheet("The book file", body, () => _bookFile.IsVisible = false, 820, stretch: true);
     }
 
     public void ShowBookFile()
@@ -1059,73 +879,6 @@ sealed class MainWindow : Window
         catch (Exception) { Say("The text couldn't be copied. Select it with the mouse and press Ctrl+C instead."); }
     }
 
-    readonly WrapPanel _tourButtons = new() { Margin = new Thickness(0, 4, 0, 6) };
-
-    /// <summary>The walkthrough buttons at the top of the help, which change with how far the walkthrough has got.</summary>
-    void FillTourButtons()
-    {
-        _tourButtons.Children.Clear();
-        int at = Tour.SavedStep;
-        if (at > 0 && at < Tour.Count)
-        {
-            _tourButtons.Children.Add(Ui.Button($"Carry on the walkthrough (step {at + 1} of {Tour.Count})", () => { _help.IsVisible = false; Tour.Start(at); }, primary: true));
-            _tourButtons.Children.Add(Ui.Button("Start it again", () => { _help.IsVisible = false; Tour.Start(0); }));
-        }
-        else _tourButtons.Children.Add(Ui.Button("Show me step by step how to make a book", () => { _help.IsVisible = false; Tour.Start(0); }, "A short walk through making a first book, pointing at each thing to click", primary: true));
-        _tourButtons.Children.Add(Ui.Button("Show the book file", ShowBookFile, "The book's book.json as text, for sorting out problems", small: false));
-        foreach (Control c in _tourButtons.Children) c.Margin = new Thickness(0, 0, 8, 6);
-    }
-
-    Control HelpSheet()
-    {
-        (string, string)[] keys =
-        {
-            ("Ctrl+S", "Save"), ("Ctrl+Z / Ctrl+Y", "Undo / redo"), ("Ctrl+N / Ctrl+O", "New book / open a book"),
-            ("Drag on the picture", "Draw a stop (or a thing to find, on explore pages)"), ("Shift + drag", "Draw over another box"),
-            ("Delete", "Remove what is selected"), ("Arrow keys", "Nudge it (Shift: further, Alt: change its size)"),
-            ("Ctrl+D", "Duplicate it"), ("Ctrl+C, Ctrl+V", "Copy it, paste it on another page"),
-            ("[ and ]", "Select the stop before or after"), ("Page Up / Page Down", "Go to the page before or after"),
-            ("Ctrl+Page Up / Down", "Move the page earlier or later"), ("P or F5", "Play from the selected stop"),
-            ("F7", "Check book"), ("Ctrl+E", "Export"), ("Ctrl + mouse wheel", "Zoom the picture; Space or the middle button and drag moves it"),
-            ("Tap along: Space", "Mark the start of each word; Backspace takes back, Esc stops"),
-            ("A chosen word: , and .", "Nudge its time earlier or later"), ("Esc", "Close what is open, or clear the selection"),
-        };
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 16, RowSpacing = 6 };
-        for (int i = 0; i < keys.Length; i++)
-        {
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var k = Ui.Label(keys[i].Item1, 13, Ui.Accent, FontWeight.Bold, wrap: false);
-            var t = Ui.Label(keys[i].Item2, 13, Ui.Text);
-            Grid.SetRow(k, i); Grid.SetRow(t, i); Grid.SetColumn(t, 1);
-            grid.Children.Add(k); grid.Children.Add(t);
-        }
-        var body = new StackPanel
-        {
-            Spacing = 10,
-            Children =
-            {
-                new DockPanel { Children = { new Border { [DockPanel.DockProperty] = Dock.Right, Child = Ui.Button("Close", ShowHelp, "Esc or F1", small: true) }, Ui.Label("Keys and tips", 18, Ui.Text, FontWeight.Bold) } },
-                _tourButtons,
-                grid,
-                Ui.Heading("How a book is made"),
-                Ui.Help("1. Add the page pictures. A picture can be a whole spread, or add a left and a right page and the editor joins them into one spread picture (it remembers the two halves, so either can be replaced later)."),
-                Ui.Help("2. On each page, drag to draw where the camera stops, in reading order. Type the words for each stop. Add a pan, effects, pictures on top or sounds if the page wants them."),
-                Ui.Help("3. Record or add the voice reading each stop's words, then press \"Time words automatically\" so they light up as they are read. Click a word to nudge it, or Tap along to time them by hand. Things to find can have a voice too."),
-                Ui.Help("4. Press Play to see it in the real reader, on a phone or a computer. Check book lists anything that will go wrong. Export makes the copy for the apps, and a .picturebook file to send to a phone: open it there and the Book Reader app adds it to the shelf."),
-                Ui.Help("Changes are kept in a safety copy every few seconds, so if the computer stops before you save, the book offers them back next time."),
-            },
-        };
-        return new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
-            Child = new Border
-            {
-                Width = 680, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Padding = new Thickness(20),
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = new ScrollViewer { Content = body, MaxHeight = 760 },
-            },
-        };
-    }
-
     // ---------------------------------------------------------------- keys
 
     void OnKey(object? sender, KeyEventArgs e)
@@ -1145,12 +898,15 @@ sealed class MainWindow : Window
             return;   // everything else goes to the reader
         }
         if (_help.IsVisible && e.Key is Key.Escape or Key.F1) { _help.IsVisible = false; e.Handled = true; return; }
+        if (_about.IsVisible) { if (e.Key == Key.Escape) { _about.IsVisible = false; e.Handled = true; } return; }
         if (_bookFile.IsVisible) { if (e.Key == Key.Escape) { _bookFile.IsVisible = false; e.Handled = true; } return; }
         if (_export.IsVisible) { if (e.Key == Key.Escape) { CloseExport(); e.Handled = true; } return; }
         if (e.Key == Key.F1) { ShowHelp(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.N) { _ = NewBook(); e.Handled = true; return; }
+        if (ctrl && shift && e.Key == Key.O) { _ = OpenBookFileDialog(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.O) { _ = OpenFolderDialog(); e.Handled = true; return; }
         if (!_state.HasBook) return;
+        if (ctrl && e.Key == Key.W) { _ = CloseBook(); e.Handled = true; return; }
         if (_inspector.Narration is NarrationPanel np && !typing && np.HandleKey(e.Key)) { e.Handled = true; return; }
         if (typing) return;   // text boxes keep their own keys, Ctrl+Z included
 
@@ -1163,6 +919,12 @@ sealed class MainWindow : Window
             case Key.C when ctrl: CopySelected(); break;
             case Key.V when ctrl: Paste(); break;
             case Key.E when ctrl: OpenExport(); break;
+            case Key.OemPlus or Key.Add when ctrl: _canvas.ZoomBy(1.25); break;
+            case Key.OemMinus or Key.Subtract when ctrl: _canvas.ZoomBy(1 / 1.25); break;
+            case Key.D0 or Key.NumPad0 when ctrl: _canvas.Fit(); break;
+            case Key.D1 or Key.NumPad1 when ctrl: _canvas.ActualSize(); break;
+            case Key.Home: _state.GoToPage(0); break;
+            case Key.End: _state.GoToPage(_state.Book.Pages.Count - 1); break;
             case Key.F7: OpenCheck(); break;
             case Key.P or Key.F5: OpenPreview(fromStop: true); break;
             case Key.Escape when _check.IsVisible: CloseCheck(); break;
@@ -1194,6 +956,7 @@ sealed class MainWindow : Window
     public void ShowExportNow() => OpenExport();
     public void ShowCheckNow() => OpenCheck();
     public void ShowHelpNow() { FillTourButtons(); _help.IsVisible = true; }
+    public void ShowAboutNow() => ShowAbout();
     public void ShowBookFileNow() => ShowBookFile();
     public Button? PlayButton { get; private set; }
     public Button? CheckButton { get; private set; }

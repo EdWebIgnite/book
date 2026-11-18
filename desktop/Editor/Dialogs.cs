@@ -18,16 +18,16 @@ sealed class Dialogs : Panel
     public Dialogs()
     {
         IsVisible = false;
-        Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0));
+        Background = Ui.Scrim;
     }
 
     public bool Showing => IsVisible;
 
     static Border Box(Control content, double width = 520) => new()
     {
-        Width = width, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Padding = new Thickness(20),
-        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = content,
-        BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 16, Blur = 60, Color = Color.FromArgb(150, 0, 0, 0) }),
+        MaxWidth = width, Background = Ui.Card, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(24, 20),
+        Margin = new Thickness(24), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = content,
+        BoxShadow = Ui.Lifted,
     };
 
     /// <summary>Ask a question with some answers. Returns the index of the answer chosen; Esc gives <paramref name="cancel"/>.</summary>
@@ -37,14 +37,14 @@ sealed class Dialogs : Panel
         var tcs = new TaskCompletionSource<int>();
         _answer = tcs;
         _cancel = () => Finish(cancel);
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 20, 0, 0) };
         for (int i = 0; i < answers.Length; i++)
         {
             int n = i;
-            row.Children.Add(Ui.Button(answers[i], () => Finish(n), primary: i == primary));
+            row.Children.Add(Ui.Button(answers[i], () => Finish(n), i == cancel ? "Esc" : i == primary ? "Enter" : null, primary: i == primary));
         }
         Children.Clear();
-        Children.Add(Box(new StackPanel { Children = { Ui.Label(title, 17, Ui.Text, FontWeight.Bold), new Border { Height = 8 }, Ui.Label(text, 13.5, Ui.Text), row } }));
+        Children.Add(Box(new StackPanel { Children = { Ui.Title(title), new Border { Height = 8 }, Ui.Label(text, 13, Ui.Text), row } }));
         IsVisible = true;
         if (row.Children.Count > primary) Avalonia.Threading.Dispatcher.UIThread.Post(() => (row.Children[primary] as Button)?.Focus());
         return tcs.Task;
@@ -59,6 +59,14 @@ sealed class Dialogs : Panel
         Children.Clear();
         Children.Add(Box(content, width));
         IsVisible = true;
+    }
+
+    /// <summary>The row of buttons at the foot of a question or a form: on the right, the main one first.</summary>
+    public static Control Buttons(params Control[] buttons)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 20, 0, 0) };
+        foreach (Control b in buttons) row.Children.Add(b);
+        return row;
     }
 
     void Finish(int answer)

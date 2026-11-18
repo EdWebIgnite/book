@@ -15,7 +15,7 @@ dotnet publish "$here/Editor" -c Release -r win-x64 --self-contained true \
   -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$stage"
 rm -f "$stage"/*.pdb
 cat > "$stage/READ ME.txt" <<'TXT'
-Book Editor
+Dassie Book Editor
 
 Double-click BookEditor.exe to start. Nothing needs installing.
 
@@ -25,7 +25,10 @@ not signed. Click "More info", then "Run anyway".
 Each book is a folder with its pictures, sounds and a file called book.json.
 "Start a new book" makes the folder for you (in Documents, Picture books,
 unless you choose somewhere else). "Open a book folder" opens one you have,
-or makes a new book from a folder of pictures.
+or makes a new book from a folder of pictures. "Open a book file" opens a
+.picturebook someone sent you, unpacked into a folder of its own.
+
+Press F1 for every keyboard shortcut.
 
 Making a book:
 1. Add the page pictures. A picture can be a whole double-page spread, or
@@ -41,7 +44,7 @@ Making a book:
 4. Press Play to see it in the real reader, on a computer or a phone.
 5. Check book lists anything that will go wrong. Export makes a copy ready
    for the apps, and a book file (ending .picturebook) to send to a phone.
-   Open that file on the phone and the Book Reader app adds it to its shelf.
+   Open that file on the phone and the Dassie app adds it to its shelf.
 
 New to it? The first time, the editor offers a step-by-step walkthrough.
 It is always there again under the ? button.

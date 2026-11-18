@@ -11,9 +11,9 @@ namespace BookEditor;
 
 /// <summary>
 /// A step-by-step walk through making a first book, for people new to the editor. Each step says in a
-/// sentence or two what to do, an orange ring goes round the real control to click, and the walkthrough
+/// sentence or two what to do, a brass ring goes round the real control to click, and the walkthrough
 /// moves on by itself when the step has been done (or with Next). It can be stopped at any point and
-/// carried on later from the ? button; how far it got is remembered between runs. It is offered once,
+/// carried on later from Help; how far it got is remembered between runs. It is offered once,
 /// on the very first run.
 /// </summary>
 sealed class Walkthrough
@@ -79,11 +79,11 @@ sealed class Walkthrough
                 () => _w.CheckButton,
                 () => _w.CheckShowing),
             new("Export it",
-                "Press Export. Keep \"Also make a book file to send to a phone\" ticked, then press the orange Export button.",
+                "Press Export. Keep \"Also make a book file to send to a phone\" ticked, then press the green Export button.",
                 () => _w.ExportShowing ? _w.ExportScreen.ExportButton : _w.ExportButton,
                 () => _exported),
             new("Send it to the phone",
-                "Export made a book file ending in .picturebook. Send it to the phone by WhatsApp, email or Google Drive, or copy it across with a cable. On the phone, open the file and choose Book Reader: the book goes on the shelf.",
+                "Export made a book file ending in .picturebook. Send it to the phone by WhatsApp, email or Google Drive, or copy it across with a cable. On the phone, open the file and choose " + Brand.Name + ": the book goes on the shelf.",
                 () => null,
                 () => false,
                 () => "A grown-up can also add it in the app's settings (the gear), under Books, and take it off there again."),
@@ -91,21 +91,22 @@ sealed class Walkthrough
 
         _ring = new Border
         {
-            BorderBrush = Ui.Accent, BorderThickness = new Thickness(3), CornerRadius = new CornerRadius(10), IsHitTestVisible = false,
-            BoxShadow = new BoxShadows(new BoxShadow { Blur = 18, Spread = 2, Color = Color.FromArgb(170, 255, 138, 42) }),
+            BorderBrush = Ui.Select, BorderThickness = new Thickness(3), CornerRadius = new CornerRadius(10), IsHitTestVisible = false,
+            BoxShadow = new BoxShadows(new BoxShadow { Blur = 18, Spread = 3, Color = Color.FromArgb(190, 217, 180, 90) }),
         };
-        _count = Ui.Label("", 11.5, Ui.Accent, FontWeight.Bold);
-        _title = Ui.Label("", 17, Ui.Text, FontWeight.Bold);
-        _text = Ui.Label("", 13.5, Ui.Text);
+        _count = Ui.Label("", 11, Ui.Warn, FontWeight.ExtraBold);
+        _count.LetterSpacing = 1;
+        _title = Ui.Label("", 17, Ui.AccentDeep, FontWeight.ExtraBold);
+        _text = Ui.Label("", 13, Ui.Text);
         _extra = Ui.Label("", 12.5, Ui.Muted);
         _done = Ui.Label("Done!", 13.5, Ui.Good, FontWeight.Bold);
         _back = Ui.Button("Back", () => Go(_at - 1), small: true);
         _next = Ui.Button("Next", () => Go(_at + 1), primary: true, small: true);
-        _stop = Ui.Button("Stop for now", Pause, "Stop the walkthrough. Carry on later from the ? button.", small: true);
+        _stop = Ui.Button("Stop for now", Pause, "Stop the walkthrough. Carry on later from Help.", small: true);
         _card = new Border
         {
-            Width = 390, Background = Ui.Panel, BorderBrush = Ui.Accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16, 14),
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 10, Blur = 34, Color = Color.FromArgb(160, 0, 0, 0) }),
+            Width = 390, Background = Ui.Card, BorderBrush = Ui.Select, BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 16),
+            BoxShadow = Ui.Lifted,
             Child = new StackPanel
             {
                 Spacing = 6,
@@ -160,7 +161,7 @@ sealed class Walkthrough
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
-    /// <summary>"No thanks" on the first run: don't offer again (it can still be started from the ? button).</summary>
+    /// <summary>"No thanks" on the first run: don't offer again (it can still be started from Help).</summary>
     public void Decline() => Save(0, "declined");
 
     // ---------------------------------------------------------------- running it
@@ -187,14 +188,14 @@ sealed class Walkthrough
     {
         Save(_at, "paused");
         Hide();
-        _w.Say("Walkthrough stopped. Carry on whenever you like from the ? button at the top right.", 6);
+        _w.Say("Walkthrough stopped. Carry on whenever you like from Help (the ? button at the top right).", 6);
     }
 
     void Finish()
     {
         Save(0, "finished");
         Hide();
-        _w.Say("That's the whole walkthrough. Have fun making books! It's always there again under the ? button.", 7);
+        _w.Say("That's the whole walkthrough. Have fun making books! It's always there again under Help.", 7);
     }
 
     void Hide()

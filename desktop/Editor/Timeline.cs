@@ -20,7 +20,7 @@ sealed class Timeline : UserControl
     readonly Images _images;
     readonly MainWindow _window;
     readonly StackPanel _track = new() { Orientation = Orientation.Horizontal };
-    readonly StackPanel _head = new() { Orientation = Orientation.Horizontal, Spacing = 10 };
+    readonly StackPanel _head = new() { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8) };
     readonly ScrollViewer _scroll;
     int _dragFrom = -1;
     bool _waiting;
@@ -31,12 +31,12 @@ sealed class Timeline : UserControl
         _images = images;
         _window = window;
         _scroll = new ScrollViewer { Content = _track, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
-        var dock = new DockPanel { Margin = new Thickness(12, 8, 12, 8) };
+        var dock = new DockPanel { Margin = new Thickness(12, 8, 12, 4) };
         DockPanel.SetDock(_head, Dock.Top);
         dock.Children.Add(_head);
         dock.Children.Add(_scroll);
         Content = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = dock };
-        Height = 176;
+        Height = 160;
         _state.Changed += (why, source) => { if (source is not PageCanvas) Rebuild(); };   // not on every mouse move of a drag
         _images.Arrived += () => { if (_waiting) Rebuild(); };
         // Let go over the same card: select it. Over another card: move the stop there.
@@ -58,17 +58,18 @@ sealed class Timeline : UserControl
         _waiting = false;
         if (_state.Page is not Page p) return;
         int n = p.Stops.Count;
-        _head.Children.Add(Ui.Label($"Page {_state.PageIndex + 1}", 13.5, Ui.Text, FontWeight.Bold, wrap: false));
+        _head.Children.Add(Ui.Label($"Page {_state.PageIndex + 1}", 13.5, Ui.AccentDeep, FontWeight.ExtraBold, wrap: false));
         string sub = n > 0 ? $"{n} stop{(n == 1 ? "" : "s")}" : p.Explore ? "No intro stops" : "No stops yet: drag on the picture to draw one";
         if (p.Explore) sub += $" · {p.Hotspots.Count} to find";
         int voiced = p.Stops.Count(s => s.Voice is not null);
         if (voiced > 0) sub += $" · {voiced} with a recording";
         _head.Children.Add(Ui.Label(sub, 12.5, Ui.Muted, wrap: false));
         foreach (PageEffect e in p.Effects)
-            _head.Children.Add(Chip(Names.Effect(e.Type) + (e.Stop is > 0 && !e.IsFalling ? " at stop " + e.Stop : e.From > 1 ? " from stop " + e.From : ""), "#1d3040", "#9fd8f3"));
-        if (p.Layers.Count > 0) _head.Children.Add(Chip($"{p.Layers.Count} picture{(p.Layers.Count == 1 ? "" : "s")} on top", "#2c2444", "#cdb8ff"));
+            _head.Children.Add(Ui.Chip(Names.Effect(e.Type) + (e.Stop is > 0 && !e.IsFalling ? " at stop " + e.Stop : e.From > 1 ? " from stop " + e.From : ""), Ui.Brush("#e3f1f7"), Ui.Brush("#1f5f78")));
+        if (p.Layers.Count > 0) _head.Children.Add(Ui.Chip($"{p.Layers.Count} picture{(p.Layers.Count == 1 ? "" : "s")} on top", Ui.Brush("#efe8fb"), Ui.Brush("#5b3fa6")));
+        _head.Children.Add(new Border { Width = 4 });
         _head.Children.Add(Ui.Button("+ Whole page stop", () => _window.AddWholePageStop(), "A stop that shows the whole page, for example to end on the full picture", small: true));
-        _head.Children.Add(Ui.Button("▶ Play this page", () => _window.OpenPreview(fromStop: false), "Play this page in the reader (P)", small: true));
+        _head.Children.Add(Ui.Button("\u25B6 Play this page", () => _window.OpenPreview(fromStop: false), "Play this page in the reader, from its start", small: true));
 
         if (p.OpenWhole && (n > 0 || !p.Explore))
         {
@@ -80,6 +81,8 @@ sealed class Timeline : UserControl
             _track.Children.Add(Card(p, i));
             if (i < n - 1) _track.Children.Add(Link(p.Stops[i].Auto, p.Stops[i].Auto ? $"after {p.Stops[i].HoldSeconds ?? 1.5:0.#} s" : "tap"));
         }
+        if (n == 0 && !p.Explore)
+            _track.Children.Add(new Border { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), Child = Ui.Help("The camera's stops appear here as cards, in the order they play. Drag on the picture above to draw the first one.") });
         if (p.Explore)
         {
             if (n > 0) _track.Children.Add(Link(false, "tap"));
@@ -97,7 +100,7 @@ sealed class Timeline : UserControl
 
     static Border Ghost(string text) => new()
     {
-        Width = 92, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(6), Margin = new Thickness(0, 0, 0, 4),
+        Width = 92, Background = Ui.Raised, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 4),
         Child = new TextBlock { Text = text, FontSize = 12, Foreground = Ui.Muted, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
     };
 
@@ -106,8 +109,8 @@ sealed class Timeline : UserControl
         Width = 50, VerticalAlignment = VerticalAlignment.Center, Spacing = 3,
         Children =
         {
-            new Border { Height = 2, Width = 26, Background = auto ? Ui.Accent : Ui.Line, HorizontalAlignment = HorizontalAlignment.Center },
-            new TextBlock { Text = text, FontSize = 10.5, FontWeight = FontWeight.SemiBold, Foreground = auto ? Ui.Accent : Ui.Muted, HorizontalAlignment = HorizontalAlignment.Center },
+            new Border { Height = 2, Width = 26, Background = auto ? Ui.Accent : Ui.LineStrong, HorizontalAlignment = HorizontalAlignment.Center },
+            new TextBlock { Text = text, FontSize = 11, FontWeight = FontWeight.Bold, Foreground = auto ? Ui.Accent : Ui.Muted, HorizontalAlignment = HorizontalAlignment.Center },
         },
     };
 
@@ -134,8 +137,8 @@ sealed class Timeline : UserControl
         };
         var card = new Border
         {
-            Width = 150, Background = active ? Ui.Brush("#2f3441") : Ui.Raised, CornerRadius = new CornerRadius(10), Padding = new Thickness(5),
-            BorderThickness = new Thickness(2), BorderBrush = active ? Ui.Brush(c) : Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand),
+            Width = 150, Background = active ? Ui.SelectWash : Ui.Card, CornerRadius = new CornerRadius(8), Padding = new Thickness(5),
+            BorderThickness = new Thickness(2), BorderBrush = active ? Ui.Brush(c) : Ui.Line, Cursor = new Cursor(StandardCursorType.Hand),
             Child = new StackPanel { Spacing = 5, Children = { picture, cap } }, Margin = new Thickness(0, 0, 0, 4),
         };
         ToolTip.SetTip(card, "Click to select. Drag onto another card to change the order.");
@@ -166,7 +169,7 @@ sealed class Timeline : UserControl
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(4) };
         void Add(string text, string tip)
         {
-            var b = new Border { Background = Ui.Brush("#c80e0f13"), CornerRadius = new CornerRadius(5), Padding = new Thickness(5, 1), Child = Ui.Label(text, 10.5, Ui.Text, FontWeight.SemiBold, wrap: false) };
+            var b = new Border { Background = Ui.Brush("#d22b2118"), CornerRadius = new CornerRadius(5), Padding = new Thickness(5, 1), Child = Ui.Label(text, 10.5, Ui.Brush("#fbf5e6"), FontWeight.Bold, wrap: false) };
             ToolTip.SetTip(b, tip);
             row.Children.Add(b);
         }
@@ -184,8 +187,8 @@ sealed class Timeline : UserControl
         bool active = _state.Selected == Sel.Hotspot && _state.SelIndex == i;
         var chip = new Border
         {
-            Background = Ui.Raised, CornerRadius = new CornerRadius(999), Padding = new Thickness(6, 5, 11, 5), Margin = new Thickness(0, 0, 6, 0),
-            BorderThickness = new Thickness(2), BorderBrush = active ? Ui.Gold : Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 200,
+            Background = active ? Ui.SelectWash : Ui.Card, CornerRadius = new CornerRadius(999), Padding = new Thickness(6, 5, 11, 5), Margin = new Thickness(0, 0, 6, 0),
+            BorderThickness = new Thickness(2), BorderBrush = active ? Ui.Select : Ui.Line, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 200,
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = new StackPanel
             {

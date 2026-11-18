@@ -22,6 +22,7 @@ sealed class ShotOptions
     public string? Do;
     public string? Models;
     public int? Tour;
+    public double Scale = 1;
 
     public const string Usage = """
         BookEditor [book folder]
@@ -31,6 +32,10 @@ sealed class ShotOptions
           Works out when each word starts in a recording, as "Time words automatically" does, and prints
           the times. The speech recogniser must already be downloaded (or be in --models).
 
+        BookEditor --make-icons <folder>
+          Draws the reader's and the editor's icons and writes the Windows .ico files and the Android
+          launcher pictures into the folder (see the README for where they go).
+
         BookEditor --shot out.png [options]
           Draws one screen of the editor to a PNG and exits, with no window. Settings, recent books and
           safety copies are not touched.
@@ -38,7 +43,8 @@ sealed class ShotOptions
             --page N             the page to show (from 1)
             --stop N             select that stop (from 1)
             --find N             select that thing to find (from 1)
-            --screen <name>      main (the default), welcome, preview, check, export, help, newbook, bookfile
+            --screen <name>      main (the default), welcome, welcome-offer, preview, check, export, help,
+                                 newbook, bookfile, about, close (Close the book: asks first if there are changes)
             --tour N             with the step-by-step walkthrough showing, at step N (from 1)
             --models <folder>    where the speech recogniser's file is, for "autotime" below (otherwise
                                  a fresh folder, as on a computer that hasn't downloaded it yet)
@@ -46,12 +52,16 @@ sealed class ShotOptions
                                  cheap-sideways, tablet-sideways, tablet-upright
             --wait ms            for --screen preview: reader time before the picture (1500)
             --size WxH           the window's size (1440x900)
+            --scale S            the screen's scaling, as Windows display scaling (1.25 for 125%): the
+                                 window keeps its size in pixels, so everything in it is S times bigger
             --do "steps"         act out mouse and keys first, through the window's real input path:
-                                 click x,y; drag x,y x,y; key Name (ctrl+Z, shift+Right...); type text; save;
+                                 click x,y; move x,y; drag x,y x,y; key Name (ctrl+Z, shift+Right...); type text; save;
                                  autotime (time the selected recording's words, really, and wait for it);
                                  timeall (the same for the whole book); download ms (start downloading
                                  the speech recogniser for real and take the picture that many ms in);
-                                 wait ms (real time, for things that are working in the background)
+                                 wait ms (real time, for things that are working in the background);
+                                 say text / problem text (a message at the bottom, as after an action or a failure);
+                                 surround grey|light|paper (the colour round the page)
         """;
 
     public static ShotOptions? Parse(string[] args)
@@ -76,6 +86,10 @@ sealed class ShotOptions
                 case "--do": o.Do = Next(); break;
                 case "--models": o.Models = Next(); break;
                 case "--tour": o.Tour = Int(); break;
+                case "--scale":
+                    if (!double.TryParse(Next(), NumberStyles.Float, CultureInfo.InvariantCulture, out o.Scale) || o.Scale < 0.5 || o.Scale > 4)
+                        throw new ArgumentException("--scale wants a number such as 1.25.");
+                    break;
                 case "--size":
                     string[] wh = Next().Split('x');
                     if (wh.Length != 2 || !double.TryParse(wh[0], CultureInfo.InvariantCulture, out o.Width) || !double.TryParse(wh[1], CultureInfo.InvariantCulture, out o.Height))
@@ -115,6 +129,9 @@ static class Screenshot
                     window.MouseMove(at);
                     window.MouseDown(at, Avalonia.Input.MouseButton.Left);
                     window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+                    break;
+                case "move" when w.Length == 2 && TryPoint(w[1], out Point over):
+                    window.MouseMove(over);
                     break;
                 case "drag" when w.Length == 2 && w[1].Split(' ') is { Length: 2 } pts && TryPoint(pts[0], out Point from) && TryPoint(pts[1], out Point to):
                     window.MouseMove(from);
@@ -163,6 +180,16 @@ static class Screenshot
                     _download = window.Timing.StartDownload();
                     Pump(ms);
                     break;
+                case "say" when w.Length == 2:
+                    window.Say(w[1]);
+                    break;
+                case "problem" when w.Length == 2:
+                    window.Problem(w[1]);
+                    break;
+                case "surround" when w.Length == 2 && EditorSettings.Surrounds.Contains(w[1]):
+                    Ui.Surround = w[1];
+                    window.Canvas.InvalidateVisual();
+                    break;
                 case "wait" when w.Length == 2 && int.TryParse(w[1], out int wait):
                     Pump(wait);
                     break;
@@ -199,9 +226,11 @@ static class Screenshot
                 .UseSkia()
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                 .SetupWithoutStarting();
-            var window = new MainWindow(screenshotMode: true) { Width = o.Width, Height = o.Height };
+            // At a display scaling, a window of so many pixels has fewer units of room to lay things out in.
+            var window = new MainWindow(screenshotMode: true) { Width = o.Width / o.Scale, Height = o.Height / o.Scale };
             if (o.Models is not null) window.Timing.Model = new SpeechModel(o.Models);
             window.Show();
+            if (Math.Abs(o.Scale - 1) > 0.001) window.SetRenderScaling(o.Scale);
             Dispatcher.UIThread.RunJobs();
 
             if (o.Book is not null)
@@ -223,6 +252,8 @@ static class Screenshot
                 case "help": window.ShowHelpNow(); break;
                 case "newbook": _ = window.NewBook(); break;
                 case "bookfile": window.ShowBookFileNow(); break;
+                case "about": window.ShowAboutNow(); break;
+                case "close": _ = window.CloseBook(); break;
                 case "welcome-offer": window.OfferTour(); break;
                 case "preview":
                     if (o.Device is not null) window.Preview.Device = Editor.Core.Device.Find(o.Device);

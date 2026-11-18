@@ -59,14 +59,14 @@ sealed class ExportPanel : UserControl
     void Build(Control? result = null)
     {
         _body.Children.Clear();
-        _body.Children.Add(Ui.Label("Export the book", 18, Ui.Text, FontWeight.Bold));
+        _body.Children.Add(Ui.Title("Export the book"));
         _body.Children.Add(Ui.Help("Makes a copy of the book that is ready for the reader apps. The book you are editing is not changed."));
         int problems = BookChecker.Check(_state.Project!, measureWords: Reader.Ui.WordsLayout.Measure).Count(i => i.Level == Severity.Problem);
         if (problems > 0)
         {
             _body.Children.Add(new Border
             {
-                Background = Ui.Brush("#3a1f1f"), CornerRadius = new CornerRadius(8), Padding = new Thickness(10), Margin = new Thickness(0, 6, 0, 6),
+                Background = Ui.BadWash, BorderBrush = Ui.Bad, BorderThickness = new Thickness(3, 0, 0, 0), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 8), Margin = new Thickness(0, 8, 0, 8),
                 Child = new StackPanel
                 {
                     Children =
@@ -87,7 +87,7 @@ sealed class ExportPanel : UserControl
         }, _size, v => _size = v));
         _body.Children.Add(Ui.Help("Page pictures without see-through parts become JPEG files, which are much smaller. Big explore scenes are cut into tiles, so a phone only loads the part being looked at. Pictures on top stay PNG."));
         _body.Children.Add(Ui.Check("Also make a book file to send to a phone", _zip, v => _zip = v));
-        _body.Children.Add(Ui.Help("One file ending in .picturebook, holding the whole book. Send it by WhatsApp, email or Google Drive, or copy it across with a cable. Opened on the phone, the Book Reader app adds it to the shelf."));
+        _body.Children.Add(Ui.Help("One file ending in .picturebook, holding the whole book. Send it by WhatsApp, email or Google Drive, or copy it across with a cable. Opened on the phone, the " + Brand.Name + " app adds it to the shelf."));
 
         _body.Children.Add(Ui.FieldName("Put the exported book in"));
         _body.Children.Add(FolderRow(_destination, async () => { if (await _window.PickFolder("Where should the exported book go?") is string f) { _destination = f; Build(); } }));
@@ -106,7 +106,7 @@ sealed class ExportPanel : UserControl
         if (result is not null) _body.Children.Add(result);
 
         _body.Children.Add(Ui.Heading("Getting a book onto a phone"));
-        _body.Children.Add(Ui.Help("Send the .picturebook file to the phone (WhatsApp, email, Google Drive or a cable) and open it there: the Book Reader app adds it to its shelf. A grown-up can also add it from the app's settings, under Books, and take it off again there."));
+        _body.Children.Add(Ui.Help("Send the .picturebook file to the phone (WhatsApp, email, Google Drive or a cable) and open it there: the " + Brand.Name + " app adds it to its shelf. A grown-up can also add it from the app's settings, under Books, and take it off again there."));
         _body.Children.Add(Ui.Help("BookReader.exe on a computer opens the book file too: drop it on the window, use \"Open a book file\" on the shelf, or open the file with BookReader.exe."));
         _body.Children.Add(Ui.Help("To pack a book inside the phone app itself instead, tick \"Also add it to a reader's books\" with the repo's content folder, then build the app again with publish-android.sh."));
     }
@@ -155,7 +155,7 @@ sealed class ExportPanel : UserControl
             if (added is not null) done.Children.Add(Ui.Label("Added to the reader's books: " + added, 12, Ui.Muted));
             foreach (string note in r.Notes.Take(12)) done.Children.Add(Ui.Help(note));
             done.Children.Add(Ui.Row(Ui.Button("Open the folder", () => _window.Reveal(Path.GetDirectoryName(r.Folder) ?? r.Folder), small: true)));
-            if (r.BookFile is not null) done.Children.Add(Ui.Help("Now send the book file to the phone, then open it there and choose Book Reader. On the phone it can also be added in the settings (the gear), under Books."));
+            if (r.BookFile is not null) done.Children.Add(Ui.Help("Now send the book file to the phone, then open it there and choose " + Brand.Name + ". On the phone it can also be added in the settings (the gear), under Books."));
             Build(done);
             Exported?.Invoke(r);
         }));

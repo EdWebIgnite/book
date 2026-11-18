@@ -73,6 +73,46 @@ sealed class PageCanvas : Control
         _zoom = 1;
         _pan = default;
         InvalidateVisual();
+        ZoomChanged?.Invoke();
+    }
+
+    /// <summary>Raised when the zoom changes (or the room the page has), for the status bar.</summary>
+    public event Action? ZoomChanged;
+
+    public const double MaxZoom = 16;
+
+    /// <summary>How big the picture is shown: 1 is one pixel of the picture to one pixel of the screen.</summary>
+    public double ActualScale
+    {
+        get
+        {
+            if (Page is not Page p) return 1;
+            var (w, _) = _state.PictureSize(p.Image);
+            Rect r = PageRect();
+            double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+            return w > 0 && r.Width > 0 ? r.Width * scaling / w : 1;
+        }
+    }
+
+    /// <summary>Zoom in or out by a factor, keeping <paramref name="at"/> (or the middle of the view) where it is.</summary>
+    public void ZoomBy(double factor, Point? at = null)
+    {
+        if (Page is null) return;
+        double old = _zoom;
+        _zoom = Math.Clamp(_zoom * factor, 1, MaxZoom);
+        Point centre = new(Bounds.Width / 2 + _pan.X, (Bounds.Height - 30) / 2 + _pan.Y);
+        Vector fromCentre = (at ?? new Point(Bounds.Width / 2, (Bounds.Height - 30) / 2)) - centre;
+        _pan += fromCentre - fromCentre * (_zoom / old);
+        if (_zoom <= 1.001) _pan = default;
+        InvalidateVisual();
+        ZoomChanged?.Invoke();
+    }
+
+    /// <summary>Show the picture at its actual pixels (or as big as the zoom goes).</summary>
+    public void ActualSize()
+    {
+        double now = ActualScale;
+        if (now > 0) ZoomBy(1 / now);
     }
 
     Page? Page => _state.Page;
@@ -104,8 +144,22 @@ sealed class PageCanvas : Control
 
     // ---------------------------------------------------------------- drawing
 
-    static readonly Typeface Bold = new(FontFamily.Default, FontStyle.Normal, FontWeight.Bold);
-    static readonly Typeface Plain = new(FontFamily.Default, FontStyle.Normal, FontWeight.Normal);
+    static readonly Typeface Bold = new(Ui.Font, FontStyle.Normal, FontWeight.ExtraBold);
+    static readonly Typeface Plain = new(Ui.Font, FontStyle.Normal, FontWeight.SemiBold);
+
+    /// <summary>What the mouse is over (nothing while dragging), drawn a little stronger so it's clear what a click will take.</summary>
+    Hit? _hover;
+
+    bool Hovered(Sel kind, int index, int effect = -1) => _hover is Hit h && h.Kind == kind && h.Index == index && (effect < 0 || h.Effect == effect)
+        && !(_state.Selected == kind && _state.SelIndex == index);
+
+    /// <summary>A soft light wash and a white edge round a box under the mouse.</summary>
+    static void HoverMark(DrawingContext ctx, Rect r, Color c)
+    {
+        ctx.FillRectangle(new SolidColorBrush(c, 0.18), r);
+        ctx.DrawRectangle(new Pen(new SolidColorBrush(Colors.White, 0.9), 2), r.Inflate(3));
+        ctx.DrawRectangle(new Pen(new SolidColorBrush(c), 2), r.Inflate(5));
+    }
     static readonly Color Gold = Color.Parse("#ffd23f"), GoldDark = Color.Parse("#a37a00"), Dry = Color.Parse("#7fd3f2"), LayerColour = Color.Parse("#b08cff");
 
     public override void Render(DrawingContext ctx)
@@ -114,6 +168,7 @@ sealed class PageCanvas : Control
         Page? p = Page;
         _pageRect = PageRect();
         if (p is null || _pageRect.Width <= 0) return;
+        _note = null;
 
         string? path = _state.Project!.PathOf(p.Image);
         Bitmap? picture = _images.Get(path, 2400);
@@ -121,7 +176,9 @@ sealed class PageCanvas : Control
         else
         {
             ctx.FillRectangle(Ui.Raised, _pageRect);
-            DrawText(ctx, path is not null && File.Exists(path) ? "Loading the picture..." : "This page's picture is missing: " + p.Image, _pageRect.Center - new Vector(120, 8), 14, Brushes.White, Plain);
+            bool missing = path is null || !File.Exists(path);
+            string say = missing ? $"This page's picture is missing: {p.Image}. Use Replace picture in the Page section, or put the file back in the book's folder." : "Loading the picture...";
+            _note = (say, missing);
         }
         double aspect = _state.Aspect(p);
 
@@ -146,6 +203,7 @@ sealed class PageCanvas : Control
             Rect r = ToScreen(l.Box);
             Bitmap? img = _images.Get(_state.Project.PathOf(l.Image), 900);
             if (img is not null) ctx.DrawImage(img, new Rect(img.Size), r);
+            if (Hovered(Sel.Layer, i)) HoverMark(ctx, r, LayerColour);
             if (sel || img is null) ctx.DrawRectangle(new Pen(new SolidColorBrush(LayerColour), sel ? 3 : 1.5), r);
             if (!sel) continue;
             DrawTag(ctx, "picture " + (i + 1), r.TopLeft + new Vector(4, 4), Color.Parse("#7a4fd6"));
@@ -167,6 +225,7 @@ sealed class PageCanvas : Control
             Color c = Ui.StopColour(i);
             bool sel = _state.Selected == Sel.Stop && _state.SelIndex == i;
             Rect r = ToScreen(s.Box);
+            if (Hovered(Sel.Stop, i)) HoverMark(ctx, r, c);
             if (sel) ctx.FillRectangle(new SolidColorBrush(c, 0.15), r);
             ctx.DrawRectangle(new Pen(new SolidColorBrush(c), sel ? 4 : 2.5), r);
             DrawTag(ctx, (i + 1).ToString(CultureInfo.InvariantCulture) + (s.Voice is not null ? "  ♪" : ""), r.TopLeft + new Vector(4, 4), c);
@@ -188,6 +247,7 @@ sealed class PageCanvas : Control
             {
                 Rect r = ToScreen(p.Effects[e].Dry[d]);
                 bool sel = _state.Selected == Sel.Dry && _state.SelEffect == e && _state.SelIndex == d;
+                if (Hovered(Sel.Dry, d, e)) HoverMark(ctx, r, Dry);
                 ctx.DrawRectangle(new Pen(new SolidColorBrush(Dry), sel ? 3 : 2, new DashStyle(new double[] { 1, 2.5 }, 0)), r);
                 DrawTag(ctx, "dry", r.TopLeft + new Vector(4, 4), Color.Parse("#2a7f9e"));
                 if (sel) Handles(ctx, r, Dry);
@@ -202,6 +262,7 @@ sealed class PageCanvas : Control
                 Hotspot h = p.Hotspots[i];
                 bool sel = _state.Selected == Sel.Hotspot && _state.SelIndex == i;
                 Rect r = ToScreen(h.Box);
+                if (Hovered(Sel.Hotspot, i)) HoverMark(ctx, r, Gold);
                 if (sel) ctx.FillRectangle(new SolidColorBrush(Gold, 0.2), r);
                 ctx.DrawRectangle(new Pen(new SolidColorBrush(Gold), sel ? 4 : 2.5, new DashStyle(new double[] { 1.5, 2 }, 0)), r);
                 // Names only on the selected one: a busy scene would be covered in labels otherwise.
@@ -249,6 +310,7 @@ sealed class PageCanvas : Control
             var (needW, needH) = Reader.Ui.WordsLayout.Measure(words, content, aspect);
             bool fits = needH <= words.Box.H + 0.005 && needW <= words.Box.W + 0.005;
             Color c = fits ? WordsColour : Color.Parse("#ff6b6b");
+            if (Hovered(Sel.Words, 0)) HoverMark(ctx, r, c);
             if (sel) ctx.FillRectangle(new SolidColorBrush(c, 0.10), r);
             ctx.DrawRectangle(new Pen(new SolidColorBrush(c), sel ? 3 : 1.5, new DashStyle(new double[] { 5, 3 }, 0)), r);
             if (!fits && needH > words.Box.H)
@@ -269,7 +331,17 @@ sealed class PageCanvas : Control
             Color c = _state.Drawing switch { DrawKind.Hotspot => Gold, DrawKind.Dry => Dry, _ => Colors.White };
             ctx.DrawRectangle(new Pen(new SolidColorBrush(c), 2, new DashStyle(new double[] { 3, 2 }, 0)), r);
         }
+        // A note about the picture goes over everything, so the boxes never hide it.
+        if (_note is var (noteText, noteMissing))
+        {
+            var ft = new FormattedText(noteText, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Bold, 13.5, noteMissing ? Brushes.White : Ui.Muted) { MaxTextWidth = Math.Min(520, Math.Max(120, _pageRect.Width - 64)), TextAlignment = TextAlignment.Center };
+            var note = new Rect(_pageRect.Center.X - ft.MaxTextWidth / 2 - 14, _pageRect.Y + 16, ft.MaxTextWidth + 28, ft.Height + 16);
+            if (noteMissing) ctx.DrawRectangle(Ui.Bad, null, note, 8, 8);
+            ctx.DrawText(ft, new Point(note.X + 14, note.Y + 8));
+        }
     }
+
+    (string Text, bool Missing)? _note;
 
     static readonly Color WordsColour = Color.Parse("#f783ac");
 
@@ -467,6 +539,7 @@ sealed class PageCanvas : Control
         if (Page is null) return;
         PointerPoint pp = e.GetCurrentPoint(this);
         Point at = pp.Position;
+        _hover = null;
         if (pp.Properties.IsMiddleButtonPressed || (_space && pp.Properties.IsLeftButtonPressed))
         {
             _drag = new Drag { Mode = Mode.Pan, StartScreen = at, PanStart = _pan };
@@ -500,6 +573,7 @@ sealed class PageCanvas : Control
         if (_drag is null)
         {
             Hit? hit = Page is null ? null : HitTest(at);
+            if (hit != _hover) { _hover = hit; InvalidateVisual(); }
             Cursor = _space ? new Cursor(StandardCursorType.Hand)
                 : hit is null ? new Cursor(StandardCursorType.Cross)
                 : hit.Handle is "nw" or "se" ? new Cursor(StandardCursorType.TopLeftCorner)
@@ -599,16 +673,15 @@ sealed class PageCanvas : Control
     {
         base.OnPointerWheelChanged(e);
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || Page is null) return;
-        Point at = e.GetPosition(this);
-        double old = _zoom;
-        _zoom = Math.Clamp(_zoom * (e.Delta.Y > 0 ? 1.2 : 1 / 1.2), 1, 8);
         // Keep the point under the mouse where it is.
-        Point centre = new(Bounds.Width / 2 + _pan.X, (Bounds.Height - 30) / 2 + _pan.Y);
-        Vector fromCentre = at - centre;
-        _pan += fromCentre - fromCentre * (_zoom / old);
-        if (_zoom <= 1.001) _pan = default;
+        ZoomBy(e.Delta.Y > 0 ? 1.2 : 1 / 1.2, e.GetPosition(this));
         e.Handled = true;
-        InvalidateVisual();
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_hover is not null) { _hover = null; InvalidateVisual(); }
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -627,5 +700,6 @@ sealed class PageCanvas : Control
     {
         base.OnSizeChanged(e);
         InvalidateVisual();
+        ZoomChanged?.Invoke();
     }
 }

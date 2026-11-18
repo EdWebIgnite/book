@@ -7,6 +7,8 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The dassie over a book, on bottle green (drawn by Reader.Ui.AppIcon, made with BookEditor and its make-icons option). -->
+    <ApplicationIcon>Assets\dassie.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
