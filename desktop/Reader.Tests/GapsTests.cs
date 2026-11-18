@@ -255,7 +255,7 @@ public class BookPackageTests
         File.WriteAllText(temp["photo.picturebook"], "this is not a zip");
         BookPackage.Result notZip = BookPackage.Import(temp["photo.picturebook"], root);
         Assert.False(notZip.Ok);
-        Assert.Contains("isn't a picture book", notZip.Message);
+        Assert.Contains("isn’t a picture book", notZip.Message);
 
         BookPackage.Result noBook = BookPackage.Import(Zip(temp, "nobook.zip", ("holiday/photo.jpg", Jpeg(temp))), root);
         Assert.Contains("no book in that file", noBook.Message);

@@ -432,9 +432,10 @@ public sealed class ReaderEngine
 
     void StopVoice()
     {
-        bool had = _voice is not null;
+        bool had = _voice is not null || SaidWord >= 0;
         _voice = null;
         _voiceEndedAt = null;
+        _wordSaid = -1;
         if (had) Sound.StopVoice();
     }
 
@@ -496,6 +497,43 @@ public sealed class ReaderEngine
             RaiseChanged();
         }
     }
+
+    // ---------------------------------------------------------------- tap a word to hear it
+
+    int _wordSaid = -1;
+    double _wordSaidUntil;
+
+    /// <summary>
+    /// True when the words on screen can be tapped one by one: the stop has a recorded voice with a time
+    /// for every word of its caption. Without timings a tap on a word does nothing at all.
+    /// </summary>
+    public bool WordsCanBeHeard => !Overview && !Exploring && CurrentStop is Stop s && ReadAlong.Timed(s.Voice, s.Caption);
+
+    /// <summary>
+    /// Say one word of the stop's caption: play just that word's part of the recording and light it up
+    /// while it plays. A voice reading the whole caption stops first. Returns false (and does nothing)
+    /// when that word has no time.
+    /// </summary>
+    public bool SayWord(int word)
+    {
+        if (!WordsCanBeHeard || CurrentStop is not Stop stop) return false;
+        if (ReadAlong.WordSlice(stop.Voice, stop.Caption, word) is not (double from, double to)) return false;
+        if (_voice is not null)
+        {
+            // The read-aloud ends here, as if it had finished, so the child's turn comes as usual.
+            if (_voiceEndedAt is null) _voiceEndedAt = _now;
+            Sound.StopVoice();
+        }
+        Sound.PlayVoice(stop.Voice!.File, from, to);
+        _wordSaid = word;
+        _wordSaidUntil = _now + (to - from) * 1000 + 120;
+        _restSince = _lastTouch = _now;
+        RaiseChanged();
+        return true;
+    }
+
+    /// <summary>The word that was tapped and is being said now, or -1.</summary>
+    public int SaidWord => _wordSaid >= 0 && _now < _wordSaidUntil ? _wordSaid : -1;
 
     /// <summary>Stop everything that makes a noise by itself. Call when the reader is put away.</summary>
     public void Hush()
@@ -1461,6 +1499,7 @@ public sealed class ReaderEngine
         if (_bursts.Count > 0 || _ripples.Count > 0 || _party is not null || _flash is not null || _shake is not null) return true;
         // The words light up one by one while the voice reads them.
         if (Reading && _voice!.Words.Count > 0) return true;
+        if (SaidWord >= 0) return true;
         if (_shown.Fade > 0) return true;
 
         // Weather that is showing or fading, and pictures on top that are moving, fading or bobbing.

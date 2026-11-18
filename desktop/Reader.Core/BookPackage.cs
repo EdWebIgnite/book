@@ -70,7 +70,7 @@ public static class BookPackage
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return Result.Fail("Couldn't read that file. Try saving it to the phone first, then add it again.");
+            return Result.Fail(Strings.T("import.cantRead"));
         }
     }
 
@@ -87,7 +87,7 @@ public static class BookPackage
             catch (InvalidDataException) { return Result.Fail(NotABook); }
             using (zip)
             {
-                if (zip.Entries.Count > limits.MaxFiles) return Result.Fail("That book file has too many files in it to be a picture book.");
+                if (zip.Entries.Count > limits.MaxFiles) return Result.Fail(Strings.T("import.tooManyFiles"));
                 prefix = FindBook(zip);
 
                 Directory.CreateDirectory(importRoot);
@@ -100,13 +100,13 @@ public static class BookPackage
 
             Book book;
             try { book = BookJson.Load(incoming); }
-            catch (JsonException) { return Result.Fail("The book in that file is damaged, so it can't be opened. Export it again from the Book Editor and send the new file."); }
-            if (book.Pages.Count == 0) return Result.Fail("The book in that file has no pages yet.");
+            catch (JsonException) { return Result.Fail(Strings.T("import.damaged")); }
+            if (book.Pages.Count == 0) return Result.Fail(Strings.T("import.noPages"));
             List<string> missing = MissingPictures(book, incoming);
             if (missing.Count > 0)
             {
                 string list = string.Join(", ", missing.Take(3)) + (missing.Count > 3 ? $" and {missing.Count - 3} more" : "");
-                return Result.Fail($"Some pictures are missing from that book ({list}). Export it again from the Book Editor and send the new file.");
+                return Result.Fail(Strings.T("import.missing", list));
             }
 
             string id = SafeId(book.Id) ?? SafeId(prefix.TrimEnd('/')) ?? SafeId(fileName) ?? "book";
@@ -125,13 +125,13 @@ public static class BookPackage
             else Directory.Move(incoming, target);
             incoming = null;
             AddToLibrary(importRoot, id);
-            return new Result(true, replaced ? $"Updated \"{title}\" on the shelf." : $"Added \"{title}\" to the shelf.", id, title, target, replaced);
+            return new Result(true, Strings.T(replaced ? "import.updated" : "import.added", title), id, title, target, replaced);
         }
         catch (Refusal r) { return Result.Fail(r.Message); }
         catch (InvalidDataException) { return Result.Fail(NotABook); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return Result.Fail("There wasn't room to add that book, or the phone wouldn't let it be saved. Free up some space and try again.");
+            return Result.Fail(Strings.T("import.noRoom"));
         }
         finally
         {
@@ -139,7 +139,7 @@ public static class BookPackage
         }
     }
 
-    const string NotABook = "That file isn't a picture book. Book files end in .picturebook and are made by Export in the Book Editor. If it came from a chat or a download, it may not have finished arriving.";
+    static string NotABook => Strings.T("import.notABook");
 
     /// <summary>Where book.json is: at the top of the zip, or in the one folder at the top. Returns that folder, ending in "/", or "".</summary>
     static string FindBook(ZipArchive zip)
@@ -152,8 +152,8 @@ public static class BookPackage
             string[] parts = name.Split('/');
             if (parts.Length == 2 && parts[1].Equals("book.json", StringComparison.OrdinalIgnoreCase) && parts[0].Length > 0) found.Add(parts[0] + "/");
         }
-        if (found.Count == 0) throw new Refusal("There's no book in that file. Book files are made by Export in the Book Editor.");
-        if (found.Count > 1) throw new Refusal("That file holds more than one book. Send each book as a file of its own.");
+        if (found.Count == 0) throw new Refusal(Strings.T("import.noBook"));
+        if (found.Count > 1) throw new Refusal(Strings.T("import.twoBooks"));
         return found[0];
     }
 
@@ -167,12 +167,12 @@ public static class BookPackage
             if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
             string rel = name[prefix.Length..];
             if (rel.Length == 0 || rel.EndsWith('/')) continue;                         // a folder
-            if (!SafeName(rel)) throw new Refusal("That book file has odd file names in it, so it wasn't opened, to keep the phone safe.");
+            if (!SafeName(rel)) throw new Refusal(Strings.T("import.oddNames"));
             int unixType = (e.ExternalAttributes >> 16) & 0xF000;
-            if (unixType == 0xA000) throw new Refusal("That book file has links to other places in it, so it wasn't opened, to keep the phone safe.");
+            if (unixType == 0xA000) throw new Refusal(Strings.T("import.links"));
             if (e.Length > limits.MaxFileBytes) throw new Refusal(TooBig);
             string? path = BookLibrary.SafePath(destination, rel);
-            if (path is null) throw new Refusal("That book file has odd file names in it, so it wasn't opened, to keep the phone safe.");
+            if (path is null) throw new Refusal(Strings.T("import.oddNames"));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             using Stream input = e.Open();
             using FileStream output = File.Create(path);
@@ -189,7 +189,7 @@ public static class BookPackage
         }
     }
 
-    const string TooBig = "That book file is too big for a picture book. Export it again with \"For phones and tablets\" chosen for the picture size.";
+    static string TooBig => Strings.T("import.tooBigBook");
 
     /// <summary>A name inside the book: no drive, no going up, no starting at the top of the disk.</summary>
     static bool SafeName(string rel)

@@ -558,6 +558,11 @@ sealed class Inspector : UserControl
         var panel = new StackPanel();
         panel.Children.Add(Ui.FieldName("Age line (shown under the title on the shelf)"));
         panel.Children.Add(Text(b.Author, "For example: Ages 4 to 5", "Age line", "author", v => b.Author = v ?? ""));
+        panel.Children.Add(Ui.FieldName("Language of the book"));
+        var languages = new List<(string, string)> { ("", "Not set"), ("en", "English"), ("af", "Afrikaans") };
+        if (!string.IsNullOrEmpty(b.Language) && languages.All(l => l.Item1 != b.Language)) languages.Add((b.Language, b.Language));
+        panel.Children.Add(Ui.Choice<string>(languages, b.Language, v => _state.Change("Language", () => b.Language = v)));
+        panel.Children.Add(Ui.Help("When a shelf holds books in more than one language, each cover shows a small EN or AF."));
         panel.Children.Add(Ui.FieldName("Folder name"));
         var id = Text(b.Id, Slug.Make(b.Title), "Folder name", "id", v => b.Id = Slug.Make(v));
         panel.Children.Add(id);

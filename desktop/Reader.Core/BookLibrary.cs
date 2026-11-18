@@ -4,7 +4,19 @@ using System.Text.Json.Nodes;
 namespace Reader.Core;
 
 /// <summary>One book on the shelf: enough to show its cover and open it.</summary>
-public sealed record ShelfEntry(string Id, string Title, string Folder, string CoverPath);
+public sealed record ShelfEntry(string Id, string Title, string Folder, string CoverPath)
+{
+    /// <summary>The book's language code ("en", "af"), or empty when the book doesn't say.</summary>
+    public string Language { get; init; } = "";
+    /// <summary>How many pages the book has.</summary>
+    public int PageCount { get; init; }
+    /// <summary>The picture of each page, for the "Carry on reading" card.</summary>
+    public IReadOnlyList<string> PageImages { get; init; } = Array.Empty<string>();
+
+    /// <summary>True when these books are in more than one language, so each cover should say which.</summary>
+    public static bool MixedLanguages(IEnumerable<ShelfEntry> books) =>
+        books.Select(b => Strings.LanguageTag(b.Language)).Where(t => t.Length > 0).Distinct().Count() > 1;
+}
 
 /// <summary>
 /// Finds the books in a content folder. The layout is the repo's: content/library.json lists the book
@@ -44,7 +56,10 @@ public static class BookLibrary
         Book book = BookJson.Load(bookFolder);
         id ??= !string.IsNullOrEmpty(book.Id) ? book.Id : Path.GetFileName(Path.TrimEndingDirectorySeparator(bookFolder));
         string title = !string.IsNullOrEmpty(book.Title) ? book.Title : id;
-        return new ShelfEntry(id, title, bookFolder, Path.Combine(bookFolder, book.CoverOrFirstPage));
+        return new ShelfEntry(id, title, bookFolder, Path.Combine(bookFolder, book.CoverOrFirstPage))
+        {
+            Language = book.Language, PageCount = book.Pages.Count, PageImages = book.Pages.Select(p => p.Image).ToList(),
+        };
     }
 
     /// <summary>

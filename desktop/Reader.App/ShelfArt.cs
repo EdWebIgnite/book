@@ -75,13 +75,15 @@ static class ShelfArt
 
     // ---------------------------------------------------------------- textures
 
-    static Bitmap? _wood, _grain;
+    static Bitmap? _wood, _woodNight, _grain;
 
     /// <summary>
     /// Cherry wood, the grain running along the plank: long wavy stripes bent by a slow noise, with
     /// fine fibres. 1024 x 96, stretched along each plank.
     /// </summary>
-    public static Bitmap Wood => _wood ??= Make(1024, 96, (x, y) =>
+    public static Bitmap Wood => Palette.Night ? _woodNight ??= MakeWood() : _wood ??= MakeWood();
+
+    static Bitmap MakeWood() => Make(1024, 96, (x, y) =>
     {
         double warp = Fbm(x * 0.003, y * 0.02, 7) * 9 + Fbm(x * 0.012, y * 0.05, 11) * 1.6;
         double ring = 0.5 + 0.5 * Math.Sin((y * 0.16 + warp) * 2.6);

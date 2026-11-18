@@ -10,7 +10,8 @@
     <RootNamespace>Phone</RootNamespace>
     <AssemblyName>BookReader.Phone</AssemblyName>
     <ApplicationId>app.bookreader</ApplicationId>
-    <ApplicationTitle>Book Reader</ApplicationTitle>
+    <!-- The name people see. It is Reader.Core/Brand.cs's Name; the application id and file names keep the old name so installed copies update. -->
+    <ApplicationTitle>Dassie</ApplicationTitle>
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <!--

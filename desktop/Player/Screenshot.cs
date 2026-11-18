@@ -32,7 +32,7 @@ static class Screenshot
             var settings = new ReaderSettings();
             if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());
 
-            var window = new MainWindow(o, settings, new NoSound(), saveSettings: false) { Width = o.Width, Height = o.Height };
+            var window = new MainWindow(o, settings, new NoSound(), saveSettings: false, state: ShotState(o)) { Width = o.Width, Height = o.Height };
             ReaderView view = window.Screen.View;
             double clock = 100_000;
             view.Clock = () => clock;
@@ -117,6 +117,12 @@ static class Screenshot
             }
             // The settings open first, so the steps can act on them (scroll them, press their buttons).
             if (o.ShowSettings) { window.ToggleSettings(true); Pass(16); }
+            if (o.Screen is string screen && ShowScreen(window, screen) is string bad)
+            {
+                Console.Error.WriteLine(bad);
+                return 2;
+            }
+            if (o.Focus) { window.App.Shelf.FocusFirst(ring: true); Pass(16); }
             if (o.Do is not null)
             {
                 string? problem = ActOut(o.Do, window, Pass, ms => clock += ms);
@@ -153,6 +159,94 @@ static class Screenshot
             string shotBooks = Path.Combine(Path.GetTempPath(), "book-reader-shot-" + Environment.ProcessId);
             try { if (Directory.Exists(shotBooks)) Directory.Delete(shotBooks, true); } catch (IOException) { }
         }
+    }
+
+    /// <summary>
+    /// Who is reading in a screenshot: a first run (--welcome), one child with no name (the default),
+    /// three children with some reading done (--demo), or a saved profiles.json (--state).
+    /// </summary>
+    static AppState ShotState(Options o)
+    {
+        AppState s;
+        if (o.StateFile is string file) s = AppStateStore.Load(file);
+        else if (o.Welcome) s = new AppState();
+        else if (o.Demo) s = Demo(o);
+        else
+        {
+            s = new AppState { Welcomed = true };
+            s.Add("", 0);
+        }
+        s.Bedtime = o.Bedtime;
+        if (o.Language is not null) s.Language = "auto";
+        return s;
+    }
+
+    /// <summary>Lia, Thabo and Mila. Lia is part of the way through Moss and has finished the waterhole book.</summary>
+    static AppState Demo(Options o)
+    {
+        var s = new AppState { Welcomed = true };
+        s.Add("Lia", 0, "3-5");
+        s.Add("Thabo", 1, "6-8");
+        s.Add("Mila", 2, "3-5");
+        string? content = BookLibrary.FindContent(o.Content, AppContext.BaseDirectory, Environment.CurrentDirectory);
+        int Pages(string id)
+        {
+            try { return content is null ? 12 : BookJson.Load(Path.Combine(content, "books", id)).Pages.Count; }
+            catch (Exception) { return 12; }
+        }
+        var today = DateTime.UtcNow.Date.AddHours(12);
+        s.Choose("p1");
+        s.MarkFinished("waterhole", Pages("waterhole"), today.AddDays(-5));
+        s.KeepPlace("deep-sea", 4, 2, 0, Pages("deep-sea"), today.AddDays(-3));
+        s.MarkFinished("deep-sea", Pages("deep-sea"), today.AddDays(-2));
+        s.KeepPlace("deep-sea", 3, 1, 0, Pages("deep-sea"), today.AddDays(-1));
+        s.KeepPlace("biggest-puddle", 20, 6, 1, Pages("biggest-puddle"), today);
+        s.Choose("p2");
+        s.MarkFinished("captain-megawatt", Pages("captain-megawatt"), today.AddDays(-1));
+        s.Choose("p" + Math.Clamp(o.Child, 1, 3));
+        return s;
+    }
+
+    /// <summary>Open one of the screens around the reader. Returns what was wrong with the name, or null.</summary>
+    static string? ShowScreen(MainWindow window, string screen)
+    {
+        Reader.App.AppView app = window.App;
+        string[] parts = screen.Split(':', 2);
+        switch (parts[0])
+        {
+            case "welcome":
+                app.ShowWelcome(parts.Length > 1 && int.TryParse(parts[1], out int page) ? Math.Clamp(page - 1, 0, Reader.App.WelcomeView.InfoPages) : 0);
+                break;
+            case "profiles":
+                app.ShowProfiles(canClose: true);
+                break;
+            case "gate":
+                app.WithGate(() => app.ShowParents());
+                break;
+            case "shelf":
+                app.ShowShelf();
+                break;
+            default:
+                if (!parts[0].StartsWith("parents", StringComparison.Ordinal)) return "Unknown screen: " + screen;
+                string section = parts[0].Contains('/') ? parts[0][(parts[0].IndexOf('/') + 1)..] : "home";
+                Reader.App.ParentsView.Section? s = section switch
+                {
+                    "home" => Reader.App.ParentsView.Section.Home,
+                    "reading" => Reader.App.ParentsView.Section.Reading,
+                    "books" => Reader.App.ParentsView.Section.Books,
+                    "language" => Reader.App.ParentsView.Section.Language,
+                    "about" => Reader.App.ParentsView.Section.About,
+                    "child" => Reader.App.ParentsView.Section.Child,
+                    "new" => Reader.App.ParentsView.Section.NewChild,
+                    "tuning" => Reader.App.ParentsView.Section.Tuning,
+                    _ => null,
+                };
+                if (s is null) return "Unknown screen: " + screen;
+                app.ShowParents(s.Value, app.State.CurrentProfile?.Id);
+                break;
+        }
+        Dispatcher.UIThread.RunJobs();
+        return null;
     }
 
     /// <summary>

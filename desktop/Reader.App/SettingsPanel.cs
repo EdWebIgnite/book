@@ -58,8 +58,6 @@ public sealed class SettingsPanel : UserControl
         new Check("wholePageLast", "Show whole page again after its stops", s => s.WholePageLast, (s, v) => s.WholePageLast = v),
         new Check("autoPlay", "Watch mode: move on by itself", s => s.AutoPlay, (s, v) => s.AutoPlay = v),
         new Range("autoSeconds", "Seconds per stop", 1, 12, 0.5, s => s.AutoSeconds, (s, v) => s.AutoSeconds = v, Unit: " s", ShowIf: s => s.AutoPlay),
-        new Check("gate", "Lock the gear button (hold for 2 seconds)", s => s.Gate, (s, v) => s.Gate = v,
-            Help: "Off here so the playground is quick to use. S on a keyboard always opens this panel."),
 
         new Group("Fine tuning", "Playground only. Children and parents never see these."),
         new Section("Camera move"),
@@ -104,9 +102,9 @@ public sealed class SettingsPanel : UserControl
             Help: "Off for younger children, who double-tap by accident. The + and − buttons always work."),
     };
 
-    static readonly IBrush Ink = Reader.Ui.Palette.InkBrush;
-    static readonly IBrush Grey = Reader.Ui.Palette.InkSoftBrush;
-    static readonly IBrush HelpGrey = Reader.Ui.Palette.InkSoftBrush;
+    static IBrush Ink => Reader.Ui.Palette.InkBrush;
+    static IBrush Grey => Reader.Ui.Palette.InkSoftBrush;
+    static IBrush HelpGrey => Reader.Ui.Palette.InkSoftBrush;
 
     /// <summary>A group's heading: a band of pale sage across the panel with a brass edge, its title and a short note.</summary>
     public static Control GroupHeading(string title, string note) => new Border
@@ -145,10 +143,14 @@ public sealed class SettingsPanel : UserControl
     /// The phone and tablet app: only the part for parents, none of the playground's fine tuning, no
     /// keyboard help and no copying.
     /// </param>
-    public SettingsPanel(ReaderSettings settings, bool parentsOnly = false)
+    readonly bool _embedded;
+
+    /// <param name="embedded">Only the fine tuning, to sit on a page of the grown-ups' area (which has the rest).</param>
+    public SettingsPanel(ReaderSettings settings, bool parentsOnly = false, bool embedded = false)
     {
         _settings = settings;
         _parentsOnly = parentsOnly;
+        _embedded = embedded;
         HorizontalAlignment = HorizontalAlignment.Right;
 
         var closeIcon = Reader.Ui.Icons.Make("M7 7 L17 17 M17 7 L7 17", 18, Reader.Ui.Buttons.TextBrush);
@@ -206,6 +208,15 @@ public sealed class SettingsPanel : UserControl
         }
         var body = _body = new StackPanel { Margin = new Thickness(18, 16, 18, 24), Children = { new Panel { Children = { heading, close } }, sub, _rows, Extra, actions, keys } };
         FontFamily = Reader.Ui.Palette.Font;
+        if (embedded)
+        {
+            body.Children.RemoveAt(0);
+            body.Children.Remove(sub);
+            body.Margin = new Thickness(4, 0, 4, 0);
+            Content = body;
+            Build();
+            return;
+        }
         Content = new Border
         {
             Background = Reader.Ui.Palette.CreamBrush,
@@ -258,8 +269,10 @@ public sealed class SettingsPanel : UserControl
     {
         _building = true;
         _rows.Children.Clear();
+        bool started = false;
         foreach (Row row in Controls)
         {
+            if (_embedded && !started) { if (row is Group { Title: "Fine tuning" }) started = true; else continue; }
             switch (row)
             {
                 case Group g when _parentsOnly && g.Title != "For parents":

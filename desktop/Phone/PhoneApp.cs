@@ -34,14 +34,18 @@ public sealed class PhoneApp : Avalonia.Application
             LoadedBook.MaxPictureSide = 4096;
             LoadedBook.FullPicturesKept = PhoneDevice.FullPicturesToKeep;
 
-            // A fresh install starts with the grown-up lock on the gear, so a child can't wander into the settings.
-            bool firstRun = !File.Exists(SettingsStore.DefaultPath);
             ReaderSettings settings = SettingsStore.Load();
-            if (firstRun) settings.Gate = true;
+            // The children, their progress, the language and bedtime colours, kept beside the settings.
+            AppState state = AppStateStore.Load();
+            string device = DeviceLanguage();
+            Strings.Language = Strings.Resolve(state.Language, device);
 
             var setup = new AppSetup
             {
-                NoBooksMessage = "Couldn't get the books ready. Try closing the app and opening it again.",
+                NoBooksMessage = Strings.T("shelf.notReady"),
+                State = state,
+                StatePath = AppStateStore.DefaultPath,
+                DeviceLanguage = device,
                 Touch = true,
                 CanOpenFolders = false,
                 SaveSettings = true,
@@ -62,17 +66,25 @@ public sealed class PhoneApp : Avalonia.Application
             single.MainView = view;
 
             // The books are unpacked off the screen's thread (only the first time takes a moment).
-            view.Say("Getting the books ready…", NoteKind.Busy);
+            view.Say(Strings.T("shelf.gettingReady"), NoteKind.Busy);
             Android.Content.Context context = Android.App.Application.Context;
             Task.Run(() => BookUnpacker.Unpack(context)).ContinueWith(t => Dispatcher.UIThread.Post(() =>
             {
                 setup.Content = t.IsCompletedSuccessfully ? t.Result : null;
                 view.LoadShelf();
+                view.Start();
                 _shelfReady = true;
                 if (_waiting is { } next) { _waiting = null; next(); }
             }));
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>The phone's language, such as "af" or "en".</summary>
+    static string DeviceLanguage()
+    {
+        try { return Java.Util.Locale.Default?.Language ?? "en"; }
+        catch (Exception) { return "en"; }
     }
 
     static bool _shelfReady;

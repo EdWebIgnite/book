@@ -11,7 +11,7 @@ using AndroidX.Core.View;
 namespace Phone;
 
 /// <summary>The Android app itself. It starts Avalonia with the reader in it (see <see cref="PhoneApp"/>).</summary>
-[Application(Label = "Book Reader", Icon = "@drawable/icon", Theme = "@style/ReaderTheme", AllowBackup = false)]
+[Application(Label = Reader.Core.Brand.Name, Icon = "@drawable/icon", Theme = "@style/ReaderTheme", AllowBackup = false)]
 public sealed class AndroidApp : AvaloniaAndroidApplication<PhoneApp>
 {
     public AndroidApp(IntPtr javaReference, JniHandleOwnership transfer) : base(javaReference, transfer) { }
@@ -29,7 +29,7 @@ public sealed class AndroidApp : AvaloniaAndroidApplication<PhoneApp>
 /// locking, running short of memory.
 /// </summary>
 [Activity(
-    Label = "Book Reader", MainLauncher = true, Exported = true, LaunchMode = LaunchMode.SingleTask,
+    Label = Reader.Core.Brand.Name, MainLauncher = true, Exported = true, LaunchMode = LaunchMode.SingleTask,
     ScreenOrientation = ScreenOrientation.FullUser,
     // Turning the phone or folding it only changes the size of the screen: the reader handles that itself
     // and keeps its place, rather than Android throwing the screen away and starting it again.

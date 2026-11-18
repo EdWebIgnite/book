@@ -50,6 +50,23 @@ sealed class Options
     /// <summary>Where books added from files are kept. Screenshots use a folder of their own.</summary>
     public string? ImportFolder;
 
+    /// <summary>The device language to pretend (screenshots, or to try the app in another language): "af", "en".</summary>
+    public string? Language;
+    /// <summary>Screenshots: bedtime colours.</summary>
+    public bool Bedtime;
+    /// <summary>Screenshots: start as a first run (the welcome), rather than with one child already set up.</summary>
+    public bool Welcome;
+    /// <summary>Screenshots: three children (Lia, Thabo, Mila) with some books read.</summary>
+    public bool Demo;
+    /// <summary>Screenshots: which child is reading, counting from 1.</summary>
+    public int Child = 1;
+    /// <summary>Screenshots: a profiles.json to start from.</summary>
+    public string? StateFile;
+    /// <summary>Screenshots: a screen to show (welcome, profiles, gate, parents, parents/reading, ...).</summary>
+    public string? Screen;
+    /// <summary>Screenshots: show the keyboard's focus ring on the first thing on the shelf.</summary>
+    public bool Focus;
+
     public string? Problem;
     public bool Help;
 
@@ -67,6 +84,7 @@ sealed class Options
             --import <file>      add a book file (.picturebook) to the shelf and open it. A book file given
                                  on its own (as Windows does with "Open with") does the same.
             --books <folder>     where books added from files are kept (the user's app-data folder when left out)
+            --lang <code>        the device language to use (en, af); the grown-ups' area can choose one too
 
         Draw one screen to a picture file and exit, with no window:
 
@@ -83,6 +101,15 @@ sealed class Options
             --look <x,y>         exploring: centre the view here (fractions of the page, like book.json)
             --find <n>           exploring: tap the nth thing to find (may be given more than once)
             --finish             show The End
+            --lang <code>        as a device in this language (en, af)
+            --bedtime            with bedtime colours
+            --welcome            as a first run: the welcome pages
+            --demo               three children, Lia, Thabo and Mila, with some books read (Lia's place in Moss)
+            --child <n>          the nth child is reading (with --demo)
+            --state <file>       start from this profiles.json (never written to)
+            --screen <name>      show: shelf (with nothing over it), welcome, welcome:<page 1-4>, profiles, gate, parents, parents/reading,
+                                 parents/books, parents/language, parents/about, parents/child, parents/new, parents/tuning
+            --focus              show the keyboard's focus ring on the first thing on the shelf
             --animate            let the shelf's little animations run (covers lifting, books settling), for record
             --set <key>=<value>  change a setting for this picture, for example --set reduceMotion=on
             --do "<steps>"       act these out first, as real touches and key presses, separated by semicolons:
@@ -180,6 +207,14 @@ sealed class Options
                     break;
                 }
                 case "--import": o.Import = Value(); break;
+                case "--lang": o.Language = Value(); break;
+                case "--bedtime": o.Bedtime = true; break;
+                case "--welcome": o.Welcome = true; break;
+                case "--demo": o.Demo = true; break;
+                case "--child": o.Child = Int(Value(), a, o) ?? 1; break;
+                case "--state": o.StateFile = Value(); break;
+                case "--screen": o.Screen = Value(); break;
+                case "--focus": o.Focus = true; break;
                 case "--books": o.ImportFolder = Value(); break;
                 case "--set":
                 {

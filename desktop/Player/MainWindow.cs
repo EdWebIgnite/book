@@ -16,24 +16,29 @@ sealed class MainWindow : Window
 {
     readonly Options _options;
 
-    public MainWindow(Options options, ReaderSettings settings, ISoundOutput sound, bool saveSettings)
+    public MainWindow(Options options, ReaderSettings settings, ISoundOutput sound, bool saveSettings, AppState? state = null)
     {
         _options = options;
-        Title = "Book Reader";
+        Title = Brand.Name;
         Background = Reader.Ui.Palette.ForestBrush;     // the reader's dark backdrop, so nothing flashes white
         Width = 1280;
         Height = 800;
         // A phone-sized window is allowed as the phone app (--phone), so its screens can be drawn here.
-        MinWidth = options.Touch ? 240 : 420;
-        MinHeight = options.Touch ? 240 : 320;
+        // On a computer the window can be made as small as 640 by 400, and everything still fits.
+        MinWidth = options.Touch ? 240 : 640;
+        MinHeight = options.Touch ? 240 : 400;
 
+        state ??= saveSettings ? AppStateStore.Load() : new AppState();
+        string device = options.Language ?? DeviceLanguage.Get();
+        Strings.Language = Strings.Resolve(state.Language, device);
         string? content = BookLibrary.FindContent(options.Content, AppContext.BaseDirectory, Environment.CurrentDirectory);
         var setup = new AppSetup
         {
             Content = content,
-            NoBooksMessage = options.Content is not null
-                ? $"There is no library.json in {options.Content}. Use \"Open a book folder\" to open a book from anywhere."
-                : "Couldn't find any books. Put a \"content\" folder beside the program, start it with --content <folder>, or use \"Open a book folder\".",
+            NoBooksMessage = Strings.T("shelf.noContent"),
+            State = state,
+            StatePath = saveSettings ? AppStateStore.DefaultPath : null,
+            DeviceLanguage = device,
             Touch = options.Touch,
             CanOpenFolders = !options.Touch,
             SaveSettings = saveSettings,
@@ -78,6 +83,7 @@ sealed class MainWindow : Window
     void Start()
     {
         LoadShelf();
+        App.Start();
         if (_options.Shot is null && _options.Import is not null) { _ = ImportAndOpen(_options.Import); return; }
         if (_options.Shot is null && _options.Book is not null && App.ResolveBook(_options.Book) is string folder)
             _ = App.OpenBook(folder, () => { if (_options.PlaceGiven) App.JumpTo(_options.Page, _options.Stop); });

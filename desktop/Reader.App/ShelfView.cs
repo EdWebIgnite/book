@@ -20,108 +20,81 @@ namespace Reader.App;
 /// <summary>What kind of note the shelf is showing, which sets its little badge.</summary>
 public enum NoteKind { Info, Busy, Good, Problem }
 
+/// <summary>Everything the shelf shows for the child who is reading.</summary>
+public sealed record ShelfModel(
+    IReadOnlyList<ShelfEntry> Books,
+    Func<string, BookProgress?> Progress,
+    ChildProfile? Child,
+    int ChildCount,
+    ShelfEntry? CarryOn);
+
 /// <summary>
-/// The bookshelf: a light wooden bookcase on a soft wall, and every book standing face out on its shelves
-/// so its cover shows, as on a nursery shelf. A cover lifts and tilts a little under the pointer or a
-/// finger, and the books settle in when the shelf appears. Each of those stops by itself, so a shelf that
-/// is just sitting there draws nothing.
+/// The bookshelf: the child's name on a brass plate, their books standing face out in a cherry
+/// bookcase with a pale back, a "Carry on reading" card for the book they were last part of the way
+/// through, a ribbon on books that are partly read and a tick on finished ones. Along the top: the
+/// app's name, who is reading (to change child) and the grown-ups' button, which leads to the gate.
+/// A cover lifts a little under the pointer or a finger and the books settle in when the shelf
+/// appears. Each of those stops by itself, so a shelf that is just sitting there draws nothing.
 /// </summary>
 public sealed class ShelfView : UserControl
 {
     readonly bool _touch;
-    readonly Bookcase _case;
+    readonly Grid _root;
+    readonly Grid _top;
     readonly NoteCard _note;
     readonly StackPanel _page;
     readonly ScrollViewer _scroll;
-    readonly List<Bitmap> _covers = new();
+    readonly Border _cardAbove = new();
+    Bookcase _case;
+    bool _small, _upright;
+    Thickness _safe;
+    ShelfModel? _model;
+    CarryOnCard? _card;
     string? _message;
     NoteKind _kind;
+    readonly List<BookCover> _covers = new();
 
-    /// <param name="forTouch">The phone and tablet app: no folder buttons and no keyboard hint.</param>
+    /// <param name="forTouch">The phone and tablet app.</param>
     public ShelfView(bool forTouch = false)
     {
         _touch = forTouch;
         FontFamily = Palette.Font;
+        _small = forTouch;
+        _case = new Bookcase(_small);
 
-        var title = new TextBlock
-        {
-            Text = "My Books", Foreground = Palette.LeafDeepBrush, FontSize = forTouch ? 32 : 44, FontWeight = FontWeight.Bold, FontFamily = Palette.Heading,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var mark = new Sprig { Width = forTouch ? 34 : 46, Height = forTouch ? 34 : 46, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
-        var hint = new TextBlock
-        {
-            Text = forTouch ? "Tap a book to read it." : "Pick a book to read. Grown-ups: press S for the settings.",
-            Foreground = Palette.InkSoftBrush, FontSize = forTouch ? 14 : 16, FontWeight = FontWeight.SemiBold,
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(forTouch ? 44 : 56, 0, 0, 0),
-        };
-        var titleBlock = new StackPanel
-        {
-            Children = { new StackPanel { Orientation = Orientation.Horizontal, Children = { mark, title } }, hint },
-        };
-
-        var openFile = ShelfButton("Add a book file", Icons.Plus);
-        openFile.Click += (_, _) => OpenFileRequested?.Invoke();
-        ToolTip.SetTip(openFile, "Add a book file (.picturebook) from the Book Editor to the shelf. You can also drop one on this window.");
-        var open = ShelfButton("Open a book folder", FolderIcon);
-        open.Click += (_, _) => OpenFolderRequested?.Invoke();
-        ToolTip.SetTip(open, "Open any folder that has a book.json in it (Ctrl+O)");
-        var buttons = new WrapPanel
-        {
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(12, 6, 0, 0), Children = { openFile, open },
-        };
-        foreach (Control b in buttons.Children) b.Margin = new Thickness(8, 0, 0, 8);
-        var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(4, 0, 4, forTouch ? 8 : 12) };
-        Grid.SetColumn(buttons, 1);
-        top.Children.Add(titleBlock);
-        if (!forTouch) top.Children.Add(buttons);
-
-        _note = new NoteCard { IsVisible = false, Margin = new Thickness(4, 0, 4, 12), HorizontalAlignment = HorizontalAlignment.Left };
-        _case = new Bookcase(forTouch);
-
+        _top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 12 };
+        _note = new NoteCard { IsVisible = false, Margin = new Thickness(0, 0, 0, 12), HorizontalAlignment = HorizontalAlignment.Left };
+        _page = new StackPanel { Children = { _note, _cardAbove, _case } };
         _scroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            Content = _page = new StackPanel { Margin = Edge(default), MaxWidth = forTouch ? double.PositiveInfinity : 1640, Children = { top, _note, _case } },
+            Content = _page,
         };
-        Content = new Panel { Children = { new Wall(), _scroll } };
+        _root = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        Grid.SetRow(_scroll, 1);
+        _root.Children.Add(_top);
+        _root.Children.Add(_scroll);
+        Content = new Panel { Children = { new Wall(), _root } };
+        KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Cycle);
+        Layout(new Size(1280, 800));
     }
 
-    Thickness Edge(Thickness safe) => _touch
-        ? new Thickness(14 + safe.Left, 16 + safe.Top, 14 + safe.Right, 16 + safe.Bottom)
-        : new Thickness(32 + safe.Left, 26 + safe.Top, 32 + safe.Right, 28 + safe.Bottom);
-
-    /// <summary>A folder, for the "Open a book folder" button.</summary>
-    const string FolderIcon = "M3.5 7.5 a2 2 0 0 1 2 -2 h3.5 l2 2 h7.5 a2 2 0 0 1 2 2 v7 a2 2 0 0 1 -2 2 h-13 a2 2 0 0 1 -2 -2 z";
-
-    static Button ShelfButton(string text, string icon)
-    {
-        Control glyph = Icons.Make(icon, 18, Buttons.TextBrush);
-        glyph.VerticalAlignment = VerticalAlignment.Center;
-        return new Button
-        {
-            Focusable = false, CornerRadius = new CornerRadius(22), MinHeight = 44, Padding = new Thickness(14, 6, 18, 6), FontSize = 15,
-            Content = new StackPanel
-            {
-                Orientation = Orientation.Horizontal, Spacing = 8,
-                Children = { glyph, new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center } },
-            },
-        };
-    }
-
+    /// <summary>A book was chosen: open it (at the child's place, if they have one).</summary>
     public event Action<ShelfEntry>? BookChosen;
+    /// <summary>The child's picture at the top was pressed: show who is reading.</summary>
+    public event Action? ChildRequested;
+    /// <summary>The grown-ups' button: the gate, then the parents' area.</summary>
+    public event Action? GrownUpsRequested;
+    /// <summary>"Add a book" on an empty shelf: the gate, then the parents' Books page.</summary>
+    public event Action? AddBookRequested;
 
-    /// <summary>Room kept clear for a notch, rounded corners or the system bars, added to the usual margin.</summary>
+    /// <summary>Room kept clear for a notch, rounded corners or the system bars.</summary>
     public Thickness SafeArea
     {
-        set => _page.Margin = Edge(value);
+        set { _safe = value; Layout(Bounds.Size); }
     }
-    public event Action? OpenFolderRequested;
-    /// <summary>"Add a book file" was pressed.</summary>
-    public event Action? OpenFileRequested;
 
-    /// <summary>Something to tell the person at the shelf: no books found, a book that wouldn't open, a book being added.</summary>
+    /// <summary>Something to tell the person at the shelf: a book that wouldn't open, a book being added.</summary>
     public void Say(string? message, NoteKind kind = NoteKind.Info)
     {
         _message = string.IsNullOrEmpty(message) ? null : message;
@@ -132,7 +105,7 @@ public sealed class ShelfView : UserControl
     void ShowNote()
     {
         // With no books at all, the words go on the sign on the empty shelf instead.
-        if (_case.Empty && _kind != NoteKind.Busy)
+        if (_case.Empty && _kind != NoteKind.Busy && _kind != NoteKind.Good)
         {
             _note.Show(null, _kind);
             _case.EmptySign.Detail = _message;
@@ -143,23 +116,123 @@ public sealed class ShelfView : UserControl
     }
 
     /// <summary>Fill the shelf. Covers load in the background and appear as they arrive.</summary>
-    public void Show(IReadOnlyList<ShelfEntry> books, bool coversNow = false)
+    public void Show(ShelfModel model, bool coversNow = false)
     {
-        foreach (Bitmap b in _covers) b.Dispose();
+        _model = model;
+        BuildTop();
         _covers.Clear();
-        var covers = new List<BookCover>();
-        foreach (ShelfEntry entry in books)
+        bool mixed = ShelfEntry.MixedLanguages(model.Books);
+        foreach (ShelfEntry entry in model.Books)
         {
-            var cover = new BookCover(entry, _touch);
+            var cover = new BookCover(entry, _touch, model.Progress(entry.Id), mixed ? Strings.LanguageTag(entry.Language) : "");
             cover.Click += () => BookChosen?.Invoke(entry);
-            covers.Add(cover);
-            if (coversNow) SetCover(cover, LoadCover(entry.CoverPath));
-            else Task.Run(() => LoadCover(entry.CoverPath)).ContinueWith(t => Dispatcher.UIThread.Post(() => SetCover(cover, t.Result)));
+            _covers.Add(cover);
+            Pictures.Get(entry.CoverPath, 480, coversNow, b => cover.Cover = b);
         }
-        _case.SetBooks(covers);
-        _case.EmptySign.ShowButtons(!_touch, () => OpenFileRequested?.Invoke(), () => OpenFolderRequested?.Invoke());
+        _card = null;
+        if (model.CarryOn is ShelfEntry carry && model.Progress(carry.Id) is BookProgress p && p.Partway)
+        {
+            _card = new CarryOnCard(carry, p);
+            _card.Click += () => BookChosen?.Invoke(carry);
+            string picture = p.Page >= 0 && p.Page < carry.PageImages.Count ? System.IO.Path.Combine(carry.Folder, carry.PageImages[p.Page]) : carry.CoverPath;
+            CarryOnCard card = _card;
+            Pictures.Get(picture, 640, coversNow, b => card.Picture = b ?? card.Picture);
+        }
+        Place();
         ShowNote();
         if (IsVisible) _case.SettleIn();
+    }
+
+    /// <summary>The words on the brass plate: "Lia's books", or "My books".</summary>
+    string Plate => Strings.BooksOf(_model?.Child?.Name);
+
+    void Place()
+    {
+        _case.SetBooks(_covers);
+        _case.Plate = Plate;
+        _case.EmptySign.ShowButton(() => AddBookRequested?.Invoke());
+        _cardAbove.Child = null;
+        _case.SetCard(null);
+        if (_card is null) { _cardAbove.IsVisible = false; return; }
+        _card.Strip = _upright;
+        if (_upright)
+        {
+            _card.Height = _small ? 124 : 190;
+            _cardAbove.Child = _card;
+            _cardAbove.IsVisible = true;
+            _cardAbove.Margin = new Thickness(_small ? 2 : 8, 0, _small ? 2 : 8, _small ? 14 : 22);
+        }
+        else
+        {
+            _card.Height = double.NaN;
+            _cardAbove.IsVisible = false;
+            _case.SetCard(_card);
+        }
+    }
+
+    // ---------------------------------------------------------------- the bar along the top
+
+    void BuildTop()
+    {
+        _top.Children.Clear();
+        bool low = Bounds.Height > 0 && Bounds.Height < 520;
+        var mark = new Wordmark { Size = _small ? (low ? 28 : 32) : 42, VerticalAlignment = VerticalAlignment.Center };
+        _top.Children.Add(mark);
+
+        ChildProfile? child = _model?.Child;
+        if (child is not null)
+        {
+            var chip = new Chip(child, _model!.ChildCount > 1, _small);
+            chip.Click += () => ChildRequested?.Invoke();
+            Grid.SetColumn(chip, 1);
+            _top.Children.Add(chip);
+        }
+        bool words = !(_small && _upright);
+        var grown = new GrownUpsButton(words, _small);
+        grown.Click += () => GrownUpsRequested?.Invoke();
+        Grid.SetColumn(grown, 2);
+        _top.Children.Add(grown);
+    }
+
+    // ---------------------------------------------------------------- sizes
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        Layout(e.NewSize);
+    }
+
+    void Layout(Size size)
+    {
+        double w = size.Width > 0 ? size.Width : 1280, h = size.Height > 0 ? size.Height : 800;
+        // Phone sizes on a phone, and on a computer whose window is small.
+        bool small = Math.Min(w, h) < 600;
+        bool upright = h > w * 1.05;
+        bool low = h < 520;
+        if (small != _small)
+        {
+            _small = small;
+            var fresh = new Bookcase(small);
+            _page.Children.Remove(_case);
+            _case = fresh;
+            _page.Children.Add(_case);
+        }
+        bool rebuildTop = upright != _upright || _top.Children.Count == 0;
+        _upright = upright;
+        double edge = small ? 14 : w < 900 ? 24 : 44;
+        double topH = small ? (low ? 54 : 64) : 84;
+        _top.Height = topH;
+        _top.Margin = new Thickness(edge + _safe.Left, (small ? 6 : 10) + _safe.Top, edge + _safe.Right, small ? 2 : 8);
+        // Keep the bottom clear of the gesture bar, and on a tablet of the wrists resting on its edge.
+        double bottom = (_touch && !small ? 48 : small ? 16 : 24) + _safe.Bottom;
+        _page.Margin = new Thickness(edge + _safe.Left, small ? 4 : 8, edge + _safe.Right, bottom);
+        _page.MaxWidth = 1600;
+        _case.AllowLowShelf = !upright && !low && !small;
+        _case.MaxCover = upright && !small ? 240 : double.NaN;
+        double above = _top.Height + _top.Margin.Top + _top.Margin.Bottom + _page.Margin.Top + bottom;
+        if (upright && _card is not null) above += (small ? 124 : 190) + (small ? 14 : 22);
+        _case.ViewportHeight = Math.Max(240, h - above);
+        if (_model is not null && (rebuildTop || _top.Children.Count == 0)) { BuildTop(); Place(); }
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -169,149 +242,170 @@ public sealed class ShelfView : UserControl
         if (change.Property == IsVisibleProperty && IsVisible) _case.SettleIn();
     }
 
-    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    /// <summary>A book on the shelf, for screenshots.</summary>
+    internal BookCover? Cover(int index) => index >= 0 && index < _covers.Count ? _covers[index] : null;
+
+    /// <summary>Give the keyboard's focus to the first thing on the shelf (the card, or the first book).</summary>
+    public void FocusFirst(bool ring = false)
     {
-        base.OnSizeChanged(e);
-        _case.ViewportHeight = e.NewSize.Height;
+        Control? first = _card is not null ? _card : _covers.FirstOrDefault();
+        if (first is null) return;
+        first.Focus(NavigationMethod.Tab);
+        if (ring && first is Tap t) t.ShowRing();
+        if (ring && first is BookCover c) c.ShowRing();
     }
 
-    void SetCover(BookCover card, Bitmap? cover)
-    {
-        if (cover is null) return;
-        _covers.Add(cover);
-        card.Cover = cover;
-    }
+    // ================================================================ pictures, loaded once
 
-    /// <summary>A cover shrunk to shelf size, so a shelf of big paintings doesn't fill the memory.</summary>
-    static Bitmap? LoadCover(string path)
+    /// <summary>Covers and page pictures shrunk to shelf size, kept while the app runs so going back to the shelf is instant.</summary>
+    static class Pictures
     {
-        try
+        static readonly Dictionary<(string, int), Bitmap?> Cache = new();
+
+        public static void Get(string path, int width, bool now, Action<Bitmap?> then)
         {
-            using FileStream file = File.OpenRead(path);
-            return Bitmap.DecodeToWidth(file, 480, BitmapInterpolationMode.HighQuality);
+            var key = (path, width);
+            if (Cache.TryGetValue(key, out Bitmap? known)) { then(known); return; }
+            if (now) { then(Cache[key] = Load(path, width)); return; }
+            Task.Run(() => Load(path, width)).ContinueWith(t => Dispatcher.UIThread.Post(() =>
+            {
+                Cache[key] = t.Result;
+                then(t.Result);
+            }));
         }
-        catch (Exception) { return null; }   // no cover: the book keeps its plain cloth board
+
+        static Bitmap? Load(string path, int width)
+        {
+            try
+            {
+                using FileStream file = File.OpenRead(path);
+                return Bitmap.DecodeToWidth(file, width, BitmapInterpolationMode.HighQuality);
+            }
+            catch (Exception) { return null; }   // no picture: the book keeps its plain board
+        }
     }
 
     // ================================================================ the wall
 
     /// <summary>
-    /// The wall behind the bookcase: a faded Victorian nursery wallpaper of soft sage stripes and little
-    /// sprigs on cream, a wooden dado rail, and painted panelling below it down to the skirting. Kept very
-    /// low in contrast so it stays quiet behind the books. Drawn only when the window changes size.
+    /// The wall behind the bookcase: plain warm cream with faint broad stripes, quiet so the covers stand
+    /// out (at bedtime, night blue with a few still stars). Drawn only when the window changes size.
     /// </summary>
     sealed class Wall : Control
     {
         public Wall() => IsHitTestVisible = false;
-
-        /// <summary>A little three-leaved sprig with a bud, the wallpaper's repeat, about 16 units tall.</summary>
-        static readonly Geometry Sprig = Geometry.Parse(
-            "M0,7 C0.5,2 0.3,-2 0,-6 " +
-            "M0,1 C-3,0 -5.5,-2 -6,-5 C-3,-4.6 -1,-2.5 0,1 Z " +
-            "M0,-1.5 C3,-2.4 5.2,-4.6 5.4,-7.6 C2.6,-7 0.8,-4.6 0,-1.5 Z " +
-            "M0,4 C-2.4,3.6 -4.4,2.4 -5,0.4 C-2.6,0.6 -0.9,2 0,4 Z");
 
         public override void Render(DrawingContext ctx)
         {
             var r = new Rect(Bounds.Size);
             if (r.Width <= 0 || r.Height <= 0) return;
             double w = r.Width, h = r.Height;
-            double dado = Math.Round(Math.Max(h * 0.7, h - 220));
-            ctx.FillRectangle(Palette.Brush(Palette.Wall), new Rect(0, 0, w, dado));
-
-            // Stripes: a broad faint band with a pinstripe either side, every 76 units.
-            const double repeat = 76, band = 26;
-            var bandBrush = new ImmutableSolidColorBrush(Palette.WallSage, 0.13);
-            var pin = new ImmutablePen(new ImmutableSolidColorBrush(Palette.WallSage, 0.28), 1);
-            for (double x = 0; x < w + repeat; x += repeat)
+            ctx.FillRectangle(Palette.Brush(Palette.Wall), r);
+            if (!Palette.Night)
             {
-                ctx.FillRectangle(bandBrush, new Rect(x, 0, band, dado));
-                ctx.DrawLine(pin, new Point(x - 4, 0), new Point(x - 4, dado));
-                ctx.DrawLine(pin, new Point(x + band + 4, 0), new Point(x + band + 4, dado));
+                const double repeat = 84, band = 34;
+                var bandBrush = Palette.Brush(Palette.WallStripe, 0.55);
+                for (double x = 18; x < w + repeat; x += repeat) ctx.FillRectangle(bandBrush, new Rect(x, 0, band, h));
+                ShelfArt.Speckle(ctx, r, 0.22);
             }
-            // Sprigs between the bands, in a half drop, with a tiny dusty rose bud.
-            var leaf = new ImmutableSolidColorBrush(Palette.WallSage, 0.5);
-            var stem = new ImmutablePen(new ImmutableSolidColorBrush(Palette.WallSage, 0.5), 0.9);
-            var bud = new ImmutableSolidColorBrush(Color.Parse("#c9a196"), 0.5);
-            int col = 0;
-            for (double x = band + (repeat - band) / 2; x < w + repeat; x += repeat, col++)
+            else
             {
-                for (double y = col % 2 == 0 ? 40 : 40 + 52; y < dado - 10; y += 104)
+                // A few small still stars, always in the same places.
+                var rnd = new Random(7);
+                for (int i = 0; i < (int)(w * h / 9000); i++)
                 {
-                    using (ctx.PushTransform(Matrix.CreateRotation((col % 2 == 0 ? -8 : 8) * Math.PI / 180) * Matrix.CreateTranslation(x, y)))
-                    {
-                        ctx.DrawGeometry(leaf, stem, Sprig);
-                        ctx.DrawEllipse(bud, null, new Point(0.2, -7.4), 1.9, 1.9);
-                    }
+                    double x = rnd.NextDouble() * w, y = rnd.NextDouble() * h, s = 0.6 + rnd.NextDouble() * 1.2;
+                    ctx.DrawEllipse(new ImmutableSolidColorBrush(Color.Parse("#fff4dc"), 0.18 + rnd.NextDouble() * 0.35), null, new Point(x, y), s, s);
                 }
             }
-
-            // Below the rail: painted panelling, each panel a thin raised moulding, down to the skirting board.
-            double skirting = Math.Min(30, (h - dado) * 0.2);
-            var panelling = new Rect(0, dado, w, h - dado);
-            ctx.FillRectangle(Palette.Brush(Palette.Panelling), panelling);
-            double pw = 190, gap = 26, top = dado + 26, bottom = h - skirting - 22;
-            if (bottom - top > 30)
+            ctx.FillRectangle(new RadialGradientBrush
             {
-                var light = new ImmutablePen(new ImmutableSolidColorBrush(Colors.White, 0.55), 1.4);
-                var dark = new ImmutablePen(new ImmutableSolidColorBrush(Palette.ShadowOf(0.14)), 1.4);
-                for (double x = gap; x < w; x += pw + gap)
-                {
-                    var p = new Rect(x, top, pw, bottom - top);
-                    ctx.DrawRectangle(null, dark, p.Translate(new Vector(1, 1)));
-                    ctx.DrawRectangle(null, light, p);
-                }
+                RadiusX = new RelativeScalar(0.8, RelativeUnit.Relative), RadiusY = new RelativeScalar(0.8, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Palette.ShadowOf(0), 0.55), new GradientStop(Palette.ShadowOf(Palette.Night ? 0.35 : 0.08), 1) },
+            }, r);
+        }
+    }
+
+    // ================================================================ the bar's buttons
+
+    /// <summary>Who is reading: their picture and name. Pressed, it shows everyone, to change child.</summary>
+    sealed class Chip : Tap
+    {
+        public Chip(ChildProfile child, bool others, bool small) : base(Strings.T("profile.switch"))
+        {
+            ToolTip.SetTip(this, Strings.T("profile.switch"));
+            Height = small ? 52 : 60;
+            CornerRadius = new CornerRadius(Height / 2);
+            Padding = new Thickness(5, 4, string.IsNullOrEmpty(child.Name) && !others ? 5 : 16, 4);
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+            row.Children.Add(new Avatar(child.Avatar, Height - 10) { VerticalAlignment = VerticalAlignment.Center });
+            if (!string.IsNullOrEmpty(child.Name))
+            {
+                var name = Kit.Text(child.Name, small ? 18 : 20, FontWeight.ExtraBold, wrap: false);
+                name.VerticalAlignment = VerticalAlignment.Center;
+                name.LineHeight = double.NaN;
+                row.Children.Add(name);
             }
-            // The skirting board and the dado rail, in cherry like the bookcase.
-            ctx.FillRectangle(new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Color.Parse("#c8bfa6"), 0), new GradientStop(Color.Parse("#b4ab92"), 1) },
-            }, new Rect(0, h - skirting, w, skirting));
-            ctx.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.5), new Rect(0, h - skirting, w, 1.2));
-            var rail = new Rect(0, dado - 7, w, 12);
-            ctx.FillRectangle(new ImmutableSolidColorBrush(Palette.ShadowOf(0.12)), new Rect(0, rail.Bottom, w, 4));
-            ctx.FillRectangle(new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Color.Parse("#b8653d"), 0), new GradientStop(Palette.Wood, 0.45), new GradientStop(Palette.WoodDeep, 1) },
-            }, rail);
-            ctx.FillRectangle(new ImmutableSolidColorBrush(Color.Parse("#e6a57c"), 0.7), new Rect(0, rail.Y + 1, w, 1));
+            if (others) row.Children.Add(Kit.Icon(Icons.Swap, small ? 18 : 20, Palette.InkSoftBrush));
+            Child = row;
+            Restyle();
+        }
 
-            // Age: a fine paper speckle, the light of a window from the upper left, and a little shade at the edges.
-            ShelfArt.Speckle(ctx, r, 0.32);
-            ctx.FillRectangle(new RadialGradientBrush
-            {
-                Center = new RelativePoint(0.12, 0, RelativeUnit.Relative), GradientOrigin = new RelativePoint(0.12, 0, RelativeUnit.Relative),
-                RadiusX = new RelativeScalar(0.7, RelativeUnit.Relative), RadiusY = new RelativeScalar(1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Color.FromArgb(70, 255, 246, 220), 0), new GradientStop(Color.FromArgb(0, 255, 246, 220), 1) },
-            }, r);
-            ctx.FillRectangle(new RadialGradientBrush
-            {
-                RadiusX = new RelativeScalar(0.75, RelativeUnit.Relative), RadiusY = new RelativeScalar(0.75, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Palette.ShadowOf(0), 0.55), new GradientStop(Palette.ShadowOf(0.1), 1) },
-            }, r);
+        protected override void Restyle()
+        {
+            Buttons.Look look = Buttons.Plain;
+            Background = Pressed ? Buttons.PressedFace(look) : Over ? Buttons.HoverFace(look) : Buttons.Face(look);
+            BorderBrush = Buttons.Edge(look);
+            BorderThickness = Pressed ? Buttons.LipPressed : Buttons.Lip;
+            Shadow = new BoxShadows(Pressed ? Buttons.ShadowPressed : Buttons.Shadow);
+        }
+    }
+
+    /// <summary>The way into the grown-ups' area: a lock, and the word when there is room. Smaller and quieter than anything a child presses.</summary>
+    sealed class GrownUpsButton : Tap
+    {
+        public GrownUpsButton(bool words, bool small) : base(Strings.T("shelf.grownups"))
+        {
+            ToolTip.SetTip(this, Strings.T("shelf.grownups"));
+            Height = 48;
+            MinWidth = 48;
+            CornerRadius = new CornerRadius(24);
+            Padding = new Thickness(words ? 14 : 0, 0, words ? 18 : 0, 0);
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+            row.Children.Add(Kit.Icon(Icons.Lock, 20, Palette.InkSoftBrush));
+            if (words) row.Children.Add(Kit.Text(Strings.T("shelf.grownups"), small ? 15 : 16, FontWeight.Bold, Palette.InkSoftBrush, wrap: false));
+            Child = row;
+            BorderThickness = new Thickness(1.5);
+            VerticalAlignment = VerticalAlignment.Center;
+            Restyle();
+        }
+
+        protected override void Restyle()
+        {
+            Background = Palette.Brush(Palette.Paper, Over || Pressed ? 0.95 : 0.6);
+            BorderBrush = Palette.Brush(Palette.Night ? Palette.LeafPale : Color.Parse("#d9ccae"));
         }
     }
 
     // ================================================================ a note above the shelf
 
-    /// <summary>A short note on a little card: a coloured badge for what kind of note it is, and the words.</summary>
+    /// <summary>A short note on a little card: a badge for what kind of note it is (by shape, not only colour), and the words.</summary>
     sealed class NoteCard : Border
     {
-        readonly TextBlock _text = new() { FontSize = 16, FontWeight = FontWeight.SemiBold, Foreground = Palette.InkBrush, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        readonly TextBlock _text = new() { FontSize = 16, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         readonly Border _badge = new() { Width = 30, Height = 30, CornerRadius = new CornerRadius(15), VerticalAlignment = VerticalAlignment.Top };
         readonly StackPanel _dots = new() { Orientation = Orientation.Horizontal, Spacing = 5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         CancellationTokenSource? _busy;
 
         public NoteCard()
         {
-            Background = Palette.Brush(Palette.Paper, 0.94);
+            Background = Palette.Brush(Palette.Paper, 0.96);
             BorderBrush = Palette.LeafPaleBrush;
             BorderThickness = new Thickness(1.5);
             CornerRadius = new CornerRadius(18);
             Padding = new Thickness(12, 10, 18, 10);
             MaxWidth = 760;
+            _text.Foreground = Palette.InkBrush;
             BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 3, Blur = 12, Color = Palette.ShadowOf(0.10) });
             for (int i = 0; i < 3; i++) _dots.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = Palette.LeafBrush });
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
@@ -329,17 +423,13 @@ public sealed class ShelfView : UserControl
             _text.Text = text ?? "";
             (Color fill, string glyph, IBrush ink) = kind switch
             {
-                NoteKind.Good => (Palette.Leaf, "M7 12.5 l3.2 3.2 L17 8.8", (IBrush)Brushes.White),
+                NoteKind.Good => (Palette.Tick, Icons.Tick, (IBrush)Palette.OnLeafBrush),
                 NoteKind.Problem => (Palette.Sun, "M12 6.5 v7 M12 17.2 v0.3", Palette.SunInkBrush),
                 NoteKind.Busy => (Palette.Mint, "M12 6.5 v5.5 l3.5 2", Palette.LeafDeepBrush),
                 _ => (Palette.Mint, "M12 11 v6 M12 7.2 v0.3", Palette.LeafDeepBrush),
             };
             _badge.Background = Palette.Brush(fill);
-            _badge.BorderBrush = kind is NoteKind.Busy or NoteKind.Info ? Palette.LeafPaleBrush : null;
-            _badge.BorderThickness = new Thickness(kind is NoteKind.Busy or NoteKind.Info ? 1.5 : 0);
-            _badge.Child = Icons.Make(glyph, 22, ink);
-            ((Control)_badge.Child).HorizontalAlignment = HorizontalAlignment.Center;
-            ((Control)_badge.Child).VerticalAlignment = VerticalAlignment.Center;
+            _badge.Child = Kit.Icon(glyph, 22, ink);
             bool busy = IsVisible && kind == NoteKind.Busy;
             _dots.IsVisible = busy;
             Bounce(busy);
@@ -371,12 +461,168 @@ public sealed class ShelfView : UserControl
         }
     }
 
+    // ================================================================ "Carry on reading"
+
+    /// <summary>
+    /// The book the child was last part of the way through: a picture of the page they were on, the
+    /// title, "Page 7 of 12" and a Carry on button. The whole card is one thing to press. On a wide
+    /// screen it stands on the shelf two books wide; on a phone held upright it is a strip above the case.
+    /// </summary>
+    sealed class CarryOnCard : Tap
+    {
+        readonly ShelfEntry _entry;
+        readonly BookProgress _progress;
+        Bitmap? _picture;
+        int _built = -1;
+
+        public CarryOnCard(ShelfEntry entry, BookProgress progress) : base(Strings.T("shelf.carryOn.label") + ": " + entry.Title)
+        {
+            _entry = entry;
+            _progress = progress;
+            CornerRadius = new CornerRadius(18);
+            BorderThickness = new Thickness(2.5);
+            Padding = new Thickness(10);
+            ClipToBounds = false;
+            Restyle();
+        }
+
+        /// <summary>A strip (upright phones and tablets) rather than a card standing on the shelf.</summary>
+        public bool Strip { get; set; }
+
+        public Bitmap? Picture
+        {
+            get => _picture;
+            set { _picture = value; _built = -1; Build(Bounds.Size); }
+        }
+
+        protected override void Restyle()
+        {
+            Background = Palette.Brush(Pressed ? Palette.Cream : Palette.Paper);
+            BorderBrush = Palette.Brush(Palette.Night ? Palette.Sun : Color.Parse("#d9b45a"));
+            Shadow = new BoxShadows(new BoxShadow { OffsetY = Pressed ? 1 : Over ? 8 : 4, Blur = Over ? 22 : 14, Color = Palette.ShadowOf(Palette.Night ? 0.5 : 0.2) });
+            RenderTransform = Pressed ? new TranslateTransform(0, 1.5) : Over ? new TranslateTransform(0, -2) : null;
+        }
+
+        protected override void OnSizeChanged(SizeChangedEventArgs e)
+        {
+            base.OnSizeChanged(e);
+            Build(e.NewSize);
+        }
+
+        string PageText
+        {
+            get
+            {
+                int count = _progress.PageCount > 0 ? _progress.PageCount : _entry.PageCount;
+                return Strings.T("shelf.page", _progress.Page + 1, Math.Max(count, _progress.Page + 1));
+            }
+        }
+
+        Control PictureBox(double radius) => new Border
+        {
+            CornerRadius = new CornerRadius(radius), ClipToBounds = true, Background = Palette.MintBrush,
+            Child = new Image { Source = _picture, Stretch = Stretch.UniformToFill },
+        };
+
+        void Build(Size size)
+        {
+            if (size.Width <= 0 || size.Height <= 0) return;
+            int kind = Strip ? 0 : size.Height >= 250 && size.Height > size.Width * 0.62 ? 1 : 2;
+            if (kind == _built) return;
+            _built = kind;
+            bool roomy = size.Height >= 160;
+            var label = Kit.Label(Strings.T("shelf.carryOn.label"), roomy ? 13 : 11);
+            label.TextWrapping = TextWrapping.NoWrap;
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+            label.LetterSpacing = roomy ? 1.1 : 0.6;
+            var title = Kit.Heading(_entry.Title, kind == 1 ? 23 : roomy ? 21 : 18);
+            title.MaxLines = 2;
+            title.TextTrimming = TextTrimming.CharacterEllipsis;
+            var page = Kit.Text(PageText, roomy ? 15 : 13, FontWeight.SemiBold, Palette.InkSoftBrush, wrap: false);
+            var words = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { label, title, page } };
+            switch (kind)
+            {
+                case 0:
+                {
+                    // A strip: picture, words, and a round play button.
+                    double d = size.Height >= 150 ? 72 : size.Width < 420 ? 56 : 60;
+                    var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = size.Width < 500 ? 12 : 18 };
+                    Control pic = PictureBox(12);
+                    pic.Width = Math.Round((size.Height - 20) * (size.Width < 420 ? 0.82 : size.Width < 500 ? 1.05 : 1.45));
+                    grid.Children.Add(pic);
+                    Grid.SetColumn(words, 1);
+                    grid.Children.Add(words);
+                    var play = new Border
+                    {
+                        Width = d, Height = d, CornerRadius = new CornerRadius(d / 2), VerticalAlignment = VerticalAlignment.Center,
+                        Background = Buttons.Face(Buttons.Green), BorderBrush = Buttons.Edge(Buttons.Green), BorderThickness = Buttons.Lip,
+                        BoxShadow = new BoxShadows(Buttons.Shadow), Child = Kit.Icon(Icons.Play, d * 0.42, new ImmutableSolidColorBrush(Buttons.Green.Ink), filled: true),
+                    };
+                    ((Control)play.Child).Margin = new Thickness(d * 0.06, 0, 0, 0);
+                    Grid.SetColumn(play, 2);
+                    grid.Children.Add(play);
+                    Child = grid;
+                    break;
+                }
+                case 1:
+                {
+                    // Standing on the shelf: the picture on top, then the words and the button.
+                    var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto"), RowSpacing = 10 };
+                    grid.Children.Add(PictureBox(10));
+                    words.Margin = new Thickness(6, 0);
+                    Grid.SetRow(words, 1);
+                    grid.Children.Add(words);
+                    Control button = ButtonLook(52);
+                    Grid.SetRow(button, 2);
+                    grid.Children.Add(button);
+                    Child = grid;
+                    break;
+                }
+                default:
+                {
+                    // Short and wide: the picture on the left, the words and button beside it. When the card is
+                    // small (a phone on its side) the words and the button need all of it, so the picture goes.
+                    bool roomForPicture = size.Width >= 330;
+                    var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(roomForPicture ? "0.8*,*" : "0,*"), ColumnSpacing = roomForPicture ? 12 : 0 };
+                    if (roomForPicture) grid.Children.Add(PictureBox(10));
+                    var right = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), RowSpacing = 8 };
+                    right.Children.Add(words);
+                    Control button = ButtonLook(size.Height >= 180 ? 50 : 44);
+                    Grid.SetRow(button, 1);
+                    right.Children.Add(button);
+                    Grid.SetColumn(right, 1);
+                    grid.Children.Add(right);
+                    Child = grid;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>What looks like the card's button. The whole card is pressed, so it is only a picture of one.</summary>
+        static Control ButtonLook(double height)
+        {
+            Buttons.Look look = Buttons.Green;
+            var ink = new ImmutableSolidColorBrush(look.Ink);
+            return new Border
+            {
+                Height = height, CornerRadius = new CornerRadius(height / 2), Background = Buttons.Face(look), BorderBrush = Buttons.Edge(look), BorderThickness = Buttons.Lip,
+                BoxShadow = new BoxShadows(Buttons.Shadow),
+                Child = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                    Children = { Kit.Icon(Icons.Play, height * 0.38, ink, filled: true), Kit.Text(Strings.T("shelf.carryOn.button"), height * 0.4, FontWeight.ExtraBold, ink, wrap: false) },
+                },
+            };
+        }
+    }
+
     // ================================================================ a book on the shelf
 
     /// <summary>
     /// One book standing face out: its cover (two wide by three high, cropped to fit) with a hint of a
-    /// spine down its left edge and a soft shadow. Under the pointer it lifts, tilts a touch and its shadow
-    /// grows; pressed, it dips. The movement is a short transition that stops when it gets there.
+    /// spine down its left edge and a soft shadow, a ribbon when it is partly read, a tick when it has
+    /// been read to the end, and its language when the shelf holds more than one. Under the pointer it
+    /// lifts, tilts a touch and its shadow grows; pressed, it dips.
     /// </summary>
     internal sealed class BookCover : Decorator
     {
@@ -385,10 +631,10 @@ public sealed class ShelfView : UserControl
         static readonly TransformOperations LiftedStill = TransformOperations.Parse("translateY(-10px) rotate(0deg) scale(1.02)");
         static readonly TransformOperations Pressed = TransformOperations.Parse("translateY(-3px) rotate(-0.6deg) scale(0.985)");
 
-        static readonly BoxShadows RestShadow = new(
+        static BoxShadows RestShadow => new(
             new BoxShadow { OffsetX = 3, OffsetY = 5, Blur = 10, Color = Palette.ShadowOf(0.30) },
             new[] { new BoxShadow { OffsetX = 1, OffsetY = 1, Blur = 2, Color = Palette.ShadowOf(0.22) } });
-        static readonly BoxShadows LiftShadow = new(
+        static BoxShadows LiftShadow => new(
             new BoxShadow { OffsetX = 6, OffsetY = 18, Blur = 26, Color = Palette.ShadowOf(0.30) },
             new[] { new BoxShadow { OffsetX = 1, OffsetY = 2, Blur = 4, Color = Palette.ShadowOf(0.16) } });
 
@@ -409,24 +655,29 @@ public sealed class ShelfView : UserControl
             GradientStops = { new GradientStop(Color.FromArgb(46, 255, 255, 255), 0), new GradientStop(Color.FromArgb(0, 255, 255, 255), 1) },
         }.ToImmutable();
 
-        static readonly IBrush Board = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Palette.LeafBright, 0), new GradientStop(Palette.Leaf, 1) },
-        }.ToImmutable();
-
         readonly Border _card;
         readonly Image _image = new() { Stretch = Stretch.UniformToFill };
         readonly TextBlock _plainTitle;
-        bool _pressed, _over;
+        readonly Panel _marks = new() { IsHitTestVisible = false };
+        readonly BookProgress? _progress;
+        readonly string _tag;
+        bool _pressed, _over, _ring;
 
-        public BookCover(ShelfEntry entry, bool touch)
+        public BookCover(ShelfEntry entry, bool touch, BookProgress? progress, string languageTag)
         {
+            _progress = progress;
+            _tag = languageTag;
             Cursor = new Cursor(StandardCursorType.Hand);
-            AutomationProperties.SetName(this, entry.Title);
-            ToolTip.SetTip(this, entry.Title);
-            ToolTip.SetShowDelay(this, 900);
-            // A book with no cover picture still looks like a book: a green board with its title.
+            Focusable = Kit.Keyboard;
+            IsTabStop = Kit.Keyboard;
+            string state = progress is { Finished: true } ? Strings.T("shelf.finished") : progress is { Partway: true } ? Strings.T("shelf.partway") : "";
+            AutomationProperties.SetName(this, state.Length > 0 ? $"{entry.Title}, {state}" : entry.Title);
+            if (!touch)
+            {
+                ToolTip.SetTip(this, entry.Title);
+                ToolTip.SetShowDelay(this, 900);
+            }
+            // A book with no cover picture still looks like a book: a board with its title.
             _plainTitle = new TextBlock
             {
                 Text = entry.Title, Foreground = Brushes.White, FontWeight = FontWeight.ExtraBold, FontSize = touch ? 15 : 20,
@@ -434,19 +685,30 @@ public sealed class ShelfView : UserControl
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
             };
             var corners = new CornerRadius(3, 9, 9, 3);
-            var spineWidth = new GridLength(touch ? 9 : 14);
-            var spine = new Grid { ColumnDefinitions = new ColumnDefinitions { new ColumnDefinition(spineWidth), new ColumnDefinition(GridLength.Star) } };
+            var spine = new Grid { ColumnDefinitions = new ColumnDefinitions { new ColumnDefinition(new GridLength(touch ? 9 : 14)), new ColumnDefinition(GridLength.Star) } };
             spine.Children.Add(new Border { Background = Spine });
+            var board = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#4a8a6b"), 0), new GradientStop(Color.Parse("#2f6b50"), 1) },
+            };
             _card = new Border
             {
                 CornerRadius = corners,
                 BoxShadow = RestShadow,
                 RenderTransformOrigin = new RelativePoint(0.5, 1, RelativeUnit.Relative),
                 RenderTransform = Rest,
-                Child = new Border
+                Child = new Panel
                 {
-                    CornerRadius = corners, ClipToBounds = true, Background = Board,
-                    Child = new Panel { Children = { _plainTitle, _image, new Border { Background = Gloss }, spine } },
+                    Children =
+                    {
+                        new Border
+                        {
+                            CornerRadius = corners, ClipToBounds = true, Background = board,
+                            Child = new Panel { Children = { _plainTitle, _image, new Border { Background = Gloss }, spine } },
+                        },
+                        _marks,
+                    },
                 },
             };
             Child = _card;
@@ -464,6 +726,58 @@ public sealed class ShelfView : UserControl
             }
         }
 
+        protected override void OnSizeChanged(SizeChangedEventArgs e)
+        {
+            base.OnSizeChanged(e);
+            Marks(e.NewSize);
+        }
+
+        /// <summary>The ribbon, the tick and the language tag, sized to the cover.</summary>
+        void Marks(Size size)
+        {
+            _marks.Children.Clear();
+            double w = size.Width;
+            if (w <= 0) return;
+            if (_progress is { Partway: true })
+            {
+                // A ribbon bookmark hanging from the top edge, with a notched end: "part of the way through".
+                double rw = Math.Clamp(w * 0.13, 16, 26), rh = rw * 2.1;
+                var ribbon = new Avalonia.Controls.Shapes.Path
+                {
+                    Data = Geometry.Parse($"M0,-3 H{rw} V{rh} L{rw / 2},{rh - rw * 0.42} L0,{rh} Z"),
+                    Fill = Palette.Brush(Palette.Ribbon), Stroke = Palette.Brush(Colors.White, 0.85), StrokeThickness = 1.2,
+                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 0, w * 0.12, 0),
+                    Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1.5, BlurRadius = 3, Color = Palette.ShadowOf(1), Opacity = 0.35 },
+                };
+                _marks.Children.Add(ribbon);
+            }
+            if (_progress is { Finished: true })
+            {
+                // A round tick over the lower corner: "read to the end".
+                double d = Math.Clamp(w * 0.26, 34, 50);
+                var tick = new Border
+                {
+                    Width = d, Height = d, CornerRadius = new CornerRadius(d / 2), Background = Palette.Brush(Palette.Tick),
+                    BorderBrush = Brushes.White, BorderThickness = new Thickness(Math.Max(2.5, d * 0.07)),
+                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -d * 0.3, -d * 0.12),
+                    BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 2, Blur = 5, Color = Palette.ShadowOf(0.35) }),
+                    Child = Kit.Icon(Icons.Tick, d * 0.6, Palette.Night ? Palette.Brush(Color.Parse("#1b1f4b")) : Brushes.White),
+                };
+                _marks.Children.Add(tick);
+            }
+            if (_tag.Length > 0)
+            {
+                var tag = new Border
+                {
+                    Background = Palette.Brush(Color.Parse("#fffcf4"), 0.94), CornerRadius = new CornerRadius(8), Padding = new Thickness(7, 2),
+                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(w * 0.1, 0, 0, w * 0.06),
+                    BoxShadow = new BoxShadows(new BoxShadow { OffsetY = 1, Blur = 3, Color = Palette.ShadowOf(0.3) }),
+                    Child = new TextBlock { Text = _tag, FontSize = Math.Clamp(w * 0.085, 11, 15), FontWeight = FontWeight.Black, Foreground = Palette.Brush(Color.Parse("#2b2118")), LetterSpacing = 0.6 },
+                };
+                _marks.Children.Add(tag);
+            }
+        }
+
         void Apply()
         {
             bool animate = Motion.Allowed;
@@ -471,20 +785,56 @@ public sealed class ShelfView : UserControl
             {
                 _card.Transitions = new Transitions
                 {
-                    new TransformOperationsTransition { Property = RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(240), Easing = new CubicEaseOut() },
-                    new BoxShadowsTransition { Property = Border.BoxShadowProperty, Duration = TimeSpan.FromMilliseconds(240), Easing = new CubicEaseOut() },
+                    new TransformOperationsTransition { Property = RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(220), Easing = new CubicEaseOut() },
                 };
             }
             else if (!animate) _card.Transitions = null;
-            _card.RenderTransform = _pressed ? Pressed : _over ? (Motion.Reduced ? LiftedStill : Lifted) : Rest;
-            _card.BoxShadow = _over || _pressed ? LiftShadow : RestShadow;
+            bool up = _over || _ring;
+            _card.RenderTransform = _pressed ? Pressed : up ? (Motion.Reduced ? LiftedStill : Lifted) : Rest;
+            BoxShadows shadow = up || _pressed ? LiftShadow : RestShadow;
+            if (_ring)
+            {
+                var all = new List<BoxShadow>();
+                foreach (BoxShadow b in Kit.FocusRing) all.Add(b);
+                foreach (BoxShadow b in shadow) all.Add(b);
+                shadow = new BoxShadows(all[0], all.Skip(1).ToArray());
+            }
+            _card.BoxShadow = shadow;
         }
 
-        /// <summary>Show the book lifted as if the pointer were on it (for screenshots and the keyboard).</summary>
+        /// <summary>Show the book lifted as if the pointer were on it (for screenshots).</summary>
         public void SetHover(bool over)
         {
             _over = over;
             Apply();
+        }
+
+        public void ShowRing()
+        {
+            _ring = true;
+            Apply();
+        }
+
+        protected override void OnGotFocus(FocusChangedEventArgs e)
+        {
+            base.OnGotFocus(e);
+            _ring = e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional;
+            Apply();
+        }
+
+        protected override void OnLostFocus(FocusChangedEventArgs e)
+        {
+            base.OnLostFocus(e);
+            _ring = false;
+            Apply();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.Handled || e.Key is not (Key.Enter or Key.Space)) return;
+            e.Handled = true;
+            Click?.Invoke();
         }
 
         protected override void OnPointerEntered(PointerEventArgs e)
@@ -540,11 +890,11 @@ public sealed class ShelfView : UserControl
             }
             Opacity = 0;
             RenderTransform = TransformOperations.Parse("translateY(-16px)");
-            var delay = TimeSpan.FromMilliseconds(70 * order);
+            var delay = TimeSpan.FromMilliseconds(60 * order);
             Transitions = new Transitions
             {
-                new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(320), Delay = delay, Easing = new QuadraticEaseOut() },
-                new TransformOperationsTransition { Property = RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(520), Delay = delay, Easing = new BackEaseOut() },
+                new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(260), Delay = delay, Easing = new QuadraticEaseOut() },
+                new TransformOperationsTransition { Property = RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(300), Delay = delay, Easing = new CubicEaseOut() },
             };
             Dispatcher.UIThread.Post(() =>
             {
@@ -556,41 +906,38 @@ public sealed class ShelfView : UserControl
 
     // ================================================================ the sign on an empty shelf
 
-    /// <summary>What stands on the shelf when there are no books: a little sign saying so, and for grown-ups how to add one.</summary>
+    /// <summary>What stands on the shelf when there are no books: the dassie, a sign saying so, and for grown-ups a way to add one.</summary>
     internal sealed class Sign : Border
     {
         readonly TextBlock _detail;
-        readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) };
+        readonly Border _button = new() { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) };
 
-        public Sign(bool touch)
+        public Sign(bool small)
         {
-            Background = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Palette.Paper, 0), new GradientStop(Palette.Cream, 1) },
-            };
+            Background = Palette.PaperBrush;
             BorderBrush = Palette.LeafPaleBrush;
-            BorderThickness = new Thickness(2);
-            CornerRadius = new CornerRadius(20);
-            Padding = touch ? new Thickness(18, 16) : new Thickness(32, 24);
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetX = 2, OffsetY = 6, Blur = 14, Color = Palette.ShadowOf(0.22) });
+            BorderThickness = new Thickness(1.5);
+            CornerRadius = new CornerRadius(22);
+            Padding = small ? new Thickness(18, 16) : new Thickness(32, 24);
+            BoxShadow = new BoxShadows(new BoxShadow { OffsetX = 2, OffsetY = 6, Blur = 14, Color = Palette.ShadowOf(0.2) });
             _detail = new TextBlock
             {
-                FontSize = touch ? 13 : 15, Foreground = Palette.InkSoftBrush, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0), IsVisible = false,
+                FontSize = small ? 14 : 15, Foreground = Palette.InkSoftBrush, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0), IsVisible = false,
             };
+            var title = Kit.Heading(Strings.T("shelf.empty.title"), small ? 24 : 30);
+            title.TextAlignment = TextAlignment.Center;
+            title.HorizontalAlignment = HorizontalAlignment.Center;
+            var body = Kit.Text(Strings.T("shelf.empty.body"), small ? 16 : 18, FontWeight.SemiBold, Palette.InkSoftBrush);
+            body.TextAlignment = TextAlignment.Center;
+            body.HorizontalAlignment = HorizontalAlignment.Center;
             Child = new StackPanel
             {
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    new Sprig { Width = touch ? 40 : 56, Height = touch ? 40 : 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) },
-                    new TextBlock
-                    {
-                        Text = "No books on the shelf yet", FontSize = touch ? 20 : 28, FontWeight = FontWeight.Bold, FontFamily = Palette.Heading, Foreground = Palette.LeafDeepBrush,
-                        TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
-                    },
-                    _detail, _buttons,
+                    new Dassie { Look = Dassie.Pose.Sit, Width = small ? 72 : 96, Height = small ? 72 : 96, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 8) },
+                    title, body, _detail, _button,
                 },
             };
         }
@@ -604,17 +951,11 @@ public sealed class ShelfView : UserControl
             }
         }
 
-        public void ShowButtons(bool show, Action addFile, Action openFolder)
+        public void ShowButton(Action add)
         {
-            _buttons.Children.Clear();
-            if (!show) return;
-            var add = new Button { Content = "Add a book file", Focusable = false, CornerRadius = new CornerRadius(22), MinHeight = 44, FontSize = 15, Padding = new Thickness(20, 8) };
-            add.Classes.Add("primary");
-            add.Click += (_, _) => addFile();
-            var folder = new Button { Content = "Open a book folder", Focusable = false, CornerRadius = new CornerRadius(22), MinHeight = 44, FontSize = 15, Padding = new Thickness(20, 8) };
-            folder.Click += (_, _) => openFolder();
-            _buttons.Children.Add(add);
-            _buttons.Children.Add(folder);
+            var pill = new Pill(Strings.T("shelf.empty.add"), PillKind.Plain, Icons.Lock, height: 52, fontSize: 17);
+            pill.Click += add;
+            _button.Child = pill;
         }
     }
 }

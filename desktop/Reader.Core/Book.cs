@@ -25,6 +25,11 @@ public sealed class Book
     public string Title { get; set; } = "";
     public string Author { get; set; } = "";
     public string Cover { get; set; } = "";
+    /// <summary>
+    /// Optional: the language the book is written in, as a short code ("en", "af", ...). Empty when the
+    /// book doesn't say. The shelf shows it as a small tag when it holds books in more than one language.
+    /// </summary>
+    public string Language { get; set; } = "";
     /// <summary>What happens around a stop unless the stop says otherwise: dim, vignette, spotlight or none.</summary>
     public string FocusStyle { get; set; } = FocusStyles.Dim;
     public List<Page> Pages { get; set; } = new();

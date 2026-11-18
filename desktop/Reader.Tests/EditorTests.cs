@@ -378,6 +378,16 @@ public class EditorCheckAndExportTests
     }
 
     [Fact]
+    public void Export_keeps_the_book_s_language()
+    {
+        using var temp = new TempFolder();
+        BookProject p = Sample(temp);
+        p.Book.Language = "af";
+        ExportResult r = Exporter.Export(p, temp["out"], ExportOptions.Originals with { BookFile = false });
+        Assert.Equal("af", BookJson.Load(r.Folder).Language);
+    }
+
+    [Fact]
     public void A_sample_book_exports_and_still_has_every_file()
     {
         using var temp = new TempFolder();

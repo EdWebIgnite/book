@@ -30,7 +30,7 @@ static class Bench
             var settings = new ReaderSettings();
             if (o.Set.Count > 0) settings.ApplyJson(o.SetAsJson());
 
-            var window = new MainWindow(o, settings, new NoSound(), saveSettings: false) { Width = o.Width, Height = o.Height };
+            var window = new MainWindow(o, settings, new NoSound(), saveSettings: false, state: new AppState { Welcomed = true }) { Width = o.Width, Height = o.Height };
             ReaderView view = window.Screen.View;
             double clock = 100_000;
             view.Clock = () => clock;

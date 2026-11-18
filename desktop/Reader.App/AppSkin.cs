@@ -15,11 +15,34 @@ namespace Reader.App;
 /// </summary>
 public static class AppSkin
 {
+    static Application? _app;
+    static readonly Styles _coloured = new();
+    static FluentTheme? _fluent;
+
     /// <param name="phone">The phone app. The same look for now; the phone gets its own tuning later.</param>
     public static void Install(Application app, bool phone = false)
     {
-        var fluent = new FluentTheme();
-        fluent.Palettes[ThemeVariant.Light] = new ColorPaletteResources
+        _app = app;
+        _fluent = new FluentTheme();
+        app.Styles.Add(_fluent);
+        var r = app.Resources;
+        r["ContentControlThemeFontFamily"] = Palette.Font;
+        r["ControlCornerRadius"] = new CornerRadius(12);
+        r["OverlayCornerRadius"] = new CornerRadius(14);
+        r["ButtonBorderThemeThickness"] = Buttons.Lip;
+        r["ButtonPadding"] = new Thickness(16, 8);
+
+        // Every button: a soft shadow, and pressed it sinks: the face moves down, the lip thins and the shadow shrinks.
+        app.Styles.Add(new Style(x => x.OfType<Button>()) { Setters = { new Setter(Avalonia.Controls.Primitives.TemplatedControl.FontWeightProperty, FontWeight.Bold) } });
+        app.Styles.Add(_coloured);
+        Apply();
+    }
+
+    /// <summary>Put the colours of the theme in use (day or bedtime) on the standard controls. Called again when bedtime colours are switched.</summary>
+    public static void Apply()
+    {
+        if (_app is not Application app || _fluent is null) return;
+        ColorPaletteResources Make() => new()
         {
             Accent = Palette.Leaf,
             RegionColor = Palette.Cream,
@@ -27,17 +50,12 @@ public static class AppSkin
             ChromeAltLow = Palette.Ink,
             ErrorText = Palette.Clay,
         };
-        app.Styles.Add(fluent);
-        // The shelf and the settings are light whatever the computer's or phone's own theme is.
-        app.RequestedThemeVariant = ThemeVariant.Light;
+        _fluent.Palettes[ThemeVariant.Light] = Make();
+        _fluent.Palettes[ThemeVariant.Dark] = Make();
+        // The app is light by day and dark at bedtime, whatever the computer's or phone's own theme is.
+        app.RequestedThemeVariant = Palette.Night ? ThemeVariant.Dark : ThemeVariant.Light;
 
         var r = app.Resources;
-        r["ContentControlThemeFontFamily"] = Palette.Font;
-        r["ControlCornerRadius"] = new CornerRadius(12);
-        r["OverlayCornerRadius"] = new CornerRadius(14);
-
-        // Buttons: a light tactile face with plain dark words (see Buttons in Palette.cs); the shadow,
-        // the lip and the sink when pressed are in the styles below.
         Buttons.Look plain = Buttons.Plain;
         r["ButtonBackground"] = Buttons.Face(plain);
         r["ButtonBackgroundPointerOver"] = Buttons.HoverFace(plain);
@@ -51,29 +69,37 @@ public static class AppSkin
         r["ButtonBorderBrushPointerOver"] = Buttons.Edge(plain);
         r["ButtonBorderBrushPressed"] = Buttons.Edge(plain);
         r["ButtonBorderBrushDisabled"] = Buttons.Edge(plain, 0.6);
-        r["ButtonBorderThemeThickness"] = Buttons.Lip;
-        r["ButtonPadding"] = new Thickness(16, 8);
 
-        // Lists and tick boxes: soft green edges rather than near-black ones.
-        r["ComboBoxBorderBrush"] = Palette.Brush(Color.Parse("#c3b998"));
+        // Lists, tick boxes and text boxes: soft edges rather than near-black ones.
+        r["ComboBoxBorderBrush"] = Palette.Brush(Palette.Night ? Color.Parse("#5a62b0") : Color.Parse("#c3b998"));
         r["ComboBoxBorderBrushPointerOver"] = Palette.LeafBrush;
         r["ComboBoxBackground"] = Palette.PaperBrush;
         r["ComboBoxBackgroundPointerOver"] = Palette.MintBrush;
-        r["CheckBoxCheckBackgroundStrokeUnchecked"] = Palette.Brush(Color.Parse("#a99a72"));
+        r["CheckBoxCheckBackgroundStrokeUnchecked"] = Palette.Brush(Palette.Night ? Color.Parse("#8c92d0") : Color.Parse("#a99a72"));
         r["CheckBoxCheckBackgroundFillUnchecked"] = Palette.PaperBrush;
+        r["TextControlBackground"] = Palette.PaperBrush;
+        r["TextControlBackgroundPointerOver"] = Palette.PaperBrush;
+        r["TextControlBackgroundFocused"] = Palette.PaperBrush;
+        r["TextControlForeground"] = Palette.InkBrush;
+        r["TextControlForegroundPointerOver"] = Palette.InkBrush;
+        r["TextControlForegroundFocused"] = Palette.InkBrush;
+        r["TextControlBorderBrush"] = Palette.Brush(Palette.Night ? Color.Parse("#6870b8") : Color.Parse("#a99a72"));
+        r["TextControlBorderBrushPointerOver"] = Palette.LeafBrush;
+        r["TextControlBorderBrushFocused"] = Palette.LeafBrush;
+        r["TextControlPlaceholderForeground"] = Palette.InkSoftBrush;
+        r["TextControlSelectionHighlightColor"] = Palette.Brush(Palette.Leaf, 0.35);
 
-        // Tool tips: deep green with cream words.
-        r["ToolTipBackground"] = Palette.Brush(Palette.LeafDeep);
-        r["ToolTipForeground"] = Palette.CreamBrush;
-        r["ToolTipBorderBrush"] = Palette.Brush(Palette.LeafDeep);
+        // Tool tips: deep green (bedtime: the dark card) with light words.
+        r["ToolTipBackground"] = Palette.Brush(Palette.Night ? Palette.Paper : Palette.LeafDeep);
+        r["ToolTipForeground"] = Palette.Night ? Palette.InkBrush : Palette.CreamBrush;
+        r["ToolTipBorderBrush"] = Palette.Brush(Palette.Night ? Palette.LeafPale : Palette.LeafDeep);
 
-        // Every button: a soft shadow, and pressed it sinks: the face moves down, the lip thins and the shadow shrinks.
-        app.Styles.Add(new Style(x => x.OfType<Button>()) { Setters = { new Setter(Avalonia.Controls.Primitives.TemplatedControl.FontWeightProperty, FontWeight.Bold) } });
-        app.Styles.Add(new Style(x => x.OfType<Button>().Template().OfType<ContentPresenter>())
+        _coloured.Clear();
+        _coloured.Add(new Style(x => x.OfType<Button>().Template().OfType<ContentPresenter>())
         {
             Setters = { new Setter(ContentPresenter.BoxShadowProperty, new BoxShadows(Buttons.Shadow)) },
         });
-        app.Styles.Add(new Style(x => x.OfType<Button>().Class(":pressed").Template().OfType<ContentPresenter>())
+        _coloured.Add(new Style(x => x.OfType<Button>().Class(":pressed").Template().OfType<ContentPresenter>())
         {
             Setters =
             {
@@ -82,9 +108,9 @@ public static class AppSkin
                 new Setter(Visual.RenderTransformProperty, new TranslateTransform(0, 1.5)),
             },
         });
-        // Buttons marked "primary": a leaf green face with white words. "danger": the warm clay red.
-        app.Styles.Add(Colours("primary", Buttons.Green));
-        app.Styles.Add(Colours("danger", Buttons.Red));
+        // Buttons marked "primary": the main-action face. "danger": the warm red.
+        _coloured.Add(Colours("primary", Buttons.Green));
+        _coloured.Add(Colours("danger", Buttons.Red));
     }
 
     /// <summary>A coloured button style for buttons with the given class, in all its states.</summary>
@@ -97,7 +123,7 @@ public static class AppSkin
                 : new Style(x => x.OfType<Button>().Class(cls).Class(pseudo).Template().OfType<ContentPresenter>());
             s.Setters.Add(new Setter(ContentPresenter.BackgroundProperty, face));
             s.Setters.Add(new Setter(ContentPresenter.BorderBrushProperty, Buttons.Edge(look)));
-            s.Setters.Add(new Setter(ContentPresenter.ForegroundProperty, Brushes.White));
+            s.Setters.Add(new Setter(ContentPresenter.ForegroundProperty, new SolidColorBrush(look.Ink)));
             return s;
         }
         return new Styles { State(null, Buttons.Face(look)), State(":pointerover", Buttons.HoverFace(look)), State(":pressed", Buttons.PressedFace(look)) };

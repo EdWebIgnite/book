@@ -71,4 +71,25 @@ public static class ReadAlong
         if (n > 0 && voice.End is double end && end > 0 && voice.Words[^1] > end) return false;
         return true;
     }
+
+    /// <summary>True when a voice has a file and a fitting time for every word of the caption, so single words can be played.</summary>
+    public static bool Timed(Voice? voice, string? caption) =>
+        voice is { File.Length: > 0 } v && v.Words.Count > 0 && TimesFit(v, caption);
+
+    /// <summary>
+    /// The part of a recording that says one word of the caption: from that word's start to the next
+    /// word's start (or, for the last word, to the trimmed end, or a short moment when there is none).
+    /// Null when the voice has no time for that word, so nothing is played rather than a guess.
+    /// </summary>
+    public static (double From, double To)? WordSlice(Voice? voice, string? caption, int word)
+    {
+        if (voice is not { File.Length: > 0 } v || word < 0) return null;
+        int n = WordCount(caption);
+        if (v.Words.Count != n || word >= n) return null;
+        double from = v.Words[word];
+        double to = word + 1 < n ? v.Words[word + 1] : EndOf(v) ?? from + 0.9;
+        if (!(to > from)) to = from + 0.4;
+        // A long pause after a word isn't part of it.
+        return (from, Math.Min(to, from + 1.6));
+    }
 }

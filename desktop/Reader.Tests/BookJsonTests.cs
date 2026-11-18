@@ -21,6 +21,8 @@ public class BookJsonTests
         JsonNode desktop = BookJson.Serialize(Kit.Load(id));
         // Printed words are only in this reader: the retired browser reader drops them.
         foreach (JsonNode? page in desktop["pages"]!.AsArray()) page!.AsObject().Remove("text");
+        // So is a book's language, which the shelf shows on covers.
+        desktop.AsObject().Remove("language");
         AssertSameJson(browser, desktop, "$");
     }
 

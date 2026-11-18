@@ -12,7 +12,7 @@ sealed class App : Application
 
     public override void Initialize()
     {
-        // The app's skin: the Fluent theme in leaf green and cream, and the app's own font (see Reader.App/AppSkin.cs).
+        // The app's skin: the Fluent theme in the app's colours, and the app's own font (see Reader.App/AppSkin.cs).
         Reader.App.AppSkin.Install(this);
     }
 

@@ -27,6 +27,7 @@ public static class BookJson
             Title = Text(raw["title"]) ?? "",
             Author = Text(raw["author"]) ?? "",
             Cover = Text(raw["cover"]) ?? "",
+            Language = (Text(raw["language"]) ?? "").Trim(),
             FocusStyle = NonEmpty(Text(raw["focusStyle"])) ?? FocusStyles.Dim,
             Extra = Unknown(raw, BookKeys),
         };
@@ -171,7 +172,7 @@ public static class BookJson
     }
 
     // The fields each part of a book can have. Anything else is kept in Extra and written back as it was.
-    static readonly HashSet<string> BookKeys = new() { "id", "title", "author", "cover", "focusStyle", "pages" };
+    static readonly HashSet<string> BookKeys = new() { "id", "title", "author", "language", "cover", "focusStyle", "pages" };
     static readonly HashSet<string> PageKeys = new() { "image", "mode", "openWhole", "stops", "panels", "hotspots", "guidance", "effects", "layers", "tiles", "spread", "text" };
     static readonly HashSet<string> TextKeys = new() { "x", "y", "w", "h", "align", "size", "color", "content" };
     static readonly HashSet<string> StopKeys = new() { "box", "to", "panSeconds", "style", "moveSeconds", "auto", "holdSeconds", "caption", "ask", "sound", "voice" };
@@ -218,6 +219,8 @@ public static class BookJson
             ["focusStyle"] = string.IsNullOrEmpty(book.FocusStyle) ? FocusStyles.Dim : book.FocusStyle,
             ["pages"] = pages,
         };
+        // Only this reader knows the language field, and only books that say so carry it.
+        if (!string.IsNullOrWhiteSpace(book.Language)) o.Insert(3, "language", book.Language.Trim());
         AddExtra(o, book.Extra);
         return o;
     }
