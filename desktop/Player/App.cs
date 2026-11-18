@@ -14,6 +14,7 @@ sealed class App : Application
     {
         // The app's skin: the Fluent theme in the app's colours, and the app's own font (see Reader.App/AppSkin.cs).
         Reader.App.AppSkin.Install(this);
+        PerfMarks.Mark("skin installed");
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -23,7 +24,9 @@ sealed class App : Application
             var sound = new DesktopSound();
             ReaderSettings settings = SettingsStore.Load();
             if (Options.Set.Count > 0) settings.ApplyJson(Options.SetAsJson());
+            PerfMarks.Mark("sound and settings");
             var window = new MainWindow(Options, settings, sound, saveSettings: true);
+            PerfMarks.Mark("window made");
             desktop.MainWindow = window;
             desktop.Exit += (_, _) => sound.Dispose();
         }

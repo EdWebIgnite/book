@@ -30,7 +30,7 @@ public sealed partial class ReaderView : Control
     readonly BookFolderSound _sound;
     readonly HashSet<int> _down = new();
     LoadedBook? _book;
-    bool _frameAsked, _attached, _wasRestless, _loadAtOnce;
+    bool _frameAsked, _attached, _wasRestless, _wasAnyRestless, _loadAtOnce;
 
     // The time of the latest frame, and what the stopwatch said then, so that a touch between two frames
     // can be given a time on the same clock.
@@ -287,20 +287,24 @@ public sealed partial class ReaderView : Control
             // The page before too, where there is room for three, so turning back doesn't swap the quick
             // half-size picture for the sharp one mid-turn or just after it lands.
             if (LoadedBook.FullPicturesKept >= 3) book.Warm(page - 1);
-            // The printed words of the pages either side, made while nothing moves so a turn never waits for them.
+            // The printed words of the pages either side, made on another thread while nothing moves, so a turn
+            // never waits for them and the screen's thread never stops to make them.
             if (Engine.Settings.PrintedWords)
             {
-                book.Words(page + 1);
-                book.Words(page - 1);
+                book.PrepareWords(page + 1);
+                book.PrepareWords(page - 1);
             }
         }
 
         // Only draw again when something is moving, plus once more after it stops: that last frame is the
         // settled one, drawn at full quality. A child looking at a still page then costs the computer
-        // almost nothing.
-        bool restless = Engine.Restless;
-        if (restless || _wasRestless || ShowFrameRate) InvalidateVisual();
+        // almost nothing. While a voice reads, only the caption's words change, not the picture: it is
+        // drawn once as reading starts and once more when the voice has finished, and the frames between
+        // are only for the words (drawn as they always were, since the picture didn't change in them).
+        bool restless = Engine.PictureRestless, any = Engine.Restless;
+        if (restless || _wasRestless || (_wasAnyRestless && !any) || ShowFrameRate) InvalidateVisual();
         _wasRestless = restless;
+        _wasAnyRestless = any;
     }
 
     // ---------------------------------------------------------------- the frame-rate readout

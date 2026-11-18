@@ -230,7 +230,41 @@ dotnet Player/bin/Release/net10.0/BookReader.dll --bench
 dotnet Player/bin/Release/net10.0/BookReader.dll --bench --pages 1 --set bookLook=false --set pageTurn=fly
 ```
 
-Reader time is made up (sixty frames a second), so two builds draw the same frames and their numbers can be compared. It prints the number of frames, the average and worst time, and how many took over 20 ms, for all frames and separately for the frames while a page was turning and while the cover was swinging open. It also times a blank window, because the bench paints without a graphics card and reads every frame back, which costs about 20 ms a frame here by itself. The line that starts "so the reader's own drawing" has that taken off.
+Reader time is made up (sixty frames a second), so two builds draw the same frames and their numbers can be compared. It prints the number of frames, the average, median, 95th and 99th percentile and worst time, and how many took over 8.3 ms (a 120 Hz screen), 16.7 ms and 20 ms, for all frames and separately for the frames while a page was turning and while the cover was swinging open, with the part of each frame spent before painting on its own. It also prints what the screen's thread allocated each frame and how many collections there were, and times a blank window, because the bench paints without a graphics card, which costs about 20 ms a frame here by itself. `BENCH_SLOW=1` lists the frames that took over 8 ms before painting. The line that starts "so the reader's own drawing" has that taken off.
+
+## Performance
+
+Everything below runs with no window and paints without a graphics card, so painting times are only for comparing two builds. The time spent on the screen's own thread before painting, the allocations, the collections and the memory are what a phone sees too. Build with `-c Release` first.
+
+```
+dotnet Player/bin/Release/net10.0/BookReader.dll --bench                         # reading: frame times (median, 95th, 99th, worst, over 8.3 and 16.7 ms), allocations, collections
+dotnet Player/bin/Release/net10.0/BookReader.dll --bench --pages 2 --phone --size 411x882 --scale 2.625
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf open                     # each book: tap to first frame
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf explore                  # panning and zooming the big scenes
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf shelf                    # books settling in, covers lifting
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf memory --book waterhole  # read to the end: peak memory, collections, leaks after closing
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf idle                     # a page at rest: redraws (should be 0), the idle check
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf readalong --book <folder> --page 2 --stop 1   # a timed recording read aloud
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf audio --book <sound file>
+dotnet Player/bin/Release/net10.0/BookReader.dll --perf covers                   # a check: covers made while loading match those made on the screen's thread
+```
+
+**Start-up, in the real program.** With `BOOKREADER_PERF=1` the Player writes milestones to the console with the time since it started (`main`, `skin installed`, `window made`, `shelf listed`, `first frame`, `covers shown`, and `opening …`, `book read`, `book's first frame` for each book opened). On Linux it can run under `xvfb-run`. A Debug build of the phone app writes the same to `adb logcat` (search for `perf:`).
+
+**At rest.** Nothing should be drawn while nothing moves. To check the real program, start it on a screen (`--screen parents`, `--screen welcome`, `--book <id> --finish` for The End, `--book <id> --page 2 --stop 1`) and watch its CPU for ten seconds: it should stay near zero.
+
+**The editor.** Its screenshot hook times steps: `BookEditor --shot x.png --book <folder> --page 2 --stop 1 --do "live; timed key PageDown; timed drag 700,300 760,340; caption; typeeach Some more words; timed key ctrl+Z"` prints how long the book took to open and how long each step took, laid out and drawn (`live` loads pictures in the background from then on, as the real editor does; `caption` puts the keyboard in the stop's words; `typeeach` types one key at a time). In the editor the printed words on the page are made on another thread, and the stop cards under the page are built again once typing pauses rather than for every key.
+
+What keeps things quick, besides what is listed under Smooth movement:
+
+- A book's pictures are read side by side, a few at a time, and the cover, the board's colour, the first page's printed words and both faces of the cover are made alongside, off the screen's thread. The screen's thread only puts the finished book on screen.
+- The printed words of the pages either side are made on another thread while nothing moves (they took a tenth of a second, at the end of every page turn, on the screen's thread). A page turned to before they are ready waits for them rather than making them twice.
+- While a voice reads, only the caption's words change: the picture is drawn once as reading starts and once when it ends, not sixty times a second.
+- Sound files are kept once read (about a minute of sound in all), so a word tapped after its stop was read aloud plays at once.
+- Paths of tiles and pictures on top, the words key, the buffers of a turning page and the backdrop's brush are worked out once, not every frame.
+- The reader screen doesn't fill the screen under the picture with the same colour the app already has there: everything under a moving picture is painted again every frame.
+- The Windows program is published ReadyToRun (compiled ahead of time), which brings its first frame forward by about 40%.
+- The phone app uses .NET's profiled AOT (the default). Full AOT (`-p:AndroidEnableProfiledAot=false`) makes the APK about 13 MB bigger; whether its quicker start is worth that is best judged on a cheap phone.
 
 ## Publish for Windows
 
@@ -238,10 +272,10 @@ Reader time is made up (sixty frames a second), so two builds draw the same fram
 
 ```
 dotnet publish Player -c Release -r win-x64 --self-contained true \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o /some/folder/outside/the/repo
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true -o /some/folder/outside/the/repo
 ```
 
-The result is one file, `BookReader.exe` (about 105 MB), which needs nothing installed. The `.pdb` files beside it are only for debugging and can be left behind. Put a copy of the repo's `content` folder next to the exe and the shelf will find it.
+The result is one file, `BookReader.exe` (about 70 MB, compiled ahead of time so it starts sooner), which needs nothing installed. The `.pdb` files beside it are only for debugging and can be left behind. Put a copy of the repo's `content` folder next to the exe and the shelf will find it.
 
 **Book files.** The Player opens a book file (`.picturebook`, made by the editor's Export): drop it on the window, press "Add a book file" under Books in the grown-ups' area, or give it on the command line, which is what Windows does with "Open with" (or `--import <file>`). The book is checked and unpacked into the user's own app-data folder (`%APPDATA%\BookReader\books`, beside the settings), goes on the end of the shelf and opens. Books added this way are listed in the grown-ups' area under Books, where they can be removed. There is no installer, so nothing registers the `.picturebook` ending with Windows; "Open with", "Choose another app", "Always" does that once by hand.
 

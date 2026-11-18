@@ -87,7 +87,20 @@ sealed class MainWindow : Window
         App.Start();
         if (_options.Shot is null && _options.Import is not null) { _ = ImportAndOpen(_options.Import); return; }
         if (_options.Shot is null && _options.Book is not null && App.ResolveBook(_options.Book) is string folder)
-            _ = App.OpenBook(folder, () => { if (_options.PlaceGiven) App.JumpTo(_options.Page, _options.Stop); });
+            _ = App.OpenBook(folder, () =>
+            {
+                if (_options.PlaceGiven) App.JumpTo(_options.Page, _options.Stop);
+                if (_options.Finish) ShowTheEnd();
+            });
+        // Straight to one of the screens around the reader, as the screenshots can (for trying them, and for measuring them at rest).
+        if (_options.Shot is null && _options.Screen is string screen && Screenshot.ShowScreen(this, screen) is string bad) Console.Error.WriteLine(bad);
+    }
+
+    /// <summary>--finish: go to the book's last stop and on, to The End.</summary>
+    void ShowTheEnd()
+    {
+        Screen.View.Do(e => e.JumpTo(e.Book!.Pages.Count - 1, e.Steps[^1].Stop));
+        Avalonia.Threading.DispatcherTimer.RunOnce(() => Screen.View.Do(e => e.Next()), TimeSpan.FromSeconds(1.5));
     }
 
     public void LoadShelf(bool coversNow = false) => App.LoadShelf(coversNow);

@@ -126,6 +126,25 @@ public class NarrationTests
     }
 
     [Fact]
+    public void While_only_the_words_light_up_frames_are_wanted_but_the_picture_is_still()
+    {
+        Book book = Kit.OnePage(Kit.StopAt(0.5, 0.5), Spoken("Drip. Drip. Drip.", 2.0, 0.3, 0.8, 1.3));
+        Rig rig = Kit.Open(book, s => { s.WholePageFirst = false; s.Drift = "off"; });
+        rig.Next();
+        rig.Run(16);
+        Assert.True(rig.Engine.Animating);
+        Assert.True(rig.Engine.PictureRestless);                 // the camera is moving: the picture changes
+        rig.RunUntilStill();
+        rig.Run(400);
+        Assert.True(rig.Engine.Reading);
+        Assert.True(rig.Engine.Restless);                         // the words light up: frames are wanted
+        Assert.False(rig.Engine.PictureRestless);                 // but the picture itself doesn't change
+        rig.Run(2000);                                            // the voice has finished
+        Assert.False(rig.Engine.Restless);
+        Assert.False(rig.Engine.PictureRestless);
+    }
+
+    [Fact]
     public void The_output_s_own_position_is_followed_when_it_has_one()
     {
         Book book = Kit.OnePage(Kit.StopAt(0.5, 0.5), Spoken("Drip. Drip. Drip.", 2.0, 0.3, 0.8, 1.3));

@@ -16,6 +16,13 @@
     <ProjectReference Include="..\Reader.Audio\Reader.Audio.csproj" />
     <!-- The book editor's logic: saving, undo, Check book, Export. -->
     <ProjectReference Include="..\Editor.Core\Editor.Core.csproj" />
+    <!-- Opening a book's pictures (LoadedBook), run with Avalonia drawing and no screen. -->
+    <ProjectReference Include="..\Reader.Avalonia\Reader.Avalonia.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Skia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
   </ItemGroup>
 
   <ItemGroup>

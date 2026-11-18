@@ -89,7 +89,7 @@ public sealed class AppView : UserControl, IParentsHost
         FontFamily = Palette.Font;
 
         _shelf = MakeShelf();
-        _screen = new ReaderScreen(settings, sound) { IsVisible = false, AutoOnePage = setup.Touch };
+        _screen = new ReaderScreen(settings, sound) { IsVisible = false, AutoOnePage = setup.Touch, PaintsBackground = false };
         _screen.Engine.DeviceReducedMotion = setup.DeviceReducedMotion;
         Motion.Reduced = _screen.Engine.Reduced;
         if (setup.UnitsPerCm is double perCm) _screen.Engine.UnitsPerCm = perCm;
@@ -179,6 +179,13 @@ public sealed class AppView : UserControl, IParentsHost
         _content = _setup.Content;
         ShowContent(_content, coversNow);
         if (_content is null && _books.Count == 0 && _setup.NoBooksMessage.Length > 0) _shelf.Say(_setup.NoBooksMessage, NoteKind.Problem);
+        PerfMarks.MarkOnce("shelf listed");
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (PerfMarks.On) TopLevel.GetTopLevel(this)?.RequestAnimationFrame(_ => PerfMarks.MarkOnce("first frame"));
     }
 
     bool _coversNow;
@@ -367,16 +374,22 @@ public sealed class AppView : UserControl, IParentsHost
     {
         if (_opening) return;
         _opening = true;
+        PerfMarks.Mark("opening " + Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)));
         // A big book can take a moment: after a short wait the shelf says it is on its way.
         bool done = false;
         DispatcherTimer.RunOnce(() => { if (!done) _shelf.Say(Strings.T("shelf.opening"), NoteKind.Busy); }, TimeSpan.FromMilliseconds(400));
         try
         {
-            LoadedBook book = await LoadedBook.LoadAsync(folder);
+            // The printed words of the page the book opens on, and the cover in the open-book look, are made while
+            // it loads, off the screen's thread.
+            LoadedBook book = await LoadedBook.LoadAsync(folder, _settings.PrintedWords ? WordsFirst(folder) : null,
+                _settings.BookLook ? _settings.PrintedWords : null);
             done = true;
+            PerfMarks.Mark("book read");
             _shelf.Say(null);
             ShowBook(book);
             then?.Invoke();
+            if (PerfMarks.On) TopLevel.GetTopLevel(this)?.RequestAnimationFrame(_ => PerfMarks.Mark("book's first frame"));
         }
         catch (Exception)
         {
@@ -388,6 +401,14 @@ public sealed class AppView : UserControl, IParentsHost
             done = true;
             _opening = false;
         }
+    }
+
+    /// <summary>The pages a book is likely to show first: its first page (and the inside of its cover), and the child's place in it.</summary>
+    int[] WordsFirst(string folder)
+    {
+        string full = Path.GetFullPath(folder);
+        string id = _books.FirstOrDefault(b => Path.GetFullPath(b.Folder) == full)?.Id ?? Path.GetFileName(Path.TrimEndingDirectorySeparator(full));
+        return _state.CurrentProfile?.For(id) is { Partway: true } p && p.Page > 0 ? new[] { 0, p.Page } : new[] { 0 };
     }
 
     /// <summary>Load a book on the spot. For screenshots, where there is nobody to keep waiting.</summary>

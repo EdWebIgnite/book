@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using Editor.Core;
 using Reader.Core;
 
@@ -23,6 +24,7 @@ sealed class Timeline : UserControl
     readonly StackPanel _head = new() { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8) };
     readonly ScrollViewer _scroll;
     int _dragFrom = -1;
+    readonly DispatcherTimer _later;
     bool _waiting;
 
     public Timeline(EditorState state, Images images, MainWindow window)
@@ -37,7 +39,17 @@ sealed class Timeline : UserControl
         dock.Children.Add(_scroll);
         Content = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = dock };
         Height = 160;
-        _state.Changed += (why, source) => { if (source is not PageCanvas) Rebuild(); };   // not on every mouse move of a drag
+        // Not on every mouse move of a drag. While words are being typed (a change from a box in the inspector)
+        // the cards are built again once typing pauses, rather than for every key: that made each key slow.
+        // (Screenshots, which read pictures on the spot, build them at once.)
+        _later = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, (_, _) => { _later!.Stop(); Rebuild(); });
+        _state.Changed += (why, source) =>
+        {
+            if (source is PageCanvas) return;
+            if (why == Why.Content && source is not null && !_images.Synchronous) { _later.Stop(); _later.Start(); return; }
+            _later.Stop();
+            Rebuild();
+        };
         _images.Arrived += () => { if (_waiting) Rebuild(); };
         // Let go over the same card: select it. Over another card: move the stop there.
         _track.AddHandler(PointerReleasedEvent, (_, e) =>

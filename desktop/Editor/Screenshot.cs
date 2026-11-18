@@ -123,6 +123,16 @@ static class Screenshot
         foreach (string step in script.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string[] w = step.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            // "timed <step>": do the step, let the window lay itself out and draw, and print how long that took.
+            if (w[0].Equals("timed", StringComparison.OrdinalIgnoreCase) && w.Length == 2)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                if (ActOut(w[1], window) is string bad) return bad;
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"timed: {w[1]}: {clock.Elapsed.TotalMilliseconds:0.0} ms"));
+                continue;
+            }
             switch (w[0].ToLowerInvariant())
             {
                 case "click" when w.Length == 2 && TryPoint(w[1], out Point at):
@@ -157,8 +167,36 @@ static class Screenshot
                 case "type" when w.Length == 2:
                     window.KeyTextInput(w[1]);
                     break;
+                case "typeeach" when w.Length == 2:
+                {
+                    // One key at a time, each laid out and drawn before the next, timed: how typing feels.
+                    var times = new List<double>();
+                    foreach (char c in w[1])
+                    {
+                        var clock = System.Diagnostics.Stopwatch.StartNew();
+                        window.KeyTextInput(c.ToString());
+                        Dispatcher.UIThread.RunJobs();
+                        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                        Dispatcher.UIThread.RunJobs();
+                        times.Add(clock.Elapsed.TotalMilliseconds);
+                    }
+                    times.Sort();
+                    Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                        $"timed: typing {times.Count} keys one at a time: median {times[times.Count / 2]:0.0} ms a key, worst {times[^1]:0.0} ms"));
+                    break;
+                }
                 case "save":
                     window.Save();
+                    break;
+                case "live":
+                    // From here on, pictures load in the background as in the real editor (for timing steps).
+                    window.ShownPictures.Synchronous = false;
+                    break;
+                case "caption":
+                    // Put the keyboard in the selected stop's words box, at its end (as clicking into it would).
+                    if (window.Inspector.CaptionBox is not Avalonia.Controls.TextBox caption) return "caption needs a stop selected (--stop).";
+                    caption.Focus();
+                    caption.CaretIndex = caption.Text?.Length ?? 0;
                     break;
                 case "words":
                     // Select the page's printed words box (as clicking it would).
@@ -235,8 +273,13 @@ static class Screenshot
 
             if (o.Book is not null)
             {
+                var opening = System.Diagnostics.Stopwatch.StartNew();
                 window.OpenBook(o.Book).GetAwaiter().GetResult();
                 Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+                if (o.Do?.Contains("timed", StringComparison.OrdinalIgnoreCase) == true)
+                    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"timed: opening the book and drawing it: {opening.Elapsed.TotalMilliseconds:0.0} ms"));
                 if (!window.State.HasBook) { Console.Error.WriteLine("Couldn't open the book " + o.Book); return 1; }
                 window.State.GoToPage(o.Page - 1);
                 if (o.Stop is int s) window.State.Select(Sel.Stop, s - 1);

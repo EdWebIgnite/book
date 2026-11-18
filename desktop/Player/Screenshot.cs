@@ -208,7 +208,7 @@ static class Screenshot
     }
 
     /// <summary>Open one of the screens around the reader. Returns what was wrong with the name, or null.</summary>
-    static string? ShowScreen(MainWindow window, string screen)
+    internal static string? ShowScreen(MainWindow window, string screen)
     {
         Reader.App.AppView app = window.App;
         string[] parts = screen.Split(':', 2);

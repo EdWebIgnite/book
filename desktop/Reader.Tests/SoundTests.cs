@@ -235,4 +235,49 @@ public class SoundTests
         rig.Next();                                                       // moving on stops it
         Assert.Null(rig.Sound.Clip);
     }
+
+    [Fact]
+    public void A_sound_file_read_once_is_kept_and_read_again_only_when_it_changes()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "decoded-sounds-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string a = Path.Combine(dir, "a.wav"), b = Path.Combine(dir, "b.wav"), c = Path.Combine(dir, "c.wav");
+            foreach (string f in new[] { a, b, c }) File.WriteAllBytes(f, new byte[] { 1, 2, 3 });
+            var kept = new DecodedSounds(mostSamples: 1000);
+            int reads = 0;
+            float[] Read() { reads++; return new float[400]; }
+
+            float[]? first = kept.Get(a, Read);
+            Assert.Same(first, kept.Get(a, Read));                       // the recording, then a word tapped in it
+            Assert.Equal(1, reads);
+
+            File.WriteAllBytes(a, new byte[] { 1, 2, 3, 4 });            // a new recording of the same stop
+            Assert.NotSame(first, kept.Get(a, Read));
+            Assert.Equal(2, reads);
+
+            // Only so many samples are kept: the file used longest ago goes first.
+            kept.Get(b, Read);
+            kept.Get(a, Read);
+            kept.Get(c, Read);
+            Assert.Equal(2, kept.Count);
+            reads = 0;
+            kept.Get(a, Read);
+            kept.Get(c, Read);
+            Assert.Equal(0, reads);
+            kept.Get(b, Read);
+            Assert.Equal(1, reads);
+
+            // A file that can't be read is not kept, and is tried again next time.
+            int tries = 0;
+            Assert.Null(kept.Get(Path.Combine(dir, "missing.wav"), () => { tries++; return null; }));
+            Assert.Null(kept.Get(Path.Combine(dir, "missing.wav"), () => { tries++; return null; }));
+            Assert.Equal(2, tries);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

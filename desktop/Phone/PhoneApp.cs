@@ -21,6 +21,11 @@ public sealed class PhoneApp : Avalonia.Application
 
     public override void Initialize()
     {
+#if DEBUG
+        // Startup and book-opening milestones in adb logcat (search for "perf:").
+        PerfMarks.On = true;
+#endif
+        PerfMarks.Mark("avalonia started");
         // The same skin as the Windows program (Reader.App/AppSkin.cs): light, leaf green and cream, whatever the phone's own theme is.
         AppSkin.Install(this, phone: true);
     }

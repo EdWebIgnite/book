@@ -347,8 +347,14 @@ sealed class PageCanvas : Control
 
     Reader.Ui.PrintedWordsPicture? _words;
     int _wordsHeight;
+    /// <summary>What the words picture being made on another thread is made from, while it is being made.</summary>
+    (string Key, int Height)? _wordsMaking;
 
-    /// <summary>The page's printed words, made by the reader's own code so the preview is what the apps show.</summary>
+    /// <summary>
+    /// The page's printed words, made by the reader's own code so the preview is what the apps show.
+    /// Making the picture takes a good tenth of a second, and the words change with every key typed into a
+    /// stop's words, so it is made on another thread: the picture before stays up until the new one is ready.
+    /// </summary>
     void DrawWords(DrawingContext ctx, Page p, double aspect)
     {
         if (p.Text is null || !PrintedWords.Prints(p)) return;
@@ -358,17 +364,40 @@ sealed class PageCanvas : Control
         string key = Reader.Ui.PrintedWordsPicture.KeyFor(p, aspect);
         if (_words is null || _words.Key != key || _wordsHeight < height || _wordsHeight > height * 2)
         {
-            Reader.Ui.PrintedWordsPicture? old = _words;
-            // Made at twice the size and shrunk smoothly, as the reader's copies are, so small letters stay clean.
-            _words = Reader.Ui.PrintedWordsPicture.Make(p, aspect, height * 2);
-            _wordsHeight = height;
-            if (old is not null) Avalonia.Threading.Dispatcher.UIThread.Post(old.Dispose, Avalonia.Threading.DispatcherPriority.Background);
+            if (_images.Synchronous)
+            {
+                // Screenshots: made on the spot, so the picture shows the words as they are.
+                Keep(Reader.Ui.PrintedWordsPicture.Make(p, aspect, height * 2), height);
+            }
+            else if (_wordsMaking != (key, height))
+            {
+                _wordsMaking = (key, height);
+                Task.Run(() => Reader.Ui.PrintedWordsPicture.Make(p, aspect, height * 2)).ContinueWith(t => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    Reader.Ui.PrintedWordsPicture? made = t.IsCompletedSuccessfully ? t.Result : null;
+                    // Only the newest is kept: words typed meanwhile have started another. One that went wrong
+                    // (the stops changed while it was being made) is simply made again at the next drawing.
+                    bool wanted = _wordsMaking == (key, height);
+                    if (wanted) _wordsMaking = null;
+                    if (!wanted || !t.IsCompletedSuccessfully || (made is not null && made.Key != key)) { made?.Dispose(); InvalidateVisual(); return; }
+                    Keep(made, height);
+                    InvalidateVisual();
+                }));
+            }
         }
         if (_words is null) return;
         RectD region = _words.Region;
         Bitmap picture = _words.For(_pageRect.Height * scaling);
         using (ctx.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.HighQuality }))
             ctx.DrawImage(picture, new Rect(picture.Size), ToScreen(region));
+    }
+
+    void Keep(Reader.Ui.PrintedWordsPicture? made, int height)
+    {
+        Reader.Ui.PrintedWordsPicture? old = _words;
+        _words = made;
+        _wordsHeight = height;
+        if (old is not null) Avalonia.Threading.Dispatcher.UIThread.Post(old.Dispose, Avalonia.Threading.DispatcherPriority.Background);
     }
 
     static readonly Color[] FrameColours = { Color.Parse("#ffffff"), Color.Parse("#8ce99a"), Color.Parse("#74c0fc"), Color.Parse("#ffd8a8") };

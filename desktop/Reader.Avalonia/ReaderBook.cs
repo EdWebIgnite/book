@@ -254,6 +254,15 @@ public sealed partial class ReaderView
         DrawWords(ctx, _book, half.Page, half.X0 / pw, half.X1 / pw, dest, pixelsHigh ?? dest.Height * _scaling, Quick);
     }
 
+    /// <summary>The same with the page's words picture in hand (null for none), for drawing off the screen's thread.</summary>
+    static void DrawHalf(DrawingContext ctx, Half half, Rect dest, double pixelsHigh, PrintedWordsPicture? words)
+    {
+        if (half.Picture is not Bitmap picture || half.X1 - half.X0 < 0.5) { ctx.FillRectangle(Paper, dest); return; }
+        ctx.DrawImage(picture, new Rect(half.X0, 0, half.X1 - half.X0, picture.Size.Height), dest);
+        double pw = picture.Size.Width;
+        if (half.Page >= 0) DrawWords(ctx, words, half.X0 / pw, half.X1 / pw, dest, pixelsHigh, Quick);
+    }
+
     /// <summary>A page's spread lying open: board and page edges underneath, the pages, and the crease over them.</summary>
     void DrawOpenBook(DrawingContext ctx, LoadedBook book, int page, ViewTransform v, double w, double h,
         double scaling, RenderOptions quality, double crease)
@@ -388,10 +397,17 @@ public sealed partial class ReaderView
         int strips = cuts.Length - 1;
         // Each point along the sheet is worked out twice, for its top edge and its bottom edge, so that the
         // fold can lean (the top corner leading). A strip is then the four-sided piece between two of them.
-        var top = new Point[strips + 1];
-        var bottom = new Point[strips + 1];
-        var lifted = new bool[strips + 1];
-        var flatKind = new int[strips + 1];
+        // The lists are kept from frame to frame rather than made again for every frame of a turn.
+        if (_sheetTop.Length < strips + 1)
+        {
+            _sheetTop = new Point[strips + 1];
+            _sheetBottom = new Point[strips + 1];
+            _sheetLifted = new bool[strips + 1];
+            _sheetFlat = new int[strips + 1];
+        }
+        Point[] top = _sheetTop, bottom = _sheetBottom;
+        bool[] lifted = _sheetLifted;
+        int[] flatKind = _sheetFlat;
         for (int i = 0; i <= strips; i++)
         {
             double t = cuts[i];
@@ -471,6 +487,10 @@ public sealed partial class ReaderView
         }
         if (!shadowDrawn) underTheLiftedPart!();
     }
+
+    Point[] _sheetTop = Array.Empty<Point>(), _sheetBottom = Array.Empty<Point>();
+    bool[] _sheetLifted = Array.Empty<bool>();
+    int[] _sheetFlat = Array.Empty<int>();
 
     /// <summary>Where a point of a bending sheet lands on screen: lifted points are nearer the eye, so further from the middle.</summary>
     static Point Project(SheetPlace at, double eye, double cy, double x, double z, double y)
@@ -712,16 +732,17 @@ public sealed partial class ReaderView
     /// picture is 2:3 and the board is not, so it is never cropped), and the groove of the hinge beside the
     /// spine. Made once per book, at a size that stays sharp when drawn large.
     /// </summary>
-    Bitmap CoverFace(LoadedBook book, RectD board)
+    Bitmap CoverFace(LoadedBook book, RectD board) => _coverFace ??= MakeCoverFace(book.Board, book.Cover, board);
+
+    /// <summary>Draw the front of the cover. Any thread: books make theirs while they load.</summary>
+    static Bitmap MakeCoverFace(Color c, Bitmap? cover, RectD board)
     {
-        if (_coverFace is not null) return _coverFace;
         const double unit = 1000;                                        // pixels per spread height
         var size = new PixelSize((int)Math.Ceiling(board.W * unit), (int)Math.Ceiling(board.H * unit));
         var picture = new RenderTargetBitmap(size);
         using (DrawingContext ctx = picture.CreateDrawingContext())
         {
             var all = new Rect(0, 0, size.Width, size.Height);
-            Color c = book.Board;
             var boardBrush = new LinearGradientBrush
             {
                 StartPoint = new RelativePoint(0, 0, RelativeUnit.Absolute),
@@ -729,16 +750,16 @@ public sealed partial class ReaderView
                 GradientStops = { new GradientStop(Lighter(c, 1.2), 0), new GradientStop(Lighter(c, 0.85), 1) },
             };
             ctx.DrawRectangle(boardBrush, null, new RoundedRect(all, new CornerRadius(4, 14, 14, 4)));
-            if (book.Cover is Bitmap cover)
+            if (cover is not null)
             {
                 double margin = 0.035 * unit;
                 Rect room = all.Deflate(new Thickness(margin + 0.03 * unit, margin, margin, margin));
                 double scale = Math.Min(room.Width / cover.Size.Width, room.Height / cover.Size.Height);
                 double w = cover.Size.Width * scale, h = cover.Size.Height * scale;
                 var place = new Rect(room.X + (room.Width - w) / 2, room.Y + (room.Height - h) / 2, w, h);
-                ctx.DrawRectangle(Brush(Color.FromArgb(90, 0, 0, 0)), null, place.Translate(new Vector(3, 4)).Inflate(2), 3, 3);
+                ctx.DrawRectangle(new ImmutableSolidColorBrush(Color.FromArgb(90, 0, 0, 0)), null, place.Translate(new Vector(3, 4)).Inflate(2), 3, 3);
                 using (ctx.PushRenderOptions(Fine)) ctx.DrawImage(cover, place);
-                ctx.DrawRectangle(null, new ImmutablePen(Brush(Color.FromArgb(60, 0, 0, 0)), 1.5), place);
+                ctx.DrawRectangle(null, new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(60, 0, 0, 0)), 1.5), place);
             }
             // The hinge: a groove pressed into the board a little way from the spine, and the spine side in shade.
             double groove = 0.022 * unit;
@@ -748,10 +769,10 @@ public sealed partial class ReaderView
                 EndPoint = new RelativePoint(groove * 1.6, 0, RelativeUnit.Absolute),
                 GradientStops = { new GradientStop(Color.FromArgb(90, 0, 0, 0), 0), new GradientStop(Color.FromArgb(0, 0, 0, 0), 1) },
             }, new Rect(0, 0, groove * 1.6, size.Height));
-            ctx.FillRectangle(Brush(Color.FromArgb(80, 0, 0, 0)), new Rect(groove, 0, 3, size.Height));
-            ctx.FillRectangle(Brush(Color.FromArgb(50, 255, 255, 255)), new Rect(groove + 3, 0, 2, size.Height));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Color.FromArgb(80, 0, 0, 0)), new Rect(groove, 0, 3, size.Height));
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Color.FromArgb(50, 255, 255, 255)), new Rect(groove + 3, 0, 2, size.Height));
         }
-        return _coverFace = picture;
+        return picture;
     }
 
     /// <summary>
@@ -764,19 +785,57 @@ public sealed partial class ReaderView
         if (_coverInside is not null && _coverInsideWords == Engine.Settings.PrintedWords) return _coverInside;
         _coverInside?.Dispose();
         _coverInsideWords = Engine.Settings.PrintedWords;
+        PrintedWordsPicture? words = _coverInsideWords && firstLeft.Page >= 0 ? book.Words(firstLeft.Page) : null;
+        return _coverInside = MakeCoverInside(book.Board, board, firstLeft, words);
+    }
+
+    /// <summary>Draw the inside of the cover, with <paramref name="words"/> printed on its page (null for none). Any thread.</summary>
+    static Bitmap MakeCoverInside(Color boardColour, RectD board, Half firstLeft, PrintedWordsPicture? words)
+    {
         const double unit = 1000;
         var size = new PixelSize((int)Math.Ceiling(board.W * unit), (int)Math.Ceiling(board.H * unit));
         var picture = new RenderTargetBitmap(size);
         using (DrawingContext ctx = picture.CreateDrawingContext())
         {
             var all = new Rect(0, 0, size.Width, size.Height);
-            ctx.DrawRectangle(new ImmutableSolidColorBrush(book.Board), null, new RoundedRect(all, new CornerRadius(14, 4, 4, 14)));
+            ctx.DrawRectangle(new ImmutableSolidColorBrush(boardColour), null, new RoundedRect(all, new CornerRadius(14, 4, 4, 14)));
             double side = (BookLayout.StackRoom + BookLayout.Board) * unit, pageWidth = size.Width - side;
             var page = new Rect(side, BookLayout.Board * unit, pageWidth, unit);
-            ctx.FillRectangle(Brush(Color.Parse("#d8cfbd")), new Rect(page.X - BookLayout.StackStep * unit, page.Y + 0.8, pageWidth, unit + 0.6));
-            using (ctx.PushRenderOptions(Fine)) DrawHalf(ctx, firstLeft, page, page.Height);
+            ctx.FillRectangle(new ImmutableSolidColorBrush(Color.Parse("#d8cfbd")), new Rect(page.X - BookLayout.StackStep * unit, page.Y + 0.8, pageWidth, unit + 0.6));
+            using (ctx.PushRenderOptions(Fine)) DrawHalf(ctx, firstLeft, page, page.Height, words);
         }
-        return _coverInside = picture;
+        return picture;
+    }
+
+    /// <summary>
+    /// The front of the cover for a book that is still loading, on the loading thread, so the screen's thread
+    /// doesn't stop for it when the book is shown, with the board (in spread units) it was drawn for: the
+    /// first page's, laid out as the engine lays it out. <paramref name="aspect"/> is the first page's shape.
+    /// </summary>
+    internal static (RectD Units, Bitmap Face) MakeCoverFace(Color board, Bitmap cover, double aspect)
+    {
+        RectD units = CoverUnits(aspect);
+        return (units, MakeCoverFace(board, cover, units));
+    }
+
+    /// <summary>
+    /// The inside of the cover for a book that is still loading: the first spread's left page drawn from the
+    /// first page's full-size picture, exactly as <see cref="PrepareCover"/> would draw it.
+    /// </summary>
+    internal static Bitmap MakeCoverInside(Color board, double aspect, Bitmap? firstFull, PrintedWordsPicture? words)
+    {
+        RectD first = Geo.LayoutPages(new[] { aspect })[0];
+        Half left = BookLayout.IsPortrait(first) || firstFull is null
+            ? new Half(null, 0, 0, false)
+            : new Half(firstFull, 0, firstFull.Size.Width / 2, false, 0);
+        return MakeCoverInside(board, CoverUnits(aspect), left, left.Page >= 0 ? words : null);
+    }
+
+    /// <summary>The cover board of a book whose first page is <paramref name="aspect"/> times as wide as tall, in spread units.</summary>
+    static RectD CoverUnits(double aspect)
+    {
+        RectD boardWorld = BookLayout.CoverBoard(Geo.LayoutPages(new[] { aspect })[0]);
+        return new RectD(0, 0, boardWorld.W, boardWorld.H);
     }
 
     /// <summary>
@@ -788,6 +847,17 @@ public sealed partial class ReaderView
         if (!book.HasCover || Engine.PageRects.Count == 0 || !Engine.ShownAsBook(0)) return;
         RectD boardWorld = BookLayout.CoverBoard(Engine.PageRects[0]);
         var inUnits = new RectD(0, 0, boardWorld.W, boardWorld.H);
+        // Made while the book was loading, for this very board: nothing to do here.
+        if (book.TakeCoverPictures(inUnits) is LoadedBook.CoverPictures made)
+        {
+            _coverFace = made.Face;
+            if (made.PrintedWords == Engine.Settings.PrintedWords)
+            {
+                _coverInside = made.Inside;
+                _coverInsideWords = made.PrintedWords;
+            }
+            else made.Inside.Dispose();
+        }
         CoverFace(book, inUnits);
         double wide = book.PageSize(0).Width;
         CoverInside(book, inUnits, HalfOf(book, 0, right: false, wide));

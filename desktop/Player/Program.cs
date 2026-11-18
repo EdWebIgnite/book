@@ -7,6 +7,8 @@ static class Program
     [STAThread]
     static int Main(string[] args)
     {
+        Reader.Core.PerfMarks.On = Environment.GetEnvironmentVariable("BOOKREADER_PERF") == "1";
+        Reader.Core.PerfMarks.Mark("main");
         Options options = Options.Parse(args);
         if (options.Help) { Console.WriteLine(Options.Usage); return 0; }
         if (options.Problem is not null)
@@ -22,6 +24,7 @@ static class Program
             Reader.Ui.LoadedBook.FullPicturesKept = 2;
         }
         if (options.Bench) return Bench.Run(options);
+        if (options.Perf is not null) return Perf.Run(options);
         if (options.Shot is not null) return Screenshot.Take(options);
 
         App.Options = options;

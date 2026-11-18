@@ -38,6 +38,7 @@ static class Bench
             // Pictures load in the background here, as they do in real use, so that reading a file from
             // disk is not counted as part of a frame.
             window.Show();
+            if (o.Scale > 0 && Math.Abs(o.Scale - 1) > 0.001) window.SetRenderScaling(o.Scale);
             Dispatcher.UIThread.RunJobs();
             window.LoadShelf(coversNow: true);
 
@@ -58,7 +59,9 @@ static class Bench
             var moving = new List<double>();
             var record = new List<double>();
             var turns = new List<double>();       // frames while a page was curling over
-            var cover = new List<double>();       // frames while the cover was swinging open      // the part of each frame spent before painting: engine, layout, recording the drawing
+            var cover = new List<double>();       // frames while the cover was swinging open
+            var turnsRecord = new List<double>(); // the part before painting, while a page was turning
+            var allocated = new List<double>();   // bytes allocated on the screen's thread by each frame drawn
             var watch = new Stopwatch();
 
             void Frame()
@@ -67,18 +70,27 @@ static class Bench
                 int before = view.RenderCount;
                 bool wasMoving = engine.Animating;
                 bool turning = engine.GetFlip() is not null, swinging = engine.GetCover() is { Open: > 0 };
+                long bytes = GC.GetAllocatedBytesForCurrentThread();
+                int gcBefore = GC.CollectionCount(0);
                 watch.Restart();
                 view.Tick();
                 Dispatcher.UIThread.RunJobs();
                 double recorded = watch.Elapsed.TotalMilliseconds;
-                using (window.CaptureRenderedFrame()) { }
+                long bytesRecorded = GC.GetAllocatedBytesForCurrentThread() - bytes;
+                int gcDuring = GC.CollectionCount(0) - gcBefore;
+                int gcBeforeCapture = GC.CollectionCount(0);
+                BenchPaint(window);
+                if (SlowLog && recorded > 8) Console.WriteLine($"    slow before painting: {recorded:0.0} ms, {gcDuring} collections, page {engine.CurrentStep.Page + 1} stop {engine.CurrentStep.Stop}, turning {turning}, {bytesRecorded / 1024} KB allocated");
+                CaptureGcs += GC.CollectionCount(0) - gcBeforeCapture;
+                UiGcs += gcDuring;
                 watch.Stop();
                 if (view.RenderCount == before) return;          // nothing changed: no frame was drawn
                 double ms = watch.Elapsed.TotalMilliseconds;
+                allocated.Add(bytesRecorded);
                 record.Add(recorded);
                 all.Add(ms);
                 if (wasMoving || engine.Animating) moving.Add(ms);
-                if (turning || engine.GetFlip() is not null) turns.Add(ms);
+                if (turning || engine.GetFlip() is not null) { turns.Add(ms); turnsRecord.Add(recorded); }
                 if (swinging || engine.GetCover() is { Open: > 0 }) cover.Add(ms);
                 // Let pictures that finished loading in the background be handed over between frames.
                 Dispatcher.UIThread.RunJobs();
@@ -92,6 +104,10 @@ static class Bench
             record.Clear();
             turns.Clear();
             cover.Clear();
+            allocated.Clear();
+            turnsRecord.Clear();
+            int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+            long allocatedBefore = GC.GetTotalAllocatedBytes();
 
             int lastPage = Math.Clamp(o.BenchPages, 1, engine.Book!.Pages.Count);
             var tapAt = new Point(o.Width * 0.75, o.Height * 0.5);
@@ -112,6 +128,9 @@ static class Bench
                 }
             }
 
+            int gcs0 = GC.CollectionCount(0) - gc0, gcs1 = GC.CollectionCount(1) - gc1, gcs2 = GC.CollectionCount(2) - gc2;
+            long allocatedAll = GC.GetTotalAllocatedBytes() - allocatedBefore;
+
             // What the bench itself costs: an empty frame painted and read back, which a real window never does.
             view.ClearBook();
             var empty = new List<double>();
@@ -120,18 +139,27 @@ static class Bench
                 view.InvalidateVisual();
                 watch.Restart();
                 Dispatcher.UIThread.RunJobs();
-                using (window.CaptureRenderedFrame()) { }
+                BenchPaint(window);
                 watch.Stop();
                 if (i >= 10) empty.Add(watch.Elapsed.TotalMilliseconds);
             }
 
             double blank = empty.Count > 0 ? empty.Average() : 0;
-            Console.WriteLine($"bench: {book}, pages 1 to {lastPage}, {taps} taps, window {o.Width}x{o.Height}");
+            Console.WriteLine($"bench: {book}, pages 1 to {lastPage}, {taps} taps, window {o.Width}x{o.Height} at scale {o.Scale}{(o.Touch ? ", as the phone app" : "")}");
             Report("frames drawn", all);
             Report("  of each frame, the part before painting (engine, layout, recording the drawing)", record);
             Report("  of which, while a page was turning", turns);
+            Report("    the part before painting, while a page was turning", turnsRecord);
             Report("  of which, while the cover was swinging open", cover);
-            Report("a blank window, for comparison (what the bench itself costs: painting and reading back an empty frame)", empty);
+            if (allocated.Count > 0)
+            {
+                var a = allocated.OrderBy(x => x).ToList();
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                    $"  allocated on the screen's thread before painting: median {a[a.Count / 2] / 1024:0.0} KB a frame, average {a.Average() / 1024:0.0} KB, most {a[^1] / 1024:0.0} KB"));
+            }
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"  garbage collections while reading: {gcs0} quick (gen 0), {gcs1} gen 1, {gcs2} full (gen 2); {allocatedAll / 1048576.0:0.0} MB allocated in all, every thread ({UiGcs} of them during the reader's own work, {CaptureGcs} while the bench read frames back)"));
+            Report("a blank window, for comparison (what the bench itself costs: painting an empty frame)", empty);
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                 $"  so the reader's own drawing took about {Math.Max(0, all.Average() - blank):0.0} ms a frame on average, " +
                 $"{Math.Max(0, all.Max() - blank):0.0} ms at worst, and {all.Count(x => x > blank + 20)} frames took more than 20 ms over a blank one"));
@@ -139,6 +167,7 @@ static class Bench
             string limits = Reader.Ui.LoadedBook.MaxPictureSide > 0 ? $"none over {Reader.Ui.LoadedBook.MaxPictureSide} pixels" : "at their own size";
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                 $"  memory: {before / 1048576.0:0} MB before the book opened, {peak / 1048576.0:0} MB at the most while it was read, so the book took up to {(peak - before) / 1048576.0:0} MB (keeping {Reader.Ui.LoadedBook.FullPicturesKept} full-size pictures, {limits})"));
+            lock (Gcs.Reasons) foreach (var kv in Gcs.Reasons) Console.WriteLine($"  GC {kv.Key}: {kv.Value}");
             return 0;
         }
         catch (Exception e)
@@ -147,6 +176,33 @@ static class Bench
             return 1;
         }
     }
+
+    /// <summary>Why each collection happened (reason 7 is a library telling the runtime about memory it holds outside it, as bitmaps do).</summary>
+    sealed class GcListener : System.Diagnostics.Tracing.EventListener
+    {
+        public readonly Dictionary<string, int> Reasons = new();
+        protected override void OnEventSourceCreated(System.Diagnostics.Tracing.EventSource s)
+        {
+            if (s.Name == "Microsoft-Windows-DotNETRuntime") EnableEvents(s, System.Diagnostics.Tracing.EventLevel.Informational, (System.Diagnostics.Tracing.EventKeywords)1);
+        }
+        protected override void OnEventWritten(System.Diagnostics.Tracing.EventWrittenEventArgs e)
+        {
+            if (e.EventName != "GCStart_V2" || e.Payload is null) return;
+            string key = $"gen{e.Payload[1]} reason {e.Payload[2]} type {e.Payload[3]}";
+            lock (Reasons) Reasons[key] = Reasons.GetValueOrDefault(key) + 1;
+        }
+    }
+    static readonly GcListener Gcs = new();
+    /// <summary>BENCH_READBACK=1 reads every frame back as a picture, as the bench did before; otherwise it is only painted.</summary>
+    static readonly bool Readback = Environment.GetEnvironmentVariable("BENCH_READBACK") == "1";
+    static void BenchPaint(Avalonia.Controls.Window window)
+    {
+        if (Readback) { using (window.CaptureRenderedFrame()) { } return; }
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+    }
+    /// <summary>BENCH_SLOW=1 lists every frame that took over 8 ms before painting.</summary>
+    static readonly bool SlowLog = Environment.GetEnvironmentVariable("BENCH_SLOW") == "1";
+    static int CaptureGcs, UiGcs;
 
     static long CurrentProcessMemory()
     {
@@ -160,7 +216,8 @@ static class Bench
         if (ms.Count == 0) { Console.WriteLine($"  {what}: none"); return; }
         var sorted = ms.OrderBy(x => x).ToList();
         string F(double v) => v.ToString("0.0", CultureInfo.InvariantCulture);
-        Console.WriteLine($"  {what}: {ms.Count} frames, average {F(ms.Average())} ms, worst {F(sorted[^1])} ms, " +
-                          $"95th percentile {F(sorted[(int)(sorted.Count * 0.95)])} ms, over 20 ms: {ms.Count(x => x > 20)}");
+        double At(double share) => sorted[Math.Min(sorted.Count - 1, (int)(sorted.Count * share))];
+        Console.WriteLine($"  {what}: {ms.Count} frames, average {F(ms.Average())} ms, median {F(At(0.5))} ms, 95th percentile {F(At(0.95))} ms, " +
+                          $"99th {F(At(0.99))} ms, worst {F(sorted[^1])} ms; over 8.3 ms: {ms.Count(x => x > 1000 / 120.0)}, over 16.7 ms: {ms.Count(x => x > 1000 / 60.0)}, over 20 ms: {ms.Count(x => x > 20)}");
     }
 }

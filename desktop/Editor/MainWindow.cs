@@ -191,6 +191,9 @@ sealed partial class MainWindow : Window
     public PageCanvas Canvas => _canvas;
     public PreviewPanel Preview => _preview;
     public Inspector Inspector => _inspector;
+
+    /// <summary>The pictures shown in the editor, kept once read.</summary>
+    internal Images ShownPictures => _images;
     public AutoTiming Timing { get; }
     public Dialogs Dialogs => _dialogs;
     public Walkthrough Tour { get; }

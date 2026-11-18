@@ -179,6 +179,20 @@ public sealed class ReaderScreen : UserControl
     /// <summary>The picture area, which owns the engine.</summary>
     public ReaderView View { get; }
 
+    bool _paintsBackground = true;
+
+    /// <summary>
+    /// Fill the screen with the dark surround (true to start with). The app sets it false: the same colour
+    /// already lies under the reader there, and while the picture moves everything under it is painted
+    /// again every frame, so a second fill of the whole screen was work for nothing. The picture paints
+    /// the surround itself, so only the edges a phone keeps for its camera show what lies beneath.
+    /// </summary>
+    public bool PaintsBackground
+    {
+        get => _paintsBackground;
+        set { _paintsBackground = value; Background = value ? Palette.ForestBrush : null; }
+    }
+
     public ReaderEngine Engine => View.Engine;
 
     /// <summary>The back button or "Back to books" was pressed.</summary>
@@ -458,7 +472,7 @@ public sealed class ReaderScreen : UserControl
     /// <summary>Put the colours of the theme in use on the words, the boxes and the surround.</summary>
     void Colour()
     {
-        Background = Palette.ForestBrush;
+        Background = _paintsBackground ? Palette.ForestBrush : null;
         _title.Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 6, Color = Palette.Forest, Opacity = 0.9 };
         _pageNo.Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 1, BlurRadius = 3, Color = Palette.Forest, Opacity = 0.9 };
         _askBox.Background = Palette.Brush(Palette.Night ? Palette.Paper : Palette.LeafDeep, 0.92);

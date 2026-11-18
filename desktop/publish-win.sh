@@ -11,7 +11,7 @@ rm -rf "$stage" "$out/BookReader-windows.zip"
 mkdir -p "$stage"
 dotnet publish "$here/Player" -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$stage"
+  -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:PublishReadyToRun=true -o "$stage"
 rm -f "$stage"/*.pdb
 # The program looks for a "content" folder beside itself.
 cp -r "$here/../content" "$stage/content"

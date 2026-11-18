@@ -37,6 +37,11 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
 
     readonly object _gate = new();
     readonly Stopwatch _clipClock = new();
+    /// <summary>
+    /// Sound files read lately, kept as samples: a stop's recording is read once and a word tapped in it
+    /// afterwards plays at once, as do sound effects heard again.
+    /// </summary>
+    readonly DecodedSounds _decoded = new();
     Synth _synth = new();
     MiniAudioEngine? _engine;
     AudioPlaybackDevice? _device;
@@ -125,7 +130,7 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
         _clipLoading = true;
         Task.Run(() =>
         {
-            float[]? samples = Decode(engine, format, fileName);
+            float[]? samples = _decoded.Get(fileName, () => Decode(engine, format, fileName));
             lock (_gate)
             {
                 if (token != _clipToken || _disposed) return;      // stopped, or another sound asked for, meanwhile
@@ -200,7 +205,7 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
         _voiceActive = true;
         Task.Run(() =>
         {
-            float[]? samples = Decode(engine, format, fileName);
+            float[]? samples = _decoded.Get(fileName, () => Decode(engine, format, fileName));
             lock (_gate)
             {
                 if (token != _voiceToken || _disposed) return;
@@ -273,5 +278,72 @@ public sealed class DesktopSound : ISoundOutput, IDisposable
         StopVoice();
         Available = false;
         Shutdown();
+    }
+}
+
+/// <summary>
+/// Sound files already read, as samples, so the same file is not read again: the recording of a stop and a
+/// word tapped in it, or a sound effect heard twice. A file that has changed since (its size or time) is read
+/// again. Only so many samples are kept; the files used longest ago go first. Safe from any thread.
+/// </summary>
+public sealed class DecodedSounds
+{
+    sealed record Entry(string Path, long Length, DateTime Written, float[] Samples);
+
+    readonly object _lock = new();
+    readonly LinkedList<Entry> _entries = new();            // most recently used first
+    readonly long _mostSamples;
+    long _samples;
+
+    /// <param name="mostSamples">How many samples to keep in all: 6 million is about a minute of stereo sound at 48 kHz, 24 MB.</param>
+    public DecodedSounds(long mostSamples = 6_000_000) => _mostSamples = mostSamples;
+
+    /// <summary>How many files are kept now.</summary>
+    public int Count { get { lock (_lock) return _entries.Count; } }
+
+    /// <summary>The samples of a file, read with <paramref name="read"/> unless they are kept already. Null when it can't be read (and nothing is kept).</summary>
+    public float[]? Get(string path, Func<float[]?> read)
+    {
+        (long length, DateTime written) = Stamp(path);
+        lock (_lock)
+        {
+            for (LinkedListNode<Entry>? n = _entries.First; n is not null; n = n.Next)
+            {
+                if (n.Value.Path != path) continue;
+                if (n.Value.Length == length && n.Value.Written == written)
+                {
+                    _entries.Remove(n);
+                    _entries.AddFirst(n);
+                    return n.Value.Samples;
+                }
+                _entries.Remove(n);                          // changed since it was read
+                _samples -= n.Value.Samples.Length;
+                break;
+            }
+        }
+        float[]? samples = read();
+        if (samples is null || samples.Length == 0 || samples.Length > _mostSamples || length < 0) return samples;
+        lock (_lock)
+        {
+            if (_entries.Any(e => e.Path == path)) return samples;     // read twice at once: keep the first
+            _entries.AddFirst(new Entry(path, length, written, samples));
+            _samples += samples.Length;
+            while (_samples > _mostSamples && _entries.Last is { } oldest)
+            {
+                _entries.RemoveLast();
+                _samples -= oldest.Value.Samples.Length;
+            }
+        }
+        return samples;
+    }
+
+    static (long Length, DateTime Written) Stamp(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? (info.Length, info.LastWriteTimeUtc) : (-1, default);
+        }
+        catch (Exception) { return (-1, default); }
     }
 }

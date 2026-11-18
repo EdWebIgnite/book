@@ -37,6 +37,8 @@ sealed class Options
     public bool Bench;
     /// <summary>The bench plays pages 1 to this one.</summary>
     public int BenchPages = 3;
+    /// <summary>Measure one thing with no window and print the numbers: open, explore, shelf, memory or idle.</summary>
+    public string? Perf;
 
     /// <summary>Behave as the phone and tablet app does: touch only, one page at a time held upright, phone memory limits.</summary>
     public bool Touch;
@@ -133,6 +135,14 @@ sealed class Options
             Plays the book from page 1 to the end of page n (3 when left out), tapping whenever the camera
             has come to rest, and times every frame that is drawn. Reader time is made up, sixty frames a
             second, so two builds draw the same frames and their numbers can be compared.
+
+          BookReader --perf <what> [--book ...] [--size WxH] [--scale n] [--phone] [--set <key>=<value>]
+
+            Measures one thing with no window and prints the numbers (see the README, Performance):
+            open (opening each book), explore (panning and zooming the big scenes), shelf (books settling in,
+            covers lifting), memory (reading a book to the end, then back to the shelf), idle (a page at
+            rest), readalong (a timed recording read aloud: --book --page --stop), audio (reading a sound
+            file: --book <file>), covers (a check that covers made while loading match).
         """;
 
     /// <summary>The --set pairs as the JSON the settings understand: true and false, numbers, and anything else as text.</summary>
@@ -177,6 +187,7 @@ sealed class Options
                 case "--animate": o.Animate = true; break;
                 case "--do": o.Do = Value(); break;
                 case "--bench": o.Bench = true; break;
+                case "--perf": o.Perf = Value(); break;
                 case "--pages": o.BenchPages = Int(Value(), a, o) ?? 3; break;
                 case "--phone": o.Touch = true; break;
                 case "--units-per-cm": o.UnitsPerCm = Num(Value(), a, o); break;

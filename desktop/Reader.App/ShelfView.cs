@@ -261,16 +261,23 @@ public sealed class ShelfView : UserControl
     static class Pictures
     {
         static readonly Dictionary<(string, int), Bitmap?> Cache = new();
+        /// <summary>Pictures on their way, with everyone waiting for each: the shelf can be filled again before they arrive.</summary>
+        static readonly Dictionary<(string, int), List<Action<Bitmap?>>> Coming = new();
 
         public static void Get(string path, int width, bool now, Action<Bitmap?> then)
         {
             var key = (path, width);
             if (Cache.TryGetValue(key, out Bitmap? known)) { then(known); return; }
-            if (now) { then(Cache[key] = Load(path, width)); return; }
+            if (now && !Coming.ContainsKey(key)) { then(Cache[key] = Load(path, width)); return; }
+            // Already on its way: wait for that one rather than reading the file again.
+            if (Coming.TryGetValue(key, out var waiting)) { waiting.Add(then); return; }
+            Coming[key] = new List<Action<Bitmap?>> { then };
             Task.Run(() => Load(path, width)).ContinueWith(t => Dispatcher.UIThread.Post(() =>
             {
                 Cache[key] = t.Result;
-                then(t.Result);
+                Coming.Remove(key, out var all);
+                foreach (Action<Bitmap?> a in all!) a(t.Result);
+                if (Coming.Count == 0) PerfMarks.MarkOnce("covers shown");
             }));
         }
 

@@ -150,6 +150,13 @@ public sealed class ReaderEngine
     /// </summary>
     public bool Restless { get; private set; }
 
+    /// <summary>
+    /// The same, leaving out what changes beside the picture rather than in it: the words of the caption
+    /// lighting up one by one as a voice reads them. While only that is going on the picture needn't be
+    /// drawn again (though frames are still wanted, for the words).
+    /// </summary>
+    public bool PictureRestless { get; private set; }
+
     public void SetViewSize(double width, double height)
     {
         ViewWidth = Math.Max(0, width);
@@ -1488,18 +1495,17 @@ public sealed class ReaderEngine
         if (_flash is double flashStart && now - flashStart > 800) _flash = null;
         if (_party is double partyStart && now - partyStart > 4200) _party = null;
 
-        Restless = IsRestless();
+        PictureRestless = IsPictureRestless();
+        // The words light up one by one while the voice reads them, or the word tapped while it is said.
+        Restless = PictureRestless || (HasBook && ((Reading && _voice!.Words.Count > 0) || SaidWord >= 0));
     }
 
-    bool IsRestless()
+    bool IsPictureRestless()
     {
         if (!HasBook) return false;
         if (_anim is not null || _fling is not null) return true;
         if (Insets.Top != InsetGoal.Top || Insets.Bottom != InsetGoal.Bottom) return true;
         if (_bursts.Count > 0 || _ripples.Count > 0 || _party is not null || _flash is not null || _shake is not null) return true;
-        // The words light up one by one while the voice reads them.
-        if (Reading && _voice!.Words.Count > 0) return true;
-        if (SaidWord >= 0) return true;
         if (_shown.Fade > 0) return true;
 
         // Weather that is showing or fading, and pictures on top that are moving, fading or bobbing.

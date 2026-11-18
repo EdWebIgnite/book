@@ -51,7 +51,7 @@ public sealed class LoadedBook : IDisposable
         Folder = folder;
         _pages = pages;
         Board = board;
-        Aspects = pages.Select(p => p.Size.Height > 0 ? (double)p.Size.Width / p.Size.Height : 1).ToArray();
+        Aspects = pages.Select(AspectOf).ToArray();
     }
 
     public Book Book { get; }
@@ -111,7 +111,34 @@ public sealed class LoadedBook : IDisposable
     // ---------------------------------------------------------------- printed words
 
     readonly Dictionary<int, (PrintedWordsPicture? Picture, long Used)> _words = new();
+    /// <summary>Words pictures being made on another thread, by page.</summary>
+    readonly Dictionary<int, WordsMaking> _wordsMaking = new();
+    /// <summary>Each page's words key, with what it was worked out from, so it is only built again when that changes.</summary>
+    readonly Dictionary<int, (WordsStamp Stamp, string Key)> _wordsKeys = new();
     long _wordsTick;
+
+    sealed class WordsMaking
+    {
+        public required string Key;
+        public required Task<PrintedWordsPicture?> Task;
+        /// <summary>Taken by <see cref="Words"/> before it was handed over: it belongs to the words kept now.</summary>
+        public bool Taken;
+    }
+
+    /// <summary>
+    /// Everything a page's words key is built from, compared without building it. The key is asked for on
+    /// every strip of a turning page, and building it each time made most of what a frame allocated.
+    /// </summary>
+    readonly record struct WordsStamp(PageText Text, RectD Box, double? Size, string Align, string? Color, string? Content, int Stops, int Captions, double Aspect)
+    {
+        public static WordsStamp Of(Page page, double aspect)
+        {
+            var captions = new HashCode();
+            foreach (Stop s in page.Stops) captions.Add(s.Caption);
+            PageText t = page.Text!;
+            return new WordsStamp(t, t.Box, t.Size, t.Align, t.Color, t.Content, page.Stops.Count, captions.ToHashCode(), aspect);
+        }
+    }
 
     /// <summary>How many pages' words pictures are kept: the page being read and those either side of it.</summary>
     public const int WordsKept = 3;
@@ -120,32 +147,95 @@ public sealed class LoadedBook : IDisposable
     /// A page's printed words as a picture to draw over the page picture, made the first time it is asked
     /// for (and again if the words or their box change, as in the editor's preview). Null when the page
     /// prints nothing. Only the last few pages' are kept. Call on the screen's thread.
+    ///
+    /// Making one takes a good tenth of a second on a computer, so the pages either side are made ahead on
+    /// another thread (<see cref="PrepareWords"/>). Asked for while that is still under way, this waits for
+    /// it rather than making it again.
     /// </summary>
     public PrintedWordsPicture? Words(int page)
     {
-        if (page < 0 || page >= _pages.Length || page >= Book.Pages.Count) return null;
-        Page p = Book.Pages[page];
-        if (p.Text is null) return null;
-        string key = PrintedWordsPicture.KeyFor(p, Aspects[page]);
+        if (WordsKeyFor(page) is not string key) return null;
         if (_words.TryGetValue(page, out var known) && (known.Picture?.Key ?? "") == key)
         {
             _words[page] = (known.Picture, ++_wordsTick);
             return known.Picture;
         }
-        if (known.Picture is PrintedWordsPicture stale) Dispatcher.UIThread.Post(stale.Dispose, DispatcherPriority.Background);
+        PrintedWordsPicture? made;
+        if (_wordsMaking.Remove(page, out WordsMaking? making) && making.Key == key)
+        {
+            making.Taken = true;
+            made = making.Task.GetAwaiter().GetResult();
+        }
+        else made = MakeWords(page);
+        Keep(page, made);
+        return made;
+    }
+
+    /// <summary>
+    /// Start making a page's words picture on another thread, so that it is ready when the page is turned to.
+    /// Nothing is done if it is made already or on its way. Call on the screen's thread.
+    /// </summary>
+    public void PrepareWords(int page)
+    {
+        if (_disposed || WordsKeyFor(page) is not string key) return;
+        if (_words.TryGetValue(page, out var known) && (known.Picture?.Key ?? "") == key) return;
+        if (_wordsMaking.TryGetValue(page, out WordsMaking? making) && making.Key == key) return;
+        var entry = new WordsMaking { Key = key, Task = Task.Run(() => MakeWords(page)) };
+        _wordsMaking[page] = entry;
+        entry.Task.ContinueWith(t => Dispatcher.UIThread.Post(() => Arrived(page, entry), DispatcherPriority.Background), TaskScheduler.Default);
+    }
+
+    /// <summary>A words picture made on another thread is ready: keep it, unless it is no longer wanted.</summary>
+    void Arrived(int page, WordsMaking entry)
+    {
+        if (entry.Taken) return;                       // Words waited for it and keeps it
+        PrintedWordsPicture? made = entry.Task.IsCompletedSuccessfully ? entry.Task.Result : null;
+        bool current = _wordsMaking.TryGetValue(page, out WordsMaking? now) && ReferenceEquals(now, entry);
+        if (current) _wordsMaking.Remove(page);
+        if (current && !_disposed && WordsKeyFor(page) == entry.Key) Keep(page, made);
+        else made?.Dispose();
+    }
+
+    /// <summary>What a page's words picture is made from, or null when the page prints nothing.</summary>
+    string? WordsKeyFor(int page)
+    {
+        if (page < 0 || page >= _pages.Length || page >= Book.Pages.Count) return null;
+        Page p = Book.Pages[page];
+        if (p.Text is null) return null;
+        var stamp = WordsStamp.Of(p, Aspects[page]);
+        if (_wordsKeys.TryGetValue(page, out var known) && known.Stamp == stamp) return known.Key;
+        string key = PrintedWordsPicture.KeyFor(p, Aspects[page]);
+        _wordsKeys[page] = (stamp, key);
+        return key;
+    }
+
+    /// <summary>Make a page's words picture. Any thread.</summary>
+    PrintedWordsPicture? MakeWords(int page) => MakeWords(Book.Pages[page], _pages[page]);
+
+    static PrintedWordsPicture? MakeWords(Page p, PagePictures pictures)
+    {
         // As sharp as half as sharp again as the full-size picture: letters show softness sooner than paint.
         // (A big scene cut into tiles is as sharp as its tiles, not its small overview picture.)
-        double sharp = p.Tiles is { Height: > 0 } tiles ? tiles.Height : _pages[page].Size.Height;
-        PrintedWordsPicture? made = PrintedWordsPicture.Make(p, Aspects[page], sharp * 1.5);
+        double sharp = p.Tiles is { Height: > 0 } tiles ? tiles.Height : pictures.Size.Height;
+        return PrintedWordsPicture.Make(p, AspectOf(pictures), sharp * 1.5);
+    }
+
+    /// <summary>Keep a page's words picture, letting go of the one it replaces and of the page looked at longest ago.</summary>
+    void Keep(int page, PrintedWordsPicture? made)
+    {
+        // Not straight away: what is let go may be part of the frame being drawn now.
+        if (_words.TryGetValue(page, out var known) && known.Picture is PrintedWordsPicture stale && !ReferenceEquals(stale, made))
+            Dispatcher.UIThread.Post(stale.Dispose, DispatcherPriority.Background);
         _words[page] = (made, ++_wordsTick);
         if (_words.Count > WordsKept)
         {
-            int oldest = _words.Where(w => w.Key != page).OrderBy(w => w.Value.Used).First().Key;
-            // Not straight away: it may be part of the frame being drawn now.
+            int oldest = -1;
+            long used = long.MaxValue;
+            foreach (var (k, v) in _words)
+                if (k != page && v.Used < used) (oldest, used) = (k, v.Used);
             if (_words[oldest].Picture is PrintedWordsPicture old) Dispatcher.UIThread.Post(old.Dispose, DispatcherPriority.Background);
             _words.Remove(oldest);
         }
-        return made;
     }
 
     /// <summary>Start fetching a page's full-size picture, so it is there by the time the camera goes in close.</summary>
@@ -177,51 +267,122 @@ public sealed class LoadedBook : IDisposable
     /// Load a book that is already in memory, with its pictures in <paramref name="folder"/>. The editor
     /// uses this to play a book as it is being made, before it is saved.
     /// </summary>
-    public static LoadedBook Load(string folder, Book book)
+    public static LoadedBook Load(string folder, Book book) => Load(folder, book, null, null);
+
+    /// <summary>
+    /// Read the pictures, side by side: reading and shrinking them is nearly all of the time a book takes to
+    /// open, and every phone has several cores. The cover, the board's colour and anything asked for that
+    /// only needs the first page (its printed words, the two faces of the cover) are made alongside, as soon
+    /// as what they need is there. Each picture comes out exactly as reading them one after another made it.
+    /// </summary>
+    static LoadedBook Load(string folder, Book book, IReadOnlyCollection<int>? wordsFor, bool? coverWords)
     {
         if (book.Pages.Count == 0) throw new InvalidDataException("This book has no pages.");
         var pages = new PagePictures[book.Pages.Count];
-        Bitmap? firstFull = null;
+        var paths = new string[pages.Length];
+        for (int i = 0; i < pages.Length; i++)
+        {
+            string? path = BookLibrary.SafePath(folder, book.Pages[i].Image);
+            if (path is null || !File.Exists(path)) throw new FileNotFoundException($"Page {i + 1}'s picture is missing: {book.Pages[i].Image}");
+            paths[i] = path;
+        }
+        var failures = new Exception?[pages.Length];
+        Task<Bitmap?> coverTask = Task.Run(() => LoadCover(folder, book));
+        Task<Color?> boardTask = Task.Run(() => BoardFromCover(folder, book));
+        // The first page, then what only needs it, each on a thread of its own so nothing waits in the queue behind the pages.
+        Task<(PagePictures Page, Bitmap? Full)> firstTask = Task.Run(() => (LoadPage(paths[0], 0, book.Pages[0].Image, out Bitmap? full), full));
+        Task<Color> boardReady = firstTask.ContinueWith(t => boardTask.Result ?? (t.IsCompletedSuccessfully ? BoardFromPicture(t.Result.Page) : PlainBoard),
+            CancellationToken.None, TaskContinuationOptions.LongRunning, TaskScheduler.Default);
+        bool makeWords0 = ((wordsFor?.Contains(0) ?? false) || coverWords == true) && book.Pages[0].Text is not null;
+        Task<PrintedWordsPicture?>? words0 = makeWords0
+            ? firstTask.ContinueWith(t => MakeWords(book.Pages[0], t.Result.Page), CancellationToken.None, TaskContinuationOptions.LongRunning, TaskScheduler.Default)
+            : null;
+        bool makeCover = coverWords is not null && book.Pages[0].Tiles is null;
+        Task<(RectD Units, Bitmap Face)?>? faceTask = makeCover
+            ? boardReady.ContinueWith(t => coverTask.Result is Bitmap c ? ((RectD, Bitmap)?)ReaderView.MakeCoverFace(t.Result, c, AspectOf(firstTask.Result.Page)) : null,
+                CancellationToken.None, TaskContinuationOptions.LongRunning, TaskScheduler.Default)
+            : null;
+        Task<Bitmap?>? insideTask = makeCover
+            ? boardReady.ContinueWith(t => coverTask.Result is null ? null : ReaderView.MakeCoverInside(t.Result, AspectOf(firstTask.Result.Page), firstTask.Result.Full,
+                    coverWords == true && words0 is not null ? words0.Result : null),
+                CancellationToken.None, TaskContinuationOptions.LongRunning, TaskScheduler.Default)
+            : null;
+        Bitmap? firstFull = null, cover = null;
         try
         {
-            for (int i = 0; i < pages.Length; i++)
+            Parallel.For(1, pages.Length, new ParallelOptions { MaxDegreeOfParallelism = LoadThreads }, i =>
             {
-                string? path = BookLibrary.SafePath(folder, book.Pages[i].Image);
-                if (path is null || !File.Exists(path)) throw new FileNotFoundException($"Page {i + 1}'s picture is missing: {book.Pages[i].Image}");
-                // With a picture limit (a phone), pages other than the first are read straight at half size, so the
-                // full-size picture never sits in memory while the book opens. The full one loads when wanted.
-                if (i > 0 && MaxPictureSide > 0 && ImageHeader.Size(path) is (int pw, int ph) && Math.Max(pw, ph) >= 1000)
-                {
-                    Bitmap half;
-                    using (FileStream file = File.OpenRead(path)) half = Bitmap.DecodeToWidth(file, (pw + 1) / 2, BitmapInterpolationMode.HighQuality);
-                    double fit = Math.Min(1, (double)MaxPictureSide / Math.Max(pw, ph));
-                    pages[i] = new PagePictures
-                    {
-                        Path = path, Size = new PixelSize((int)Math.Round(pw * fit), (int)Math.Round(ph * fit)),
-                        Opaque = half.AlphaFormat == Avalonia.Platform.AlphaFormat.Opaque,
-                        Smaller = SmallerCopies(half).Prepend(half).ToArray(),
-                    };
-                    continue;
-                }
-                Bitmap full = PictureCache.LoadPicture(path, MaxPictureSide) ?? throw new InvalidDataException($"Page {i + 1}'s picture can't be read: {book.Pages[i].Image}");
-                pages[i] = new PagePictures
-                {
-                    Path = path, Size = full.PixelSize, Opaque = full.AlphaFormat == Avalonia.Platform.AlphaFormat.Opaque,
-                    Smaller = SmallerCopies(full),
-                };
-                // The first page is about to be looked at, so its full-size picture is kept. The rest load when wanted.
-                if (i == 0) firstFull = full; else full.Dispose();
-            }
+                try { pages[i] = LoadPage(paths[i], i, book.Pages[i].Image, out _); }
+                catch (Exception e) { failures[i] = e; }
+            });
+            try { (pages[0], firstFull) = firstTask.Result; }
+            catch (AggregateException e) { failures[0] = e.InnerException ?? e; }
+            cover = coverTask.Result;
+            // The same problem a page-by-page read would have stopped at: the first page that went wrong.
+            if (failures.FirstOrDefault(f => f is not null) is Exception first) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(first);
+
+            var loaded = new LoadedBook(book, folder, pages, boardReady.Result) { Cover = cover };
+            if (firstFull is not null) loaded._full.Put(pages[0].Path, firstFull);
+            // Nothing else can see the book yet, so its words and cover can be put straight in.
+            if (words0 is not null) loaded._words[0] = (words0.Result, ++loaded._wordsTick);
+            foreach (int page in wordsFor ?? Array.Empty<int>())
+                if (loaded.WordsKeyFor(page) is not null && !loaded._words.ContainsKey(page)) loaded._words[page] = (loaded.MakeWords(page), ++loaded._wordsTick);
+            (RectD Units, Bitmap Face)? madeFace = faceTask?.Result;
+            Bitmap? madeInside = insideTask?.Result;
+            if (madeFace is (RectD units, Bitmap face) && madeInside is not null) loaded._coverPictures = new CoverPictures(units, face, madeInside, coverWords!.Value);
+            else { madeFace?.Face.Dispose(); madeInside?.Dispose(); }
+            return loaded;
         }
         catch
         {
-            firstFull?.Dispose();
+            // Wait for what is still being made from these pictures before letting any of them go.
+            Task[] extras = new Task?[] { firstTask, boardReady, words0, faceTask, insideTask }.OfType<Task>().ToArray();
+            try { Task.WaitAll(extras); } catch (Exception) { }
+            if (words0 is { IsCompletedSuccessfully: true }) words0.Result?.Dispose();
+            if (faceTask is { IsCompletedSuccessfully: true }) faceTask.Result?.Face.Dispose();
+            if (insideTask is { IsCompletedSuccessfully: true }) insideTask.Result?.Dispose();
+            if (firstTask.IsCompletedSuccessfully) { firstTask.Result.Full?.Dispose(); pages[0] ??= firstTask.Result.Page; }
+            if (coverTask.IsCompletedSuccessfully) coverTask.Result?.Dispose();
             foreach (PagePictures? p in pages) if (p is not null) foreach (Bitmap b in p.Smaller) b.Dispose();
             throw;
         }
-        var loaded = new LoadedBook(book, folder, pages, BoardColour(folder, book, pages)) { Cover = LoadCover(folder, book) };
-        if (firstFull is not null) loaded._full.Put(pages[0].Path, firstFull);
-        return loaded;
+    }
+
+    /// <summary>A page's width divided by its height, from the size its picture is held at.</summary>
+    static double AspectOf(PagePictures p) => p.Size.Height > 0 ? (double)p.Size.Width / p.Size.Height : 1;
+
+    /// <summary>How many pages are read at once while a book opens: one per core, at most four, so the pictures being read at once never take much memory.</summary>
+    static int LoadThreads => Math.Clamp(Environment.ProcessorCount, 1, 4);
+
+    /// <summary>
+    /// Read one page's picture and make its smaller copies. The first page's full-size picture is handed back
+    /// in <paramref name="keptFull"/> (it is about to be looked at); the others' are let go, and load when wanted.
+    /// </summary>
+    static PagePictures LoadPage(string path, int i, string image, out Bitmap? keptFull)
+    {
+        keptFull = null;
+        // With a picture limit (a phone), pages other than the first are read straight at half size, so the
+        // full-size picture never sits in memory while the book opens. The full one loads when wanted.
+        if (i > 0 && MaxPictureSide > 0 && ImageHeader.Size(path) is (int pw, int ph) && Math.Max(pw, ph) >= 1000)
+        {
+            Bitmap half;
+            using (FileStream file = File.OpenRead(path)) half = Bitmap.DecodeToWidth(file, (pw + 1) / 2, BitmapInterpolationMode.HighQuality);
+            double fit = Math.Min(1, (double)MaxPictureSide / Math.Max(pw, ph));
+            return new PagePictures
+            {
+                Path = path, Size = new PixelSize((int)Math.Round(pw * fit), (int)Math.Round(ph * fit)),
+                Opaque = half.AlphaFormat == Avalonia.Platform.AlphaFormat.Opaque,
+                Smaller = SmallerCopies(half).Prepend(half).ToArray(),
+            };
+        }
+        Bitmap full = PictureCache.LoadPicture(path, MaxPictureSide) ?? throw new InvalidDataException($"Page {i + 1}'s picture can't be read: {image}");
+        var page = new PagePictures
+        {
+            Path = path, Size = full.PixelSize, Opaque = full.AlphaFormat == Avalonia.Platform.AlphaFormat.Opaque,
+            Smaller = SmallerCopies(full),
+        };
+        if (i == 0) keptFull = full; else full.Dispose();
+        return page;
     }
 
     /// <summary>The book's own cover picture, if book.json names one and it can be read. The first page doesn't count.</summary>
@@ -264,49 +425,54 @@ public sealed class LoadedBook : IDisposable
         return copies.ToArray();
     }
 
-    /// <summary>The average colour of the cover picture, darkened and calmed down, for the cover board.</summary>
-    static Color BoardColour(string folder, Book book, PagePictures[] pages)
+    /// <summary>
+    /// The colour of the cover board: the average colour of the cover picture, darkened and calmed down.
+    /// Null when the book has no cover file (the first page decides then, <see cref="BoardFromPicture"/>);
+    /// the plain colour when the cover can't be read.
+    /// </summary>
+    static Color? BoardFromCover(string folder, Book book)
     {
         try
         {
             string? cover = BookLibrary.SafePath(folder, book.Cover);
-            Bitmap? tiny = null;
-            if (cover is not null && File.Exists(cover))
-            {
-                using FileStream file = File.OpenRead(cover);
-                tiny = Bitmap.DecodeToWidth(file, 24, BitmapInterpolationMode.LowQuality);
-            }
-            Bitmap source = tiny ?? (pages[0].Smaller.Length > 0 ? pages[0].Smaller[^1] : throw new InvalidOperationException());
-            try
-            {
-                int w = source.PixelSize.Width, h = source.PixelSize.Height, stride = w * 4;
-                if (w <= 0 || h <= 0 || (long)w * h > 4_000_000) return PlainBoard;
-                byte[] pixels = new byte[stride * h];
-                var pin = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
-                try { source.CopyPixels(new PixelRect(0, 0, w, h), pin.AddrOfPinnedObject(), pixels.Length, stride); }
-                finally { pin.Free(); }
-                bool rgba = source.Format == Avalonia.Platform.PixelFormats.Rgba8888;
-                double r = 0, g = 0, b = 0;
-                int step = Math.Max(1, (w * h) / 4096) * 4;       // a few thousand samples are plenty
-                int count = 0;
-                for (int i = 0; i + 3 < pixels.Length; i += step, count++)
-                {
-                    b += pixels[i + (rgba ? 2 : 0)];
-                    g += pixels[i + 1];
-                    r += pixels[i + (rgba ? 0 : 2)];
-                }
-                if (count == 0) return PlainBoard;
-                return BoardFrom(r / count, g / count, b / count);
-            }
-            finally
-            {
-                tiny?.Dispose();
-            }
+            if (cover is null || !File.Exists(cover)) return null;
+            Bitmap tiny;
+            using (FileStream file = File.OpenRead(cover)) tiny = Bitmap.DecodeToWidth(file, 24, BitmapInterpolationMode.LowQuality);
+            using (tiny) return AverageBoard(tiny);
         }
         catch (Exception)
         {
-            return PlainBoard;   // no cover, or one that can't be read: the plain colour will do
+            return PlainBoard;   // a cover that can't be read: the plain colour will do
         }
+    }
+
+    /// <summary>The board's colour from the smallest copy of the first page, for a book with no cover.</summary>
+    static Color BoardFromPicture(PagePictures first)
+    {
+        try { return first.Smaller.Length > 0 ? AverageBoard(first.Smaller[^1]) : PlainBoard; }
+        catch (Exception) { return PlainBoard; }
+    }
+
+    static Color AverageBoard(Bitmap source)
+    {
+        int w = source.PixelSize.Width, h = source.PixelSize.Height, stride = w * 4;
+        if (w <= 0 || h <= 0 || (long)w * h > 4_000_000) return PlainBoard;
+        byte[] pixels = new byte[stride * h];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try { source.CopyPixels(new PixelRect(0, 0, w, h), pin.AddrOfPinnedObject(), pixels.Length, stride); }
+        finally { pin.Free(); }
+        bool rgba = source.Format == Avalonia.Platform.PixelFormats.Rgba8888;
+        double r = 0, g = 0, b = 0;
+        int step = Math.Max(1, (w * h) / 4096) * 4;       // a few thousand samples are plenty
+        int count = 0;
+        for (int i = 0; i + 3 < pixels.Length; i += step, count++)
+        {
+            b += pixels[i + (rgba ? 2 : 0)];
+            g += pixels[i + 1];
+            r += pixels[i + (rgba ? 0 : 2)];
+        }
+        if (count == 0) return PlainBoard;
+        return BoardFrom(r / count, g / count, b / count);
     }
 
     /// <summary>
@@ -330,11 +496,51 @@ public sealed class LoadedBook : IDisposable
         return Color.FromRgb((byte)(R + m), (byte)(G + m), (byte)(B + m));
     }
 
-    /// <summary>The same, off the screen's thread, so a big book doesn't freeze the window while it opens.</summary>
-    public static Task<LoadedBook> LoadAsync(string folder) => Task.Run(() => Load(folder));
+    /// <summary>
+    /// The same, off the screen's thread, so a big book doesn't freeze the window while it opens. The printed
+    /// words of the pages in <paramref name="wordsFor"/> (the page it opens on) are made there too, so the
+    /// first frame doesn't have to.
+    /// </summary>
+    /// <param name="cover">
+    /// Also draw the two faces of the cover, for a book that opens on its cover in the open-book look: true
+    /// with the printed words on the inside of the cover, false without. Null: not now.
+    /// </param>
+    public static Task<LoadedBook> LoadAsync(string folder, IEnumerable<int>? wordsFor = null, bool? cover = null) => Task.Run(() =>
+    {
+        if (!File.Exists(Path.Combine(folder, "book.json"))) throw new FileNotFoundException("There is no book.json in " + folder + ".");
+        return Load(folder, BookJson.Load(folder), wordsFor?.ToList(), cover);
+    });
+
+    /// <summary>The cover's two faces as drawn while the book loaded, and the board (in spread units) they were drawn for.</summary>
+    internal sealed record CoverPictures(RectD Units, Bitmap Face, Bitmap Inside, bool PrintedWords);
+
+    CoverPictures? _coverPictures;
+
+    /// <summary>
+    /// Hand over the cover's faces made while loading, if they were made for this board. The caller owns them
+    /// from then on. Null when there are none, or they don't fit (they are let go then).
+    /// </summary>
+    internal CoverPictures? TakeCoverPictures(RectD units)
+    {
+        CoverPictures? made = _coverPictures;
+        _coverPictures = null;
+        if (made is null || made.Units == units) return made;
+        made.Face.Dispose();
+        made.Inside.Dispose();
+        return null;
+    }
+
+    bool _disposed;
 
     public void Dispose()
     {
+        _disposed = true;
+        if (_coverPictures is CoverPictures cover)
+        {
+            cover.Face.Dispose();
+            cover.Inside.Dispose();
+            _coverPictures = null;
+        }
         Cover?.Dispose();
         _full.Dispose();
         foreach (var w in _words.Values) w.Picture?.Dispose();

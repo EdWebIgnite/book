@@ -28,7 +28,7 @@ namespace Reader.Ui;
  */
 public sealed partial class ReaderView
 {
-    static IImmutableBrush BackdropBrush => new ImmutableSolidColorBrush(Palette.Forest);
+    IImmutableBrush BackdropBrush => Brush(Palette.Forest);
     static readonly IImmutableBrush White = new ImmutableSolidColorBrush(Colors.White);
     static readonly RenderOptions Quick = new() { BitmapInterpolationMode = BitmapInterpolationMode.LowQuality };
     static readonly RenderOptions Fine = new() { BitmapInterpolationMode = BitmapInterpolationMode.HighQuality };
@@ -42,6 +42,14 @@ public sealed partial class ReaderView
 
     /// <summary>How many times the picture has been drawn. The bench uses it to tell drawn frames from skipped ones.</summary>
     public int RenderCount { get; private set; }
+
+    /// <summary>
+    /// Here only so that the shapes and brushes kept in static fields are made when the first view is (on the
+    /// screen's thread), never later from wherever a static member is first touched. Books draw their covers on
+    /// the thread that loads them, and a shape made there belongs to that thread: drawn on screen later, it
+    /// stopped the program.
+    /// </summary>
+    static ReaderView() { }
 
     public override void Render(DrawingContext ctx)
     {
@@ -58,10 +66,12 @@ public sealed partial class ReaderView
         }
         if (!ReferenceEquals(_shapesFor, book))
         {
-            // Shapes kept from the last book don't fit this one.
+            // Shapes and paths kept from the last book don't fit this one.
             _shapesFor = book;
             _weatherClips.Clear();
             _frames3.Clear();
+            _tilePaths.Clear();
+            _layerPaths.Clear();
         }
 
         ViewTransform v = e.GetView();
@@ -180,7 +190,13 @@ public sealed partial class ReaderView
     void DrawWords(DrawingContext ctx, LoadedBook? book, int page, double u0, double u1, Rect dest, double pagePixelsHigh, RenderOptions quality)
     {
         if (book is null || page < 0 || !Engine.Settings.PrintedWords || u1 - u0 <= 1e-9) return;
-        if (book.Words(page) is not PrintedWordsPicture words) return;
+        DrawWords(ctx, book.Words(page), u0, u1, dest, pagePixelsHigh, quality);
+    }
+
+    /// <summary>The same with the words picture already in hand. Any thread.</summary>
+    static void DrawWords(DrawingContext ctx, PrintedWordsPicture? words, double u0, double u1, Rect dest, double pagePixelsHigh, RenderOptions quality)
+    {
+        if (words is null || u1 - u0 <= 1e-9) return;
         RectD r = words.Region;
         double a = Math.Max(u0, r.X), b = Math.Min(u1, r.Right);
         if (b - a <= 1e-9) return;
@@ -203,13 +219,33 @@ public sealed partial class ReaderView
         {
             // A whisker bigger than its place, so no hairline shows between neighbours.
             Rect dest = ToRect(v.ToScreen(t.World)).Inflate(0.4);
-            Bitmap? tile = _tiles.Get(BookLibrary.SafePath(book.Folder, info.PathFor(t.Level, t.X, t.Y)));
+            Bitmap? tile = _tiles.Get(TilePath(book, info, page, t.Level, t.X, t.Y));
             if (tile is not null) { ctx.DrawImage(tile, dest); continue; }
             if (!t.HasParent) continue;
             // Not here yet: use the matching quarter of the next level down if we have it.
-            Bitmap? parent = _tiles.Get(BookLibrary.SafePath(book.Folder, info.PathFor(t.Level + 1, t.ParentX, t.ParentY)));
+            Bitmap? parent = _tiles.Get(TilePath(book, info, page, t.Level + 1, t.ParentX, t.ParentY));
             if (parent is not null) ctx.DrawImage(parent, ToRect(t.ParentSource), dest);
         }
+    }
+
+    /// <summary>
+    /// Where the files are, worked out once each: a scene shows a few dozen tiles a frame, and working out
+    /// each one's path again every frame made most of what a frame of exploring allocated.
+    /// </summary>
+    readonly Dictionary<(int Page, int Level, int X, int Y), string?> _tilePaths = new();
+    readonly Dictionary<string, string?> _layerPaths = new();
+
+    string? TilePath(LoadedBook book, TileInfo info, int page, int level, int x, int y)
+    {
+        var key = (page, level, x, y);
+        if (!_tilePaths.TryGetValue(key, out string? path)) _tilePaths[key] = path = BookLibrary.SafePath(book.Folder, info.PathFor(level, x, y));
+        return path;
+    }
+
+    string? LayerPath(LoadedBook book, string image)
+    {
+        if (!_layerPaths.TryGetValue(image, out string? path)) _layerPaths[image] = path = BookLibrary.SafePath(book.Folder, image);
+        return path;
     }
 
     /// <summary>Pictures placed on top of the page: shown between stops, moved when their stop arrives.</summary>
@@ -219,7 +255,7 @@ public sealed partial class ReaderView
         using var options = ctx.PushRenderOptions(quality);
         foreach (LayerDraw l in Engine.LayersFor(page))
         {
-            Bitmap? image = _pictures.Get(BookLibrary.SafePath(book.Folder, l.Image));
+            Bitmap? image = _pictures.Get(LayerPath(book, l.Image));
             if (image is null) continue;
             var dest = new Rect(r.X + l.Box.X * r.W, r.Y + l.Box.Y * r.H, l.Box.W * r.W, l.Box.H * r.H);
             using (ctx.PushOpacity(l.Opacity))
